@@ -1,65 +1,237 @@
+"use client";
+
+import Link from "next/link";
 import Image from "next/image";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  getPhotos,
+  imageUrl,
+  Photo,
+  PhotoStatus,
+  uploadPhoto,
+} from "./lib/api";
+
+const filters: Array<"all" | PhotoStatus> = [
+  "all",
+  "pending",
+  "classified",
+  "needs_review",
+];
+
+const statusLabels: Record<"all" | PhotoStatus, string> = {
+  all: "All",
+  pending: "Pending",
+  classified: "Classified",
+  needs_review: "Needs review",
+};
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function StatusBadge({ status }: { status: PhotoStatus }) {
+  const className =
+    status === "classified"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : status === "needs_review"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-stone-200 bg-stone-50 text-stone-700";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}
+    >
+      {statusLabels[status]}
+    </span>
+  );
+}
+
+function PhotoCard({ photo }: { photo: Photo }) {
+  return (
+    <Link
+      href={`/photos/${photo.id}`}
+      className="group overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
+    >
+      <div className="aspect-[4/3] overflow-hidden bg-stone-100">
+        <Image
+          src={imageUrl("thumbs", photo.thumbnail_filename)}
+          alt={photo.common_name ?? photo.original_filename}
+          width={640}
+          height={480}
+          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+        />
+      </div>
+      <div className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold text-stone-950">
+              {photo.common_name ?? "Unclassified"}
+            </h2>
+            <p className="mt-1 text-sm capitalize text-stone-500">
+              {photo.category ?? "Unknown"}
+            </p>
+          </div>
+          <StatusBadge status={photo.status} />
+        </div>
+        <div className="flex items-center justify-between text-sm text-stone-500">
+          <span>{formatDate(photo.created_at)}</span>
+          {photo.confidence !== null ? (
+            <span className="font-medium text-emerald-800">
+              {Math.round(photo.confidence * 100)}%
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 export default function Home() {
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [activeFilter, setActiveFilter] = useState<"all" | PhotoStatus>("all");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getPhotos()
+      .then(setPhotos)
+      .catch((nextError: Error) => setError(nextError.message))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const filteredPhotos = useMemo(() => {
+    if (activeFilter === "all") {
+      return photos;
+    }
+
+    return photos.filter((photo) => photo.status === activeFilter);
+  }, [activeFilter, photos]);
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setSelectedFile(event.target.files?.[0] ?? null);
+  }
+
+  async function handleUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedFile) {
+      return;
+    }
+
+    setIsUploading(true);
+    setError(null);
+    try {
+      const uploadedPhoto = await uploadPhoto(selectedFile);
+      setPhotos((currentPhotos) => [uploadedPhoto, ...currentPhotos]);
+      setSelectedFile(null);
+      event.currentTarget.reset();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Upload failed");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
+      <section className="border-b border-stone-200 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-[0.18em] text-emerald-700">
+              Local-first animal archive
+            </p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">
+              FaunaVault
+            </h1>
+          </div>
+          <form
+            onSubmit={handleUpload}
+            className="flex w-full flex-col gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 sm:w-auto sm:min-w-[420px] sm:flex-row sm:items-center"
+          >
+            <label className="flex min-h-11 flex-1 cursor-pointer items-center rounded-md border border-dashed border-stone-300 bg-white px-3 text-sm text-stone-600 transition hover:border-emerald-500">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileChange}
+                className="sr-only"
+              />
+              <span className="truncate">
+                {selectedFile?.name ?? "Choose image"}
+              </span>
+            </label>
+            <button
+              type="submit"
+              disabled={!selectedFile || isUploading}
+              className="min-h-11 rounded-md bg-emerald-800 px-5 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              {isUploading ? "Uploading" : "Upload"}
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 py-6">
+        <div className="flex flex-col gap-4 border-b border-stone-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {filters.map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setActiveFilter(filter)}
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
+                  activeFilter === filter
+                    ? "border-emerald-700 bg-emerald-800 text-white"
+                    : "border-stone-200 bg-white text-stone-700 hover:border-emerald-300"
+                }`}
+              >
+                {statusLabels[filter]}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-stone-500">
+            {filteredPhotos.length}{" "}
+            {filteredPhotos.length === 1 ? "photo" : "photos"}
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+
+        {error ? (
+          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        {isLoading ? (
+          <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-72 animate-pulse rounded-lg border border-stone-200 bg-white"
+              />
+            ))}
+          </div>
+        ) : filteredPhotos.length > 0 ? (
+          <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredPhotos.map((photo) => (
+              <PhotoCard key={photo.id} photo={photo} />
+            ))}
+          </div>
+        ) : (
+          <div className="py-20 text-center">
+            <h2 className="text-xl font-semibold text-stone-900">
+              No photos in this view
+            </h2>
+            <p className="mt-2 text-sm text-stone-500">
+              Add an image to begin building the collection.
+            </p>
+          </div>
+        )}
+      </section>
+    </main>
   );
 }
