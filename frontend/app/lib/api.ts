@@ -51,6 +51,12 @@ export function getPhoto(id: string) {
   return request<Photo>(`/photos/${id}`);
 }
 
+export function deletePhoto(id: number) {
+  return request<{ status: string; photo_id: number }>(`/photos/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export function uploadPhoto(file: File) {
   const formData = new FormData();
   formData.append("file", file);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  deletePhoto,
   getPhotos,
   imageUrl,
   Photo,
@@ -49,54 +50,71 @@ function StatusBadge({ status }: { status: PhotoStatus }) {
   );
 }
 
-function PhotoCard({ photo }: { photo: Photo }) {
+function PhotoCard({
+  photo,
+  isDeleting,
+  onDelete,
+}: {
+  photo: Photo;
+  isDeleting: boolean;
+  onDelete: (photo: Photo) => void;
+}) {
   const thumbnailUrl = imageUrl("thumbs", photo.thumbnail_filename);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const imageFailed = failedImageUrl === thumbnailUrl;
 
   return (
-    <Link
-      href={`/photos/${photo.id}`}
-      className="group overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
-    >
-      <div className="aspect-[4/3] overflow-hidden bg-stone-100">
-        {imageFailed ? (
-          <div className="flex h-full w-full items-center justify-center px-4 text-center text-sm font-medium text-stone-500">
-            Image unavailable
-          </div>
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element -- Backend localhost images must bypass Next image optimization.
-          <img
-            src={thumbnailUrl}
-            alt={photo.common_name ?? photo.original_filename}
-            loading="lazy"
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-            onError={() => setFailedImageUrl(thumbnailUrl)}
-          />
-        )}
-      </div>
+    <article className="group overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
+      <Link href={`/photos/${photo.id}`} className="block">
+        <div className="aspect-[4/3] overflow-hidden bg-stone-100">
+          {imageFailed ? (
+            <div className="flex h-full w-full items-center justify-center px-4 text-center text-sm font-medium text-stone-500">
+              Image unavailable
+            </div>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element -- Backend localhost images must bypass Next image optimization.
+            <img
+              src={thumbnailUrl}
+              alt={photo.common_name ?? photo.original_filename}
+              loading="lazy"
+              className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+              onError={() => setFailedImageUrl(thumbnailUrl)}
+            />
+          )}
+        </div>
+      </Link>
       <div className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-stone-950">
-              {photo.common_name ?? "Unclassified"}
-            </h2>
-            <p className="mt-1 text-sm capitalize text-stone-500">
-              {photo.category ?? "Unknown"}
-            </p>
+        <Link href={`/photos/${photo.id}`} className="block">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold text-stone-950">
+                {photo.common_name ?? "Unclassified"}
+              </h2>
+              <p className="mt-1 text-sm capitalize text-stone-500">
+                {photo.category ?? "Unknown"}
+              </p>
+            </div>
+            <StatusBadge status={photo.status} />
           </div>
-          <StatusBadge status={photo.status} />
-        </div>
-        <div className="flex items-center justify-between text-sm text-stone-500">
-          <span>{formatDate(photo.created_at)}</span>
-          {photo.confidence !== null ? (
-            <span className="font-medium text-emerald-800">
-              {Math.round(photo.confidence * 100)}%
-            </span>
-          ) : null}
-        </div>
+          <div className="mt-3 flex items-center justify-between text-sm text-stone-500">
+            <span>{formatDate(photo.created_at)}</span>
+            {photo.confidence !== null ? (
+              <span className="font-medium text-emerald-800">
+                {Math.round(photo.confidence * 100)}%
+              </span>
+            ) : null}
+          </div>
+        </Link>
+        <button
+          type="button"
+          onClick={() => onDelete(photo)}
+          disabled={isDeleting}
+          className="min-h-10 w-full rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+        >
+          {isDeleting ? "Deleting photo" : "Delete photo"}
+        </button>
       </div>
-    </Link>
+    </article>
   );
 }
 
@@ -106,6 +124,9 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [deletingPhotoIds, setDeletingPhotoIds] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -144,6 +165,32 @@ export default function Home() {
       setError(nextError instanceof Error ? nextError.message : "Upload failed");
     } finally {
       setIsUploading(false);
+    }
+  }
+
+  async function handleDeletePhoto(photo: Photo) {
+    const confirmed = window.confirm(
+      `Delete photo "${photo.original_filename}"? This cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingPhotoIds((currentIds) => new Set(currentIds).add(photo.id));
+    setError(null);
+    try {
+      await deletePhoto(photo.id);
+      setPhotos((currentPhotos) =>
+        currentPhotos.filter((currentPhoto) => currentPhoto.id !== photo.id),
+      );
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Delete failed");
+    } finally {
+      setDeletingPhotoIds((currentIds) => {
+        const nextIds = new Set(currentIds);
+        nextIds.delete(photo.id);
+        return nextIds;
+      });
     }
   }
 
@@ -227,7 +274,12 @@ export default function Home() {
         ) : filteredPhotos.length > 0 ? (
           <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredPhotos.map((photo) => (
-              <PhotoCard key={photo.id} photo={photo} />
+              <PhotoCard
+                key={photo.id}
+                photo={photo}
+                isDeleting={deletingPhotoIds.has(photo.id)}
+                onDelete={handleDeletePhoto}
+              />
             ))}
           </div>
         ) : (
