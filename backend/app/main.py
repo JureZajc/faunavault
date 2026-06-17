@@ -156,6 +156,40 @@ def remove_partial_files(paths: tuple[Path, ...]) -> None:
             logger.warning("Failed to remove partial image file: %s", path, exc_info=True)
 
 
+def stored_image_path(image_type: str, filename: str) -> Path | None:
+    raw_path = Path(filename)
+    if not filename or raw_path.name != filename or raw_path.name in {".", ".."}:
+        logger.warning("Skipped unsafe image filename for deletion: %s", filename)
+        return None
+
+    image_dir = IMAGE_DIRS[image_type].resolve()
+    image_path = (image_dir / raw_path.name).resolve()
+    try:
+        image_path.relative_to(image_dir)
+    except ValueError:
+        logger.warning("Skipped image path outside storage directory: %s", image_path)
+        return None
+
+    if image_path.parent != image_dir:
+        logger.warning("Skipped nested image path outside flat storage directory: %s", image_path)
+        return None
+
+    return image_path
+
+
+def delete_photo_file(image_type: str, filename: str) -> bool:
+    image_path = stored_image_path(image_type, filename)
+    if image_path is None or not image_path.exists():
+        return False
+
+    if not image_path.is_file():
+        logger.warning("Skipped non-file image path during deletion: %s", image_path)
+        return False
+
+    image_path.unlink()
+    return True
+
+
 def photo_or_404(photo_id: int, session: Session) -> Photo:
     photo = session.get(Photo, photo_id)
     if photo is None:
@@ -289,6 +323,30 @@ def list_photos(session: SessionDep) -> list[Photo]:
 @app.get("/photos/{photo_id}", response_model=Photo)
 def get_photo(photo_id: int, session: SessionDep) -> Photo:
     return photo_or_404(photo_id, session)
+
+
+@app.delete("/photos/{photo_id}")
+def delete_photo(photo_id: int, session: SessionDep) -> dict[str, int | str]:
+    photo = photo_or_404(photo_id, session)
+    image_files = (
+        ("original", photo.stored_filename),
+        ("resized", photo.resized_filename),
+        ("thumbs", photo.thumbnail_filename),
+    )
+
+    try:
+        for image_type, filename in image_files:
+            delete_photo_file(image_type, filename)
+    except OSError as exc:
+        logger.exception("Failed to delete image file for photo %s", photo_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete one or more image files",
+        ) from exc
+
+    session.delete(photo)
+    session.commit()
+    return {"status": "deleted", "photo_id": photo_id}
 
 
 @app.post("/photos/{photo_id}/mock-classify", response_model=Photo)

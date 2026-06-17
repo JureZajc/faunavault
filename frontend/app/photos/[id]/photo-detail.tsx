@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   classifyPhoto,
+  deletePhoto,
   getPhoto,
   imageUrl,
   mockClassifyPhoto,
@@ -49,13 +51,15 @@ function MetadataRow({
 }
 
 export default function PhotoDetail({ id }: { id: string }) {
+  const router = useRouter();
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMockClassifying, setIsMockClassifying] = useState(false);
   const [isAiClassifying, setIsAiClassifying] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isClassifying = isMockClassifying || isAiClassifying;
+  const isClassifying = isMockClassifying || isAiClassifying || isDeleting;
   const detailImageUrl = photo
     ? photo.resized_filename
       ? imageUrl("resized", photo.resized_filename)
@@ -108,6 +112,29 @@ export default function PhotoDetail({ id }: { id: string }) {
       );
     } finally {
       setIsAiClassifying(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!photo) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete photo "${photo.original_filename}"? This cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await deletePhoto(photo.id);
+      router.push("/");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Delete failed");
+      setIsDeleting(false);
     }
   }
 
@@ -185,6 +212,15 @@ export default function PhotoDetail({ id }: { id: string }) {
                 {isAiClassifying
                   ? "Running local AI classification"
                   : "Run local AI classification"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isClassifying}
+                className="mt-3 min-h-11 w-full rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+              >
+                {isDeleting ? "Deleting photo" : "Delete photo"}
               </button>
 
               <dl className="mt-5">
