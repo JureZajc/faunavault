@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import {
   getPhotos,
@@ -51,20 +50,30 @@ function StatusBadge({ status }: { status: PhotoStatus }) {
 }
 
 function PhotoCard({ photo }: { photo: Photo }) {
+  const thumbnailUrl = imageUrl("thumbs", photo.thumbnail_filename);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const imageFailed = failedImageUrl === thumbnailUrl;
+
   return (
     <Link
       href={`/photos/${photo.id}`}
       className="group overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
     >
       <div className="aspect-[4/3] overflow-hidden bg-stone-100">
-        <Image
-          src={imageUrl("thumbs", photo.thumbnail_filename)}
-          alt={photo.common_name ?? photo.original_filename}
-          width={640}
-          height={480}
-          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-        />
+        {imageFailed ? (
+          <div className="flex h-full w-full items-center justify-center px-4 text-center text-sm font-medium text-stone-500">
+            Image unavailable
+          </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element -- Backend localhost images must bypass Next image optimization.
+          <img
+            src={thumbnailUrl}
+            alt={photo.common_name ?? photo.original_filename}
+            loading="lazy"
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+            onError={() => setFailedImageUrl(thumbnailUrl)}
+          />
+        )}
       </div>
       <div className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-3">

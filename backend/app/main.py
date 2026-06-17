@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from io import BytesIO
+import logging
 import os
 from pathlib import Path
 from typing import Annotated
@@ -12,6 +13,28 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+def load_backend_env(env_path: Path) -> None:
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+
+        os.environ.setdefault(key, value.strip().strip("\"'"))
+
+
+load_backend_env(BACKEND_DIR / ".env")
+
 from app.ollama_client import (
     AI_FALLBACK_MODEL,
     AI_PRIMARY_MODEL,
@@ -20,11 +43,19 @@ from app.ollama_client import (
     classify_image,
 )
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
+logger = logging.getLogger(__name__)
+
 DATABASE_PATH = BACKEND_DIR / "data" / "faunavault.db"
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
-IMAGE_ROOT = Path("/mnt/e/FaunaVault/data/images")
+
+def default_image_root() -> Path:
+    if os.name == "nt":
+        return Path("E:/FaunaVault/data/images")
+    return Path("/mnt/e/FaunaVault/data/images")
+
+
+IMAGE_ROOT = Path(os.getenv("IMAGE_DIR", str(default_image_root()))).expanduser()
 IMAGE_DIRS = {
     "original": IMAGE_ROOT / "original",
     "resized": IMAGE_ROOT / "resized",
@@ -117,6 +148,14 @@ def save_variant(image: Image.Image, path: Path, extension: str, size: tuple[int
     variant.save(path, format=output_format(extension), **save_kwargs)
 
 
+def remove_partial_files(paths: tuple[Path, ...]) -> None:
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to remove partial image file: %s", path, exc_info=True)
+
+
 def photo_or_404(photo_id: int, session: Session) -> Photo:
     photo = session.get(Photo, photo_id)
     if photo is None:
@@ -204,9 +243,30 @@ async def upload_photo(session: SessionDep, file: UploadFile = File(...)) -> Pho
     resized_path = IMAGE_DIRS["resized"] / resized_filename
     thumbnail_path = IMAGE_DIRS["thumbs"] / thumbnail_filename
 
-    original_path.write_bytes(contents)
-    save_variant(image, resized_path, extension, RESIZED_MAX_SIZE)
-    save_variant(image, thumbnail_path, extension, THUMBNAIL_MAX_SIZE)
+    ensure_storage()
+    try:
+        original_path.write_bytes(contents)
+    except OSError as exc:
+        logger.exception("Failed to store original image at %s", original_path)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to store original image file",
+        ) from exc
+
+    try:
+        save_variant(image, resized_path, extension, RESIZED_MAX_SIZE)
+        save_variant(image, thumbnail_path, extension, THUMBNAIL_MAX_SIZE)
+    except Exception as exc:
+        logger.exception(
+            "Failed to process uploaded image variants with Pillow: resized=%s thumbnail=%s",
+            resized_path,
+            thumbnail_path,
+        )
+        remove_partial_files((original_path, resized_path, thumbnail_path))
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded image could not be processed",
+        ) from exc
 
     photo = Photo(
         original_filename=Path(file.filename or "upload").name,
