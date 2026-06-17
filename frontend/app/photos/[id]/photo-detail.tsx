@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
+  classifyPhoto,
   getPhoto,
   imageUrl,
   mockClassifyPhoto,
@@ -51,8 +52,10 @@ function MetadataRow({
 export default function PhotoDetail({ id }: { id: string }) {
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isClassifying, setIsClassifying] = useState(false);
+  const [isMockClassifying, setIsMockClassifying] = useState(false);
+  const [isAiClassifying, setIsAiClassifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isClassifying = isMockClassifying || isAiClassifying;
 
   useEffect(() => {
     getPhoto(id)
@@ -66,7 +69,7 @@ export default function PhotoDetail({ id }: { id: string }) {
       return;
     }
 
-    setIsClassifying(true);
+    setIsMockClassifying(true);
     setError(null);
     try {
       const updatedPhoto = await mockClassifyPhoto(photo.id);
@@ -76,7 +79,28 @@ export default function PhotoDetail({ id }: { id: string }) {
         nextError instanceof Error ? nextError.message : "Classification failed",
       );
     } finally {
-      setIsClassifying(false);
+      setIsMockClassifying(false);
+    }
+  }
+
+  async function handleAiClassify() {
+    if (!photo) {
+      return;
+    }
+
+    setIsAiClassifying(true);
+    setError(null);
+    try {
+      const updatedPhoto = await classifyPhoto(photo.id);
+      setPhoto(updatedPhoto);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Local AI classification failed",
+      );
+    } finally {
+      setIsAiClassifying(false);
     }
   }
 
@@ -137,7 +161,18 @@ export default function PhotoDetail({ id }: { id: string }) {
                 disabled={isClassifying}
                 className="mt-5 min-h-11 w-full rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
               >
-                {isClassifying ? "Classifying" : "Run mock classification"}
+                {isMockClassifying ? "Running mock classification" : "Run mock classification"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAiClassify}
+                disabled={isClassifying}
+                className="mt-3 min-h-11 w-full rounded-md border border-emerald-800 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-900 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+              >
+                {isAiClassifying
+                  ? "Running local AI classification"
+                  : "Run local AI classification"}
               </button>
 
               <dl className="mt-5">
