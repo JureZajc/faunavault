@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
   classifyPhoto,
@@ -54,8 +53,16 @@ export default function PhotoDetail({ id }: { id: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isMockClassifying, setIsMockClassifying] = useState(false);
   const [isAiClassifying, setIsAiClassifying] = useState(false);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isClassifying = isMockClassifying || isAiClassifying;
+  const detailImageUrl = photo
+    ? photo.resized_filename
+      ? imageUrl("resized", photo.resized_filename)
+      : imageUrl("original", photo.stored_filename)
+    : null;
+  const imageFailed =
+    detailImageUrl !== null && failedImageUrl === detailImageUrl;
 
   useEffect(() => {
     getPhoto(id)
@@ -129,14 +136,19 @@ export default function PhotoDetail({ id }: { id: string }) {
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
             <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
               <div className="bg-stone-100">
-                <Image
-                  src={imageUrl("resized", photo.resized_filename)}
-                  alt={photo.common_name ?? photo.original_filename}
-                  width={1600}
-                  height={1200}
-                  sizes="(min-width: 1024px) calc(100vw - 460px), 100vw"
-                  className="max-h-[72vh] w-full object-contain"
-                />
+                {imageFailed || !detailImageUrl ? (
+                  <div className="flex aspect-[4/3] max-h-[72vh] w-full items-center justify-center px-6 text-center text-sm font-medium text-stone-500">
+                    Image unavailable
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element -- Backend localhost images must bypass Next image optimization.
+                  <img
+                    src={detailImageUrl}
+                    alt={photo.common_name ?? photo.original_filename}
+                    className="max-h-[72vh] w-full object-contain"
+                    onError={() => setFailedImageUrl(detailImageUrl)}
+                  />
+                )}
               </div>
             </section>
 
