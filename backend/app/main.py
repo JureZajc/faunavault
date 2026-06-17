@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from io import BytesIO
+import os
 from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
@@ -10,6 +11,14 @@ from fastapi.responses import FileResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
+
+from app.ollama_client import (
+    AI_FALLBACK_MODEL,
+    AI_PRIMARY_MODEL,
+    ClassificationResult,
+    OllamaClassificationError,
+    classify_image,
+)
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 DATABASE_PATH = BACKEND_DIR / "data" / "faunavault.db"
@@ -30,6 +39,13 @@ THUMBNAIL_MAX_SIZE = (480, 480)
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def confidence_threshold() -> float:
+    try:
+        return float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.65"))
+    except ValueError:
+        return 0.65
 
 
 class Photo(SQLModel, table=True):
@@ -108,6 +124,56 @@ def photo_or_404(photo_id: int, session: Session) -> Photo:
     return photo
 
 
+def classification_image_path(photo: Photo) -> Path:
+    resized_path = IMAGE_DIRS["resized"] / Path(photo.resized_filename).name
+    if resized_path.exists() and resized_path.is_file():
+        return resized_path
+
+    original_path = IMAGE_DIRS["original"] / Path(photo.stored_filename).name
+    if original_path.exists() and original_path.is_file():
+        return original_path
+
+    raise HTTPException(status_code=404, detail="No image file found for classification")
+
+
+def classify_with_fallback(image_path: Path, threshold: float) -> ClassificationResult:
+    primary_result: ClassificationResult | None = None
+    errors: list[str] = []
+
+    try:
+        primary_result = classify_image(image_path, AI_PRIMARY_MODEL)
+    except OllamaClassificationError as exc:
+        errors.append(str(exc))
+
+    should_try_fallback = primary_result is None or primary_result.confidence < threshold
+    if should_try_fallback and AI_FALLBACK_MODEL != AI_PRIMARY_MODEL:
+        try:
+            return classify_image(image_path, AI_FALLBACK_MODEL)
+        except OllamaClassificationError as exc:
+            errors.append(str(exc))
+
+    if primary_result is not None:
+        return primary_result
+
+    detail = "; ".join(errors) if errors else "Local AI classification failed"
+    raise HTTPException(status_code=502, detail=detail)
+
+
+def apply_classification(photo: Photo, result: ClassificationResult, threshold: float) -> None:
+    photo.common_name = result.common_name
+    photo.species_guess = result.species_guess
+    photo.category = result.category
+    photo.confidence = result.confidence
+    photo.description = result.description
+    photo.tags = result.tags
+    photo.status = (
+        "classified"
+        if result.is_animal and not result.needs_review and result.confidence >= threshold
+        else "needs_review"
+    )
+    photo.updated_at = utc_now()
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -176,6 +242,20 @@ def mock_classify_photo(photo_id: int, session: SessionDep) -> Photo:
     photo.tags = ["cat", "pet", "mammal"]
     photo.status = "classified"
     photo.updated_at = utc_now()
+    session.add(photo)
+    session.commit()
+    session.refresh(photo)
+    return photo
+
+
+@app.post("/photos/{photo_id}/classify", response_model=Photo)
+def classify_photo(photo_id: int, session: SessionDep) -> Photo:
+    photo = photo_or_404(photo_id, session)
+    threshold = confidence_threshold()
+    image_path = classification_image_path(photo)
+    result = classify_with_fallback(image_path, threshold)
+
+    apply_classification(photo, result, threshold)
     session.add(photo)
     session.commit()
     session.refresh(photo)

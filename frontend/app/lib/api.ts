@@ -66,3 +66,9 @@ export function mockClassifyPhoto(id: number) {
     method: "POST",
   });
 }
+
+export function classifyPhoto(id: number) {
+  return request<Photo>(`/photos/${id}/classify`, {
+    method: "POST",
+  });
+}
