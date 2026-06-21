@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pydantic import model_validator
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
@@ -64,6 +65,7 @@ IMAGE_DIRS = {
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_IMAGE_TYPES = set(IMAGE_DIRS)
+ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}
 RESIZED_MAX_SIZE = (1600, 1600)
 THUMBNAIL_MAX_SIZE = (480, 480)
 
@@ -94,6 +96,27 @@ class Photo(SQLModel, table=True):
     status: str = "pending"
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class PhotoUpdate(SQLModel):
+    common_name: str | None = None
+    species_guess: str | None = None
+    category: str | None = None
+    confidence: float | None = None
+    description: str | None = None
+    tags: list[str] | None = None
+    status: str | None = None
+
+    @model_validator(mode="after")
+    def validate_metadata(self) -> "PhotoUpdate":
+        if self.confidence is not None and not 0 <= self.confidence <= 1:
+            raise ValueError("confidence must be null or between 0 and 1")
+
+        if "status" in self.model_fields_set and self.status not in ALLOWED_PHOTO_STATUSES:
+            allowed_statuses = ", ".join(sorted(ALLOWED_PHOTO_STATUSES))
+            raise ValueError(f"status must be one of: {allowed_statuses}")
+
+        return self
 
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -195,6 +218,13 @@ def photo_or_404(photo_id: int, session: Session) -> Photo:
     if photo is None:
         raise HTTPException(status_code=404, detail="Photo not found")
     return photo
+
+
+def normalize_tags(tags: list[str] | None) -> list[str]:
+    if tags is None:
+        return []
+
+    return [tag.strip() for tag in tags if tag.strip()]
 
 
 def classification_image_path(photo: Photo) -> Path:
@@ -323,6 +353,26 @@ def list_photos(session: SessionDep) -> list[Photo]:
 @app.get("/photos/{photo_id}", response_model=Photo)
 def get_photo(photo_id: int, session: SessionDep) -> Photo:
     return photo_or_404(photo_id, session)
+
+
+@app.patch("/photos/{photo_id}", response_model=Photo)
+def update_photo(photo_id: int, metadata: PhotoUpdate, session: SessionDep) -> Photo:
+    photo = photo_or_404(photo_id, session)
+    updates = metadata.model_dump(exclude_unset=True)
+    if not updates:
+        return photo
+
+    for field_name, value in updates.items():
+        if field_name == "tags":
+            photo.tags = normalize_tags(value)
+        else:
+            setattr(photo, field_name, value)
+
+    photo.updated_at = utc_now()
+    session.add(photo)
+    session.commit()
+    session.refresh(photo)
+    return photo
 
 
 @app.delete("/photos/{photo_id}")
