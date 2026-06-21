@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   classifyPhoto,
   deletePhoto,
@@ -10,13 +10,37 @@ import {
   imageUrl,
   mockClassifyPhoto,
   Photo,
+  PhotoUpdate,
   PhotoStatus,
+  updatePhoto,
 } from "../../lib/api";
+
+const photoStatuses: PhotoStatus[] = ["pending", "classified", "needs_review"];
 
 const statusLabels: Record<PhotoStatus, string> = {
   pending: "Pending",
   classified: "Classified",
   needs_review: "Needs review",
+};
+
+type MetadataFormState = {
+  common_name: string;
+  species_guess: string;
+  category: string;
+  confidence: string;
+  description: string;
+  tags: string;
+  status: PhotoStatus;
+};
+
+const emptyMetadataForm: MetadataFormState = {
+  common_name: "",
+  species_guess: "",
+  category: "",
+  confidence: "",
+  description: "",
+  tags: "",
+  status: "pending",
 };
 
 function formatDateTime(value: string) {
@@ -32,6 +56,44 @@ function formatDateTime(value: string) {
 function confidenceLabel(value: number | null) {
   return value === null ? "Not available" : `${Math.round(value * 100)}%`;
 }
+
+function confidenceInputValue(value: number | null) {
+  if (value === null) {
+    return "";
+  }
+
+  return Number((value * 100).toFixed(2)).toString();
+}
+
+function formStateFromPhoto(photo: Photo): MetadataFormState {
+  return {
+    common_name: photo.common_name ?? "",
+    species_guess: photo.species_guess ?? "",
+    category: photo.category ?? "",
+    confidence: confidenceInputValue(photo.confidence),
+    description: photo.description ?? "",
+    tags: photo.tags.join(", "),
+    status: photo.status,
+  };
+}
+
+function nullIfBlank(value: string) {
+  const trimmedValue = value.trim();
+  return trimmedValue === "" ? null : trimmedValue;
+}
+
+function tagsFromInput(value: string) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+const metadataInputClassName =
+  "mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500";
+
+const metadataTextareaClassName =
+  "mt-2 min-h-28 w-full rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500";
 
 function StatusBadge({ status }: { status: PhotoStatus }) {
   const className =
@@ -82,9 +144,14 @@ export default function PhotoDetail({ id }: { id: string }) {
   const [isMockClassifying, setIsMockClassifying] = useState(false);
   const [isAiClassifying, setIsAiClassifying] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditingMetadata, setIsEditingMetadata] = useState(false);
+  const [isSavingMetadata, setIsSavingMetadata] = useState(false);
+  const [metadataForm, setMetadataForm] =
+    useState<MetadataFormState>(emptyMetadataForm);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isClassifying = isMockClassifying || isAiClassifying || isDeleting;
+  const isBusy =
+    isMockClassifying || isAiClassifying || isDeleting || isSavingMetadata;
   const detailImageUrl = photo
     ? photo.resized_filename
       ? imageUrl("resized", photo.resized_filename)
@@ -95,21 +162,103 @@ export default function PhotoDetail({ id }: { id: string }) {
 
   useEffect(() => {
     getPhoto(id)
-      .then(setPhoto)
+      .then((nextPhoto) => {
+        setPhoto(nextPhoto);
+        setMetadataForm(formStateFromPhoto(nextPhoto));
+      })
       .catch((nextError: Error) => setError(nextError.message))
       .finally(() => setIsLoading(false));
   }, [id]);
+
+  function updateMetadataForm<FieldName extends keyof MetadataFormState>(
+    fieldName: FieldName,
+    value: MetadataFormState[FieldName],
+  ) {
+    setMetadataForm((currentForm) => ({
+      ...currentForm,
+      [fieldName]: value,
+    }));
+  }
+
+  function handleStartEditing() {
+    if (!photo) {
+      return;
+    }
+
+    setError(null);
+    setMetadataForm(formStateFromPhoto(photo));
+    setIsEditingMetadata(true);
+  }
+
+  function handleCancelEditing() {
+    if (photo) {
+      setMetadataForm(formStateFromPhoto(photo));
+    }
+
+    setError(null);
+    setIsEditingMetadata(false);
+  }
+
+  async function handleSaveMetadata(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!photo) {
+      return;
+    }
+
+    const confidenceValue = metadataForm.confidence.trim();
+    const confidenceNumber =
+      confidenceValue === "" ? null : Number(confidenceValue);
+
+    if (
+      confidenceNumber !== null &&
+      (!Number.isFinite(confidenceNumber) ||
+        confidenceNumber < 0 ||
+        confidenceNumber > 100)
+    ) {
+      setError("Confidence must be empty or a number from 0 to 100.");
+      return;
+    }
+
+    const metadata: PhotoUpdate = {
+      common_name: nullIfBlank(metadataForm.common_name),
+      species_guess: nullIfBlank(metadataForm.species_guess),
+      category: nullIfBlank(metadataForm.category),
+      confidence:
+        confidenceNumber === null ? null : Number((confidenceNumber / 100).toFixed(4)),
+      description: nullIfBlank(metadataForm.description),
+      tags: tagsFromInput(metadataForm.tags),
+      status: metadataForm.status,
+    };
+
+    setIsSavingMetadata(true);
+    setError(null);
+    try {
+      const updatedPhoto = await updatePhoto(photo.id, metadata);
+      setPhoto(updatedPhoto);
+      setMetadataForm(formStateFromPhoto(updatedPhoto));
+      setIsEditingMetadata(false);
+    } catch (nextError) {
+      const message =
+        nextError instanceof Error ? nextError.message : "Save failed";
+      setError(`Could not save metadata: ${message}`);
+    } finally {
+      setIsSavingMetadata(false);
+    }
+  }
 
   async function handleMockClassify() {
     if (!photo) {
       return;
     }
 
+    setIsEditingMetadata(false);
     setIsMockClassifying(true);
     setError(null);
     try {
       const updatedPhoto = await mockClassifyPhoto(photo.id);
       setPhoto(updatedPhoto);
+      setMetadataForm(formStateFromPhoto(updatedPhoto));
     } catch (nextError) {
       setError(
         nextError instanceof Error ? nextError.message : "Classification failed",
@@ -124,11 +273,13 @@ export default function PhotoDetail({ id }: { id: string }) {
       return;
     }
 
+    setIsEditingMetadata(false);
     setIsAiClassifying(true);
     setError(null);
     try {
       const updatedPhoto = await classifyPhoto(photo.id);
       setPhoto(updatedPhoto);
+      setMetadataForm(formStateFromPhoto(updatedPhoto));
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -235,8 +386,17 @@ export default function PhotoDetail({ id }: { id: string }) {
               <div className="mt-5 grid gap-3">
                 <button
                   type="button"
+                  onClick={handleStartEditing}
+                  disabled={isBusy || isEditingMetadata}
+                  className="min-h-11 w-full rounded-md border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-800 transition hover:border-emerald-500 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+                >
+                  {isEditingMetadata ? "Editing metadata" : "Edit metadata"}
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleAiClassify}
-                  disabled={isClassifying}
+                  disabled={isBusy || isEditingMetadata}
                   className="min-h-11 w-full rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
                 >
                   {isAiClassifying
@@ -247,7 +407,7 @@ export default function PhotoDetail({ id }: { id: string }) {
                 <button
                   type="button"
                   onClick={handleMockClassify}
-                  disabled={isClassifying}
+                  disabled={isBusy || isEditingMetadata}
                   className="min-h-11 w-full rounded-md border border-emerald-800 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-900 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
                 >
                   {isMockClassifying
@@ -258,58 +418,214 @@ export default function PhotoDetail({ id }: { id: string }) {
                 <button
                   type="button"
                   onClick={handleDelete}
-                  disabled={isClassifying}
+                  disabled={isBusy || isEditingMetadata}
                   className="min-h-11 w-full rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
                 >
                   {isDeleting ? "Deleting photo" : "Delete photo"}
                 </button>
               </div>
 
-              <dl className="mt-5 rounded-lg border border-stone-200 px-4">
-                <MetadataRow
-                  label="Original file"
-                  value={photo.original_filename}
-                />
-                <MetadataRow label="Species guess" value={photo.species_guess} />
-                <MetadataRow label="Category" value={photo.category} />
-                <MetadataRow
-                  label="Confidence"
-                  value={confidenceLabel(photo.confidence)}
-                />
-                <MetadataRow label="Status" value={statusLabels[photo.status]} />
-                <MetadataRow
-                  label="Created"
-                  value={formatDateTime(photo.created_at)}
-                />
-                <MetadataRow
-                  label="Updated"
-                  value={formatDateTime(photo.updated_at)}
-                />
-              </dl>
+              {isEditingMetadata ? (
+                <form
+                  onSubmit={handleSaveMetadata}
+                  className="mt-5 border-t border-stone-200 pt-5"
+                >
+                  <div className="grid gap-4">
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Common name
+                      </span>
+                      <input
+                        type="text"
+                        value={metadataForm.common_name}
+                        onChange={(event) =>
+                          updateMetadataForm("common_name", event.target.value)
+                        }
+                        disabled={isSavingMetadata}
+                        className={metadataInputClassName}
+                      />
+                    </label>
 
-              <div className="mt-5 border-t border-stone-200 pt-5">
-                <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
-                  Description
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-stone-700">
-                  {photo.description ?? "Not available"}
-                </p>
-              </div>
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Species guess
+                      </span>
+                      <input
+                        type="text"
+                        value={metadataForm.species_guess}
+                        onChange={(event) =>
+                          updateMetadataForm(
+                            "species_guess",
+                            event.target.value,
+                          )
+                        }
+                        disabled={isSavingMetadata}
+                        className={metadataInputClassName}
+                      />
+                    </label>
 
-              <div className="mt-5 flex flex-wrap gap-2">
-                {photo.tags.length > 0 ? (
-                  photo.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800"
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Category
+                      </span>
+                      <input
+                        type="text"
+                        value={metadataForm.category}
+                        onChange={(event) =>
+                          updateMetadataForm("category", event.target.value)
+                        }
+                        disabled={isSavingMetadata}
+                        className={metadataInputClassName}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Confidence
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={metadataForm.confidence}
+                        onChange={(event) =>
+                          updateMetadataForm("confidence", event.target.value)
+                        }
+                        disabled={isSavingMetadata}
+                        placeholder="0 to 100"
+                        className={metadataInputClassName}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Status
+                      </span>
+                      <select
+                        value={metadataForm.status}
+                        onChange={(event) =>
+                          updateMetadataForm(
+                            "status",
+                            event.target.value as PhotoStatus,
+                          )
+                        }
+                        disabled={isSavingMetadata}
+                        className={metadataInputClassName}
+                      >
+                        {photoStatuses.map((status) => (
+                          <option key={status} value={status}>
+                            {statusLabels[status]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Description
+                      </span>
+                      <textarea
+                        value={metadataForm.description}
+                        onChange={(event) =>
+                          updateMetadataForm("description", event.target.value)
+                        }
+                        disabled={isSavingMetadata}
+                        className={metadataTextareaClassName}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Tags
+                      </span>
+                      <input
+                        type="text"
+                        value={metadataForm.tags}
+                        onChange={(event) =>
+                          updateMetadataForm("tags", event.target.value)
+                        }
+                        disabled={isSavingMetadata}
+                        placeholder="cat, pet, mammal"
+                        className={metadataInputClassName}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="submit"
+                      disabled={isSavingMetadata}
+                      className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
                     >
-                      {tag}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-stone-500">No tags</span>
-                )}
-              </div>
+                      {isSavingMetadata ? "Saving metadata" : "Save"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCancelEditing}
+                      disabled={isSavingMetadata}
+                      className="min-h-11 rounded-md border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-800 transition hover:border-stone-400 hover:bg-stone-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <dl className="mt-5 rounded-lg border border-stone-200 px-4">
+                    <MetadataRow
+                      label="Original file"
+                      value={photo.original_filename}
+                    />
+                    <MetadataRow
+                      label="Species guess"
+                      value={photo.species_guess}
+                    />
+                    <MetadataRow label="Category" value={photo.category} />
+                    <MetadataRow
+                      label="Confidence"
+                      value={confidenceLabel(photo.confidence)}
+                    />
+                    <MetadataRow
+                      label="Status"
+                      value={statusLabels[photo.status]}
+                    />
+                    <MetadataRow
+                      label="Created"
+                      value={formatDateTime(photo.created_at)}
+                    />
+                    <MetadataRow
+                      label="Updated"
+                      value={formatDateTime(photo.updated_at)}
+                    />
+                  </dl>
+
+                  <div className="mt-5 border-t border-stone-200 pt-5">
+                    <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                      Description
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-stone-700">
+                      {photo.description ?? "Not available"}
+                    </p>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {photo.tags.length > 0 ? (
+                      photo.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800"
+                        >
+                          {tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-stone-500">No tags</span>
+                    )}
+                  </div>
+                </>
+              )}
             </aside>
           </div>
         ) : (

@@ -17,6 +17,16 @@ export type Photo = {
   updated_at: string;
 };
 
+export type PhotoUpdate = Partial<{
+  common_name: string | null;
+  species_guess: string | null;
+  category: string | null;
+  confidence: number | null;
+  description: string | null;
+  tags: string[];
+  status: PhotoStatus;
+}>;
+
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -54,6 +64,16 @@ export function getPhoto(id: string) {
 export function deletePhoto(id: number) {
   return request<{ status: string; photo_id: number }>(`/photos/${id}`, {
     method: "DELETE",
+  });
+}
+
+export function updatePhoto(id: number, metadata: PhotoUpdate) {
+  return request<Photo>(`/photos/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(metadata),
   });
 }
 
