@@ -301,6 +301,7 @@ function CatalogToolbar({
   categoryFilter,
   sortOption,
   categoryOptions,
+  hasUnknownCategory,
   resultCount,
   totalCount,
   onSearchChange,
@@ -313,6 +314,7 @@ function CatalogToolbar({
   categoryFilter: string;
   sortOption: SortOption;
   categoryOptions: string[];
+  hasUnknownCategory: boolean;
   resultCount: number;
   totalCount: number;
   onSearchChange: (value: string) => void;
@@ -365,7 +367,9 @@ function CatalogToolbar({
             className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
           >
             <option value="all">All categories</option>
-            <option value={unknownCategoryValue}>Unknown</option>
+            {hasUnknownCategory ? (
+              <option value={unknownCategoryValue}>Unknown</option>
+            ) : null}
             {categoryOptions.map((category) => (
               <option key={category} value={category}>
                 {category}
@@ -482,21 +486,30 @@ export default function Home() {
   }, []);
 
   const categoryOptions = useMemo(() => getCategoryOptions(photos), [photos]);
+  const hasUnknownCategory = useMemo(
+    () => photos.some((photo) => !photo.category?.trim()),
+    [photos],
+  );
+
+  const activeCategoryFilter =
+    categoryFilter === unknownCategoryValue && !hasUnknownCategory
+      ? "all"
+      : categoryFilter;
 
   const visiblePhotos = useMemo(() => {
     const matchingPhotos = photos.filter(
       (photo) =>
         photoMatchesSearch(photo, searchQuery) &&
-        photoMatchesFilters(photo, statusFilter, categoryFilter),
+        photoMatchesFilters(photo, statusFilter, activeCategoryFilter),
     );
 
     return sortPhotos(matchingPhotos, sortOption);
-  }, [categoryFilter, photos, searchQuery, sortOption, statusFilter]);
+  }, [activeCategoryFilter, photos, searchQuery, sortOption, statusFilter]);
 
   const hasActiveViewFilters =
     normalizeSearchText(searchQuery) !== "" ||
     statusFilter !== "all" ||
-    categoryFilter !== "all";
+    activeCategoryFilter !== "all";
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     setSelectedFile(event.target.files?.[0] ?? null);
@@ -617,9 +630,10 @@ export default function Home() {
         <CatalogToolbar
           searchQuery={searchQuery}
           statusFilter={statusFilter}
-          categoryFilter={categoryFilter}
+          categoryFilter={activeCategoryFilter}
           sortOption={sortOption}
           categoryOptions={categoryOptions}
+          hasUnknownCategory={hasUnknownCategory}
           resultCount={visiblePhotos.length}
           totalCount={photos.length}
           onSearchChange={setSearchQuery}
