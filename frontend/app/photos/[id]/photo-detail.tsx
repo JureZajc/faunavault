@@ -33,6 +33,31 @@ function confidenceLabel(value: number | null) {
   return value === null ? "Not available" : `${Math.round(value * 100)}%`;
 }
 
+function StatusBadge({ status }: { status: PhotoStatus }) {
+  const className =
+    status === "classified"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : status === "needs_review"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-sky-200 bg-sky-50 text-sky-800";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}
+    >
+      {statusLabels[status]}
+    </span>
+  );
+}
+
+function CategoryBadge({ category }: { category: string | null }) {
+  return (
+    <span className="inline-flex max-w-full items-center rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium capitalize text-stone-700">
+      <span className="truncate">{category ?? "Unknown category"}</span>
+    </span>
+  );
+}
+
 function MetadataRow({
   label,
   value,
@@ -140,13 +165,18 @@ export default function PhotoDetail({ id }: { id: string }) {
 
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
-      <div className="mx-auto max-w-7xl px-6 py-6">
-        <Link
-          href="/"
-          className="inline-flex rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 transition hover:border-emerald-300"
-        >
-          Back to catalog
-        </Link>
+      <div className="mx-auto max-w-7xl px-6 py-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <Link
+            href="/"
+            className="inline-flex w-fit rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 transition hover:border-emerald-300 hover:text-emerald-900"
+          >
+            Back to catalog
+          </Link>
+          <p className="text-sm text-stone-500">
+            Field record stored in your local animal archive
+          </p>
+        </div>
 
         {error ? (
           <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -155,14 +185,14 @@ export default function PhotoDetail({ id }: { id: string }) {
         ) : null}
 
         {isLoading ? (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
             <div className="aspect-[4/3] animate-pulse rounded-lg bg-stone-200" />
             <div className="h-96 animate-pulse rounded-lg bg-white" />
           </div>
         ) : photo ? (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <section className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-              <div className="bg-stone-100">
+          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+            <section className="overflow-hidden rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+              <div className="overflow-hidden rounded-md bg-stone-100">
                 {imageFailed || !detailImageUrl ? (
                   <div className="flex aspect-[4/3] max-h-[72vh] w-full items-center justify-center px-6 text-center text-sm font-medium text-stone-500">
                     Image unavailable
@@ -181,50 +211,65 @@ export default function PhotoDetail({ id }: { id: string }) {
 
             <aside className="self-start rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4">
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium uppercase tracking-[0.18em] text-emerald-700">
                     Field record
                   </p>
                   <h1 className="mt-2 text-2xl font-semibold text-stone-950">
                     {photo.common_name ?? "Unclassified"}
                   </h1>
+                  <p className="mt-1 truncate text-sm italic text-stone-500">
+                    {photo.species_guess ?? "Species not identified"}
+                  </p>
                 </div>
-                <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-stone-700">
-                  {statusLabels[photo.status]}
+                <StatusBadge status={photo.status} />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <CategoryBadge category={photo.category} />
+                <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-600">
+                  {confidenceLabel(photo.confidence)}
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={handleMockClassify}
-                disabled={isClassifying}
-                className="mt-5 min-h-11 w-full rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
-              >
-                {isMockClassifying ? "Running mock classification" : "Run mock classification"}
-              </button>
+              <div className="mt-5 grid gap-3">
+                <button
+                  type="button"
+                  onClick={handleAiClassify}
+                  disabled={isClassifying}
+                  className="min-h-11 w-full rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
+                >
+                  {isAiClassifying
+                    ? "Running local AI classification"
+                    : "Run local AI classification"}
+                </button>
 
-              <button
-                type="button"
-                onClick={handleAiClassify}
-                disabled={isClassifying}
-                className="mt-3 min-h-11 w-full rounded-md border border-emerald-800 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-900 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
-              >
-                {isAiClassifying
-                  ? "Running local AI classification"
-                  : "Run local AI classification"}
-              </button>
+                <button
+                  type="button"
+                  onClick={handleMockClassify}
+                  disabled={isClassifying}
+                  className="min-h-11 w-full rounded-md border border-emerald-800 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-900 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+                >
+                  {isMockClassifying
+                    ? "Running mock classification"
+                    : "Run mock classification"}
+                </button>
 
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={isClassifying}
-                className="mt-3 min-h-11 w-full rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
-              >
-                {isDeleting ? "Deleting photo" : "Delete photo"}
-              </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isClassifying}
+                  className="min-h-11 w-full rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+                >
+                  {isDeleting ? "Deleting photo" : "Delete photo"}
+                </button>
+              </div>
 
-              <dl className="mt-5">
-                <MetadataRow label="Original file" value={photo.original_filename} />
+              <dl className="mt-5 rounded-lg border border-stone-200 px-4">
+                <MetadataRow
+                  label="Original file"
+                  value={photo.original_filename}
+                />
                 <MetadataRow label="Species guess" value={photo.species_guess} />
                 <MetadataRow label="Category" value={photo.category} />
                 <MetadataRow
@@ -232,8 +277,14 @@ export default function PhotoDetail({ id }: { id: string }) {
                   value={confidenceLabel(photo.confidence)}
                 />
                 <MetadataRow label="Status" value={statusLabels[photo.status]} />
-                <MetadataRow label="Created" value={formatDateTime(photo.created_at)} />
-                <MetadataRow label="Updated" value={formatDateTime(photo.updated_at)} />
+                <MetadataRow
+                  label="Created"
+                  value={formatDateTime(photo.created_at)}
+                />
+                <MetadataRow
+                  label="Updated"
+                  value={formatDateTime(photo.updated_at)}
+                />
               </dl>
 
               <div className="mt-5 border-t border-stone-200 pt-5">
