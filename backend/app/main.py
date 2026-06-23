@@ -129,6 +129,39 @@ class BatchUploadResponse(SQLModel):
     failed: list[BatchUploadFailure]
 
 
+class ClassifyPendingRequest(SQLModel):
+    limit: int | None = None
+    photo_ids: list[int] | None = None
+
+    @model_validator(mode="after")
+    def validate_request(self) -> "ClassifyPendingRequest":
+        if self.limit is not None and self.limit < 1:
+            raise ValueError("limit must be greater than 0")
+
+        if self.photo_ids is not None:
+            invalid_ids = [photo_id for photo_id in self.photo_ids if photo_id < 1]
+            if invalid_ids:
+                raise ValueError("photo_ids must contain positive IDs")
+
+        return self
+
+
+class ClassifyPendingPhotoResult(SQLModel):
+    id: int
+    status: str
+    common_name: str | None = None
+    species_guess: str | None = None
+    error: str | None = None
+
+
+class ClassifyPendingResponse(SQLModel):
+    total_found: int
+    classified: int
+    needs_review: int
+    failed: int
+    results: list[ClassifyPendingPhotoResult]
+
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 app = FastAPI(title="FaunaVault API")
@@ -394,6 +427,91 @@ async def upload_photo_batch(
 def list_photos(session: SessionDep) -> list[Photo]:
     statement = select(Photo).order_by(Photo.created_at.desc())
     return list(session.exec(statement).all())
+
+
+@app.post("/photos/classify-pending", response_model=ClassifyPendingResponse)
+def classify_pending_photos(
+    session: SessionDep,
+    request: ClassifyPendingRequest | None = None,
+) -> ClassifyPendingResponse:
+    request = request or ClassifyPendingRequest()
+    statement = (
+        select(Photo)
+        .where(Photo.status == "pending")
+        .order_by(Photo.created_at.asc())
+    )
+
+    if request.photo_ids is not None:
+        statement = statement.where(Photo.id.in_(request.photo_ids))
+
+    if request.limit is not None:
+        statement = statement.limit(request.limit)
+
+    pending_photos = list(session.exec(statement).all())
+    threshold = confidence_threshold()
+    results: list[ClassifyPendingPhotoResult] = []
+    classified = 0
+    needs_review = 0
+    failed = 0
+
+    for photo in pending_photos:
+        photo_id = photo.id
+        if photo_id is None:
+            continue
+
+        try:
+            image_path = classification_image_path(photo)
+            classification = classify_with_fallback(image_path, threshold)
+            apply_classification(photo, classification, threshold)
+            session.add(photo)
+            session.commit()
+            session.refresh(photo)
+
+            if photo.status == "classified":
+                classified += 1
+            elif photo.status == "needs_review":
+                needs_review += 1
+
+            results.append(
+                ClassifyPendingPhotoResult(
+                    id=photo_id,
+                    status=photo.status,
+                    common_name=photo.common_name,
+                    species_guess=photo.species_guess,
+                )
+            )
+        except HTTPException as exc:
+            session.rollback()
+            failed += 1
+            results.append(
+                ClassifyPendingPhotoResult(
+                    id=photo_id,
+                    status="failed",
+                    error=str(exc.detail) if exc.detail else "Classification failed",
+                )
+            )
+        except Exception:
+            session.rollback()
+            logger.exception(
+                "Unexpected failure during pending classification for photo %s",
+                photo_id,
+            )
+            failed += 1
+            results.append(
+                ClassifyPendingPhotoResult(
+                    id=photo_id,
+                    status="failed",
+                    error="Classification failed",
+                )
+            )
+
+    return ClassifyPendingResponse(
+        total_found=len(pending_photos),
+        classified=classified,
+        needs_review=needs_review,
+        failed=failed,
+        results=results,
+    )
 
 
 @app.get("/photos/{photo_id}", response_model=Photo)

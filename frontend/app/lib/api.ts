@@ -37,8 +37,46 @@ export type BatchUploadResponse = {
   failed: BatchUploadFailure[];
 };
 
+export type ClassifyPendingPhotoResult = {
+  id: number;
+  status: PhotoStatus | "failed";
+  common_name: string | null;
+  species_guess: string | null;
+  error: string | null;
+};
+
+export type ClassifyPendingResponse = {
+  total_found: number;
+  classified: number;
+  needs_review: number;
+  failed: number;
+  results: ClassifyPendingPhotoResult[];
+};
+
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+function formatErrorDetail(detail: unknown) {
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) =>
+        typeof item === "object" && item !== null && "msg" in item
+          ? String(item.msg)
+          : JSON.stringify(item),
+      )
+      .join("; ");
+  }
+
+  if (detail) {
+    return JSON.stringify(detail);
+  }
+
+  return "Request failed";
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -50,7 +88,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(body?.detail ?? "Request failed");
+    throw new Error(formatErrorDetail(body?.detail));
   }
 
   return response.json() as Promise<T>;
@@ -116,5 +154,15 @@ export function mockClassifyPhoto(id: number) {
 export function classifyPhoto(id: number) {
   return request<Photo>(`/photos/${id}/classify`, {
     method: "POST",
+  });
+}
+
+export function classifyPendingPhotos() {
+  return request<ClassifyPendingResponse>("/photos/classify-pending", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
   });
 }
