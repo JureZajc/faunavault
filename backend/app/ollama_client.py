@@ -10,7 +10,7 @@ import httpx
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 AI_PRIMARY_MODEL = os.getenv("AI_PRIMARY_MODEL", "qwen3-vl:8b")
-AI_FALLBACK_MODEL = os.getenv("AI_FALLBACK_MODEL", "gemma4:12b")
+AI_FALLBACK_MODEL = os.getenv("AI_FALLBACK_MODEL", "gemma4:e4b")
 
 ALLOWED_CATEGORIES = {
     "mammal",
@@ -46,6 +46,19 @@ Do not include markdown, code fences, or explanatory text.
 
 class OllamaClassificationError(RuntimeError):
     pass
+
+
+def response_error_detail(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+    except JSONDecodeError:
+        body = None
+
+    if isinstance(body, dict) and isinstance(body.get("error"), str):
+        return body["error"]
+
+    text = response.text.strip()
+    return text or response.reason_phrase
 
 
 @dataclass(frozen=True)
@@ -86,9 +99,18 @@ def classify_image(image_path: Path, model: str) -> ClassificationResult:
             "If the backend runs in WSL and Ollama runs on Windows, configure Ollama to listen "
             "on an address WSL can reach and set OLLAMA_BASE_URL accordingly."
         ) from exc
+    except httpx.TimeoutException as exc:
+        raise OllamaClassificationError(
+            f"Ollama request timed out for {model} after 120 seconds"
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        detail = response_error_detail(exc.response)
+        raise OllamaClassificationError(
+            f"Ollama returned {exc.response.status_code} for {model}: {detail}"
+        ) from exc
     except httpx.HTTPError as exc:
         raise OllamaClassificationError(
-            f"Ollama request failed for {model} at {OLLAMA_BASE_URL}: {exc}"
+            f"Ollama request failed for {model} at {OLLAMA_BASE_URL}"
         ) from exc
 
     try:
