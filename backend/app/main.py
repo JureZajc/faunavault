@@ -119,6 +119,16 @@ class PhotoUpdate(SQLModel):
         return self
 
 
+class BatchUploadFailure(SQLModel):
+    filename: str
+    error: str
+
+
+class BatchUploadResponse(SQLModel):
+    uploaded: list[Photo]
+    failed: list[BatchUploadFailure]
+
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 app = FastAPI(title="FaunaVault API")
@@ -277,13 +287,7 @@ def apply_classification(photo: Photo, result: ClassificationResult, threshold: 
     photo.updated_at = utc_now()
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.post("/photos/upload", response_model=Photo)
-async def upload_photo(session: SessionDep, file: UploadFile = File(...)) -> Photo:
+async def create_photo_from_upload(session: Session, file: UploadFile) -> Photo:
     extension = clean_extension(file.filename or "")
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported image format")
@@ -342,6 +346,48 @@ async def upload_photo(session: SessionDep, file: UploadFile = File(...)) -> Pho
     session.commit()
     session.refresh(photo)
     return photo
+
+
+def upload_error_detail(error: HTTPException) -> str:
+    return str(error.detail) if error.detail else "Upload failed"
+
+
+def snapshot_photo(photo: Photo) -> Photo:
+    return Photo(**photo.model_dump())
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/photos/upload", response_model=Photo)
+async def upload_photo(session: SessionDep, file: UploadFile = File(...)) -> Photo:
+    return await create_photo_from_upload(session, file)
+
+
+@app.post("/photos/upload-batch", response_model=BatchUploadResponse)
+async def upload_photo_batch(
+    session: SessionDep,
+    files: list[UploadFile] = File(...),
+) -> BatchUploadResponse:
+    uploaded: list[Photo] = []
+    failed: list[BatchUploadFailure] = []
+
+    for file in files:
+        filename = Path(file.filename or "upload").name
+        try:
+            photo = await create_photo_from_upload(session, file)
+            uploaded.append(snapshot_photo(photo))
+        except HTTPException as exc:
+            failed.append(
+                BatchUploadFailure(filename=filename, error=upload_error_detail(exc))
+            )
+        except Exception:
+            logger.exception("Unexpected failure during batch upload for %s", filename)
+            failed.append(BatchUploadFailure(filename=filename, error="Upload failed"))
+
+    return BatchUploadResponse(uploaded=uploaded, failed=failed)
 
 
 @app.get("/photos", response_model=list[Photo])

@@ -27,6 +27,16 @@ export type PhotoUpdate = Partial<{
   status: PhotoStatus;
 }>;
 
+export type BatchUploadFailure = {
+  filename: string;
+  error: string;
+};
+
+export type BatchUploadResponse = {
+  uploaded: Photo[];
+  failed: BatchUploadFailure[];
+};
+
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -82,6 +92,16 @@ export function uploadPhoto(file: File) {
   formData.append("file", file);
 
   return request<Photo>("/photos/upload", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function uploadPhotoBatch(files: File[]) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+
+  return request<BatchUploadResponse>("/photos/upload-batch", {
     method: "POST",
     body: formData,
   });

@@ -11,11 +11,13 @@ import {
   useState,
 } from "react";
 import {
+  BatchUploadFailure,
   deletePhoto,
   getPhotos,
   imageUrl,
   Photo,
   PhotoStatus,
+  uploadPhotoBatch,
   uploadPhoto,
 } from "./lib/api";
 
@@ -25,6 +27,10 @@ type SortOption =
   | "oldest"
   | "confidence_desc"
   | "confidence_asc";
+type UploadNotice = {
+  kind: "success" | "warning";
+  message: string;
+};
 
 const statusFilters: StatusFilter[] = [
   "all",
@@ -59,6 +65,30 @@ function formatDate(value: string) {
 
 function formatConfidence(value: number | null) {
   return value === null ? "Unscored" : `${Math.round(value * 100)}%`;
+}
+
+function formatSelectedFiles(files: File[]) {
+  if (files.length === 0) {
+    return "Choose JPEG, PNG, or WebP images";
+  }
+
+  if (files.length === 1) {
+    return files[0].name;
+  }
+
+  return `${files.length} files selected`;
+}
+
+function formatBatchFailureMessage(failed: BatchUploadFailure[]) {
+  const visibleFailures = failed
+    .slice(0, 3)
+    .map((failure) => `${failure.filename}: ${failure.error}`)
+    .join("; ");
+  const remainingCount = failed.length - Math.min(failed.length, 3);
+
+  return remainingCount > 0
+    ? `${visibleFailures}; ${remainingCount} more failed`
+    : visibleFailures;
 }
 
 function normalizeSearchText(value: string | null | undefined) {
@@ -435,13 +465,14 @@ export default function Home() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOption, setSortOption] = useState<SortOption>("newest");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingPhotoIds, setDeletingPhotoIds] = useState<Set<number>>(
     () => new Set(),
   );
   const [error, setError] = useState<string | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<UploadNotice | null>(null);
 
   const loadPhotos = useCallback(async () => {
     setIsLoading(true);
@@ -510,25 +541,54 @@ export default function Home() {
     normalizeSearchText(searchQuery) !== "" ||
     statusFilter !== "all" ||
     activeCategoryFilter !== "all";
+  const selectedFileLabel = formatSelectedFiles(selectedFiles);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setSelectedFile(event.target.files?.[0] ?? null);
+    setSelectedFiles(Array.from(event.target.files ?? []));
+    setUploadNotice(null);
   }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
 
-    if (!selectedFile) {
+    if (selectedFiles.length === 0) {
       return;
     }
 
     setIsUploading(true);
     setError(null);
+    setUploadNotice(null);
     try {
-      const uploadedPhoto = await uploadPhoto(selectedFile);
-      setPhotos((currentPhotos) => [uploadedPhoto, ...currentPhotos]);
-      setSelectedFile(null);
+      if (selectedFiles.length === 1) {
+        await uploadPhoto(selectedFiles[0]);
+        await loadPhotos();
+        setUploadNotice({ kind: "success", message: "Uploaded 1 photo." });
+      } else {
+        const result = await uploadPhotoBatch(selectedFiles);
+
+        if (result.uploaded.length > 0) {
+          await loadPhotos();
+        }
+
+        if (result.failed.length > 0 && result.uploaded.length > 0) {
+          setUploadNotice({
+            kind: "warning",
+            message: `Uploaded ${result.uploaded.length} ${result.uploaded.length === 1 ? "photo" : "photos"}. ${result.failed.length} failed: ${formatBatchFailureMessage(result.failed)}.`,
+          });
+        } else if (result.failed.length > 0) {
+          setError(
+            `Upload failed for ${result.failed.length} ${result.failed.length === 1 ? "file" : "files"}: ${formatBatchFailureMessage(result.failed)}.`,
+          );
+        } else {
+          setUploadNotice({
+            kind: "success",
+            message: `Uploaded ${result.uploaded.length} photos.`,
+          });
+        }
+      }
+
+      setSelectedFiles([]);
       form.reset();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Upload failed");
@@ -606,22 +666,45 @@ export default function Home() {
               <span className="mt-2 flex min-h-12 cursor-pointer items-center rounded-md border border-dashed border-stone-300 bg-white px-3 text-sm text-stone-600 transition hover:border-emerald-500">
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                   onChange={handleFileChange}
+                  multiple
                   className="sr-only"
                 />
                 <span className="truncate">
-                  {selectedFile?.name ?? "Choose JPEG, PNG, or WebP image"}
+                  {selectedFileLabel}
                 </span>
               </span>
             </label>
+            {selectedFiles.length > 0 ? (
+              <p className="mt-2 text-xs text-stone-500">
+                {selectedFiles.length}{" "}
+                {selectedFiles.length === 1 ? "file" : "files"} ready to
+                upload.
+              </p>
+            ) : null}
             <button
               type="submit"
-              disabled={!selectedFile || isUploading}
+              disabled={selectedFiles.length === 0 || isUploading}
               className="mt-3 min-h-11 w-full rounded-md bg-emerald-800 px-5 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
             >
-              {isUploading ? "Uploading" : "Upload photo"}
+              {isUploading
+                ? `Uploading ${selectedFiles.length} ${selectedFiles.length === 1 ? "photo" : "photos"}`
+                : selectedFiles.length > 1
+                  ? "Upload photos"
+                  : "Upload photo"}
             </button>
+            {uploadNotice ? (
+              <div
+                className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+                  uploadNotice.kind === "warning"
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                }`}
+              >
+                {uploadNotice.message}
+              </div>
+            ) : null}
           </form>
         </div>
       </section>
