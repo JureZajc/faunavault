@@ -13,7 +13,6 @@ import {
 import {
   BatchUploadFailure,
   classifyPhoto,
-  deletePhoto,
   getPhotos,
   imageUrl,
   Photo,
@@ -329,15 +328,7 @@ function TagList({ tags, limit = 3 }: { tags: string[]; limit?: number }) {
   );
 }
 
-function PhotoCard({
-  photo,
-  isDeleting,
-  onDelete,
-}: {
-  photo: Photo;
-  isDeleting: boolean;
-  onDelete: (photo: Photo) => void;
-}) {
+function PhotoCard({ photo }: { photo: Photo }) {
   const thumbnailUrl = imageUrl("thumbs", photo.thumbnail_filename);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const imageFailed = failedImageUrl === thumbnailUrl;
@@ -396,14 +387,6 @@ function PhotoCard({
           </div>
         </Link>
 
-        <button
-          type="button"
-          onClick={() => onDelete(photo)}
-          disabled={isDeleting}
-          className="mt-4 min-h-10 w-full rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
-        >
-          {isDeleting ? "Deleting" : "Delete photo"}
-        </button>
       </div>
     </article>
   );
@@ -552,9 +535,6 @@ export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [deletingPhotoIds, setDeletingPhotoIds] = useState<Set<number>>(
-    () => new Set(),
-  );
   const [isClassifyingPending, setIsClassifyingPending] = useState(false);
   const [classificationProgress, setClassificationProgress] = useState<
     ClassificationProgressItem[]
@@ -846,32 +826,6 @@ export default function Home() {
     }
   }
 
-  async function handleDeletePhoto(photo: Photo) {
-    const confirmed = window.confirm(
-      `Delete photo "${photo.original_filename}"? This cannot be undone.`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    setDeletingPhotoIds((currentIds) => new Set(currentIds).add(photo.id));
-    setError(null);
-    try {
-      await deletePhoto(photo.id);
-      setPhotos((currentPhotos) =>
-        currentPhotos.filter((currentPhoto) => currentPhoto.id !== photo.id),
-      );
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Delete failed");
-    } finally {
-      setDeletingPhotoIds((currentIds) => {
-        const nextIds = new Set(currentIds);
-        nextIds.delete(photo.id);
-        return nextIds;
-      });
-    }
-  }
-
   function clearViewFilters() {
     setSearchQuery("");
     setStatusFilter("all");
@@ -1143,12 +1097,7 @@ export default function Home() {
         ) : visiblePhotos.length > 0 ? (
           <div className="grid items-stretch gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {visiblePhotos.map((photo) => (
-              <PhotoCard
-                key={photo.id}
-                photo={photo}
-                isDeleting={deletingPhotoIds.has(photo.id)}
-                onDelete={handleDeletePhoto}
-              />
+              <PhotoCard key={photo.id} photo={photo} />
             ))}
           </div>
         ) : (

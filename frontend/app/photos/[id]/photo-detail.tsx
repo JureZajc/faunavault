@@ -415,14 +415,6 @@ export default function PhotoDetail({ id }: { id: string }) {
                     : "Run mock classification"}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={isBusy || isEditingMetadata}
-                  className="min-h-11 w-full rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
-                >
-                  {isDeleting ? "Deleting photo" : "Delete photo"}
-                </button>
               </div>
 
               {isEditingMetadata ? (
@@ -626,6 +618,20 @@ export default function PhotoDetail({ id }: { id: string }) {
                   </div>
                 </>
               )}
+
+              <div className="mt-5 border-t border-red-100 pt-5">
+                <p className="text-xs font-medium uppercase tracking-[0.14em] text-red-700">
+                  Destructive action
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isBusy || isEditingMetadata}
+                  className="mt-3 min-h-11 w-full rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+                >
+                  {isDeleting ? "Deleting photo" : "Delete photo"}
+                </button>
+              </div>
             </aside>
           </div>
         ) : (
