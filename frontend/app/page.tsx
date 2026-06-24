@@ -26,7 +26,14 @@ type SortOption =
   | "newest"
   | "oldest"
   | "confidence_desc"
-  | "confidence_asc";
+  | "confidence_asc"
+  | "name_asc"
+  | "name_desc"
+  | "species_asc"
+  | "species_desc"
+  | "needs_review_first"
+  | "pending_first";
+type ViewMode = "flat" | "grouped";
 type UploadNotice = {
   kind: "success" | "warning";
   message: string;
@@ -72,9 +79,20 @@ const sortLabels: Record<SortOption, string> = {
   oldest: "Oldest",
   confidence_desc: "Confidence high to low",
   confidence_asc: "Confidence low to high",
+  name_asc: "Name A-Z",
+  name_desc: "Name Z-A",
+  species_asc: "Species A-Z",
+  species_desc: "Species Z-A",
+  needs_review_first: "Needs review first",
+  pending_first: "Pending first",
 };
 
 const unknownCategoryValue = "__unknown__";
+const unknownCategoryLabel = "Unknown";
+const localeCompareOptions: Intl.CollatorOptions = {
+  numeric: true,
+  sensitivity: "base",
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
@@ -178,6 +196,18 @@ function normalizeSearchText(value: string | null | undefined) {
   return value?.trim().toLocaleLowerCase() ?? "";
 }
 
+function normalizeSortText(value: string | null | undefined) {
+  return value?.trim() ?? "";
+}
+
+function getNameSortValue(photo: Photo) {
+  return normalizeSortText(photo.common_name) || photo.original_filename;
+}
+
+function getSpeciesSortValue(photo: Photo) {
+  return normalizeSortText(photo.species_guess) || photo.original_filename;
+}
+
 function photoMatchesSearch(photo: Photo, searchQuery: string) {
   const query = normalizeSearchText(searchQuery);
 
@@ -240,18 +270,124 @@ function compareConfidence(
     : secondConfidence - firstConfidence;
 }
 
+function compareText(
+  firstValue: string | null | undefined,
+  secondValue: string | null | undefined,
+  direction: "asc" | "desc",
+) {
+  const normalizedFirstValue = normalizeSortText(firstValue);
+  const normalizedSecondValue = normalizeSortText(secondValue);
+
+  if (!normalizedFirstValue && !normalizedSecondValue) {
+    return 0;
+  }
+
+  if (!normalizedFirstValue) {
+    return 1;
+  }
+
+  if (!normalizedSecondValue) {
+    return -1;
+  }
+
+  const comparison = normalizedFirstValue.localeCompare(
+    normalizedSecondValue,
+    "en",
+    localeCompareOptions,
+  );
+
+  return direction === "asc" ? comparison : -comparison;
+}
+
+function compareOriginalFilename(firstPhoto: Photo, secondPhoto: Photo) {
+  return compareText(
+    firstPhoto.original_filename,
+    secondPhoto.original_filename,
+    "asc",
+  );
+}
+
+function compareCreatedAt(
+  firstPhoto: Photo,
+  secondPhoto: Photo,
+  direction: "asc" | "desc",
+) {
+  const firstCreatedAt = new Date(firstPhoto.created_at).getTime();
+  const secondCreatedAt = new Date(secondPhoto.created_at).getTime();
+
+  return direction === "asc"
+    ? firstCreatedAt - secondCreatedAt
+    : secondCreatedAt - firstCreatedAt;
+}
+
+function compareDefaultTieBreaker(firstPhoto: Photo, secondPhoto: Photo) {
+  return (
+    compareCreatedAt(firstPhoto, secondPhoto, "desc") ||
+    compareOriginalFilename(firstPhoto, secondPhoto)
+  );
+}
+
+function compareStatusFirst(
+  firstPhoto: Photo,
+  secondPhoto: Photo,
+  priorityStatus: PhotoStatus,
+) {
+  const firstPriority = firstPhoto.status === priorityStatus ? 0 : 1;
+  const secondPriority = secondPhoto.status === priorityStatus ? 0 : 1;
+
+  return firstPriority - secondPriority;
+}
+
 function sortPhotos(photos: Photo[], sortOption: SortOption) {
   return [...photos].sort((firstPhoto, secondPhoto) => {
-    const newestFirst =
-      new Date(secondPhoto.created_at).getTime() -
-      new Date(firstPhoto.created_at).getTime();
-
     if (sortOption === "newest") {
-      return newestFirst;
+      return (
+        compareCreatedAt(firstPhoto, secondPhoto, "desc") ||
+        compareOriginalFilename(firstPhoto, secondPhoto)
+      );
     }
 
     if (sortOption === "oldest") {
-      return -newestFirst;
+      return (
+        compareCreatedAt(firstPhoto, secondPhoto, "asc") ||
+        compareOriginalFilename(firstPhoto, secondPhoto)
+      );
+    }
+
+    if (sortOption === "name_asc" || sortOption === "name_desc") {
+      const nameComparison = compareText(
+        getNameSortValue(firstPhoto),
+        getNameSortValue(secondPhoto),
+        sortOption === "name_asc" ? "asc" : "desc",
+      );
+
+      return nameComparison || compareDefaultTieBreaker(firstPhoto, secondPhoto);
+    }
+
+    if (sortOption === "species_asc" || sortOption === "species_desc") {
+      const speciesComparison = compareText(
+        getSpeciesSortValue(firstPhoto),
+        getSpeciesSortValue(secondPhoto),
+        sortOption === "species_asc" ? "asc" : "desc",
+      );
+
+      return (
+        speciesComparison || compareDefaultTieBreaker(firstPhoto, secondPhoto)
+      );
+    }
+
+    if (sortOption === "needs_review_first") {
+      return (
+        compareStatusFirst(firstPhoto, secondPhoto, "needs_review") ||
+        compareDefaultTieBreaker(firstPhoto, secondPhoto)
+      );
+    }
+
+    if (sortOption === "pending_first") {
+      return (
+        compareStatusFirst(firstPhoto, secondPhoto, "pending") ||
+        compareDefaultTieBreaker(firstPhoto, secondPhoto)
+      );
     }
 
     const confidenceComparison = compareConfidence(
@@ -260,7 +396,9 @@ function sortPhotos(photos: Photo[], sortOption: SortOption) {
       sortOption === "confidence_asc" ? "asc" : "desc",
     );
 
-    return confidenceComparison || newestFirst;
+    return (
+      confidenceComparison || compareDefaultTieBreaker(firstPhoto, secondPhoto)
+    );
   });
 }
 
@@ -274,6 +412,45 @@ function getCategoryOptions(photos: Photo[]) {
   ).sort((firstCategory, secondCategory) =>
     firstCategory.localeCompare(secondCategory),
   );
+}
+
+function getCatalogStats(photos: Photo[]) {
+  return photos.reduce(
+    (stats, photo) => ({
+      ...stats,
+      [photo.status]: stats[photo.status] + 1,
+    }),
+    {
+      pending: 0,
+      classified: 0,
+      needs_review: 0,
+    } satisfies Record<PhotoStatus, number>,
+  );
+}
+
+function getCategoryLabel(category: string | null) {
+  return category?.trim() || unknownCategoryLabel;
+}
+
+function groupPhotosByCategory(photos: Photo[], sortOption: SortOption) {
+  const groupedPhotos = photos.reduce<Map<string, Photo[]>>((groups, photo) => {
+    const categoryLabel = getCategoryLabel(photo.category);
+    const categoryPhotos = groups.get(categoryLabel) ?? [];
+
+    categoryPhotos.push(photo);
+    groups.set(categoryLabel, categoryPhotos);
+
+    return groups;
+  }, new Map());
+
+  return Array.from(groupedPhotos.entries())
+    .sort(([firstCategory], [secondCategory]) =>
+      firstCategory.localeCompare(secondCategory, "en", localeCompareOptions),
+    )
+    .map(([category, categoryPhotos]) => ({
+      category,
+      photos: sortPhotos(categoryPhotos, sortOption),
+    }));
 }
 
 function StatusBadge({ status }: { status: PhotoStatus }) {
@@ -397,6 +574,7 @@ function CatalogToolbar({
   statusFilter,
   categoryFilter,
   sortOption,
+  viewMode,
   categoryOptions,
   hasUnknownCategory,
   resultCount,
@@ -405,11 +583,13 @@ function CatalogToolbar({
   onStatusChange,
   onCategoryChange,
   onSortChange,
+  onViewModeChange,
 }: {
   searchQuery: string;
   statusFilter: StatusFilter;
   categoryFilter: string;
   sortOption: SortOption;
+  viewMode: ViewMode;
   categoryOptions: string[];
   hasUnknownCategory: boolean;
   resultCount: number;
@@ -418,6 +598,7 @@ function CatalogToolbar({
   onStatusChange: (value: StatusFilter) => void;
   onCategoryChange: (value: string) => void;
   onSortChange: (value: SortOption) => void;
+  onViewModeChange: (value: ViewMode) => void;
 }) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
@@ -493,14 +674,40 @@ function CatalogToolbar({
         </label>
       </div>
 
-      <div className="mt-4 flex flex-col gap-2 border-t border-stone-100 pt-4 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-4 flex flex-col gap-3 border-t border-stone-100 pt-4 text-sm text-stone-500 lg:flex-row lg:items-center lg:justify-between">
         <p>
           Showing{" "}
           <span className="font-semibold text-stone-800">{resultCount}</span> of{" "}
           <span className="font-semibold text-stone-800">{totalCount}</span>{" "}
           {totalCount === 1 ? "record" : "records"}
         </p>
-        <p>Local collection, filtered in your browser.</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+          <p>Local collection, filtered in your browser.</p>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+              View
+            </span>
+            <div className="grid min-h-9 grid-cols-2 overflow-hidden rounded-md border border-stone-200 bg-stone-50 p-1">
+              {[
+                ["flat", "Flat grid"],
+                ["grouped", "Group by category"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onViewModeChange(value as ViewMode)}
+                  className={`min-w-[8.5rem] whitespace-nowrap rounded px-3 text-xs font-semibold transition ${
+                    viewMode === value
+                      ? "bg-white text-emerald-900 shadow-sm"
+                      : "text-stone-600 hover:text-stone-950"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -531,6 +738,7 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOption, setSortOption] = useState<SortOption>("newest");
+  const [viewMode, setViewMode] = useState<ViewMode>("flat");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -587,6 +795,7 @@ export default function Home() {
   }, []);
 
   const categoryOptions = useMemo(() => getCategoryOptions(photos), [photos]);
+  const catalogStats = useMemo(() => getCatalogStats(photos), [photos]);
   const hasUnknownCategory = useMemo(
     () => photos.some((photo) => !photo.category?.trim()),
     [photos],
@@ -629,6 +838,10 @@ export default function Home() {
 
     return sortPhotos(matchingPhotos, sortOption);
   }, [activeCategoryFilter, photos, searchQuery, sortOption, statusFilter]);
+  const groupedVisiblePhotos = useMemo(
+    () => groupPhotosByCategory(visiblePhotos, sortOption),
+    [sortOption, visiblePhotos],
+  );
 
   const hasActiveViewFilters =
     normalizeSearchText(searchQuery) !== "" ||
@@ -855,6 +1068,15 @@ export default function Home() {
                 {categoryOptions.length}{" "}
                 {categoryOptions.length === 1 ? "category" : "categories"}
               </span>
+              <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-stone-500">
+                {catalogStats.pending} pending
+              </span>
+              <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-stone-500">
+                {catalogStats.classified} classified
+              </span>
+              <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-stone-500">
+                {catalogStats.needs_review} needs review
+              </span>
             </div>
           </div>
 
@@ -918,6 +1140,7 @@ export default function Home() {
           statusFilter={statusFilter}
           categoryFilter={activeCategoryFilter}
           sortOption={sortOption}
+          viewMode={viewMode}
           categoryOptions={categoryOptions}
           hasUnknownCategory={hasUnknownCategory}
           resultCount={visiblePhotos.length}
@@ -926,6 +1149,7 @@ export default function Home() {
           onStatusChange={setStatusFilter}
           onCategoryChange={setCategoryFilter}
           onSortChange={setSortOption}
+          onViewModeChange={setViewMode}
         />
 
         {showClassificationPanel ? (
@@ -1094,10 +1318,31 @@ export default function Home() {
               description="Upload an image to create the first record in this local collection."
             />
           </div>
-        ) : visiblePhotos.length > 0 ? (
+        ) : visiblePhotos.length > 0 && viewMode === "flat" ? (
           <div className="grid items-stretch gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {visiblePhotos.map((photo) => (
               <PhotoCard key={photo.id} photo={photo} />
+            ))}
+          </div>
+        ) : visiblePhotos.length > 0 ? (
+          <div className="space-y-8 py-8">
+            {groupedVisiblePhotos.map((group) => (
+              <section key={group.category}>
+                <div className="mb-3 flex items-center justify-between gap-3 border-b border-stone-200 pb-2">
+                  <h2 className="text-lg font-semibold text-stone-950">
+                    {group.category}
+                  </h2>
+                  <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-500">
+                    {group.photos.length}{" "}
+                    {group.photos.length === 1 ? "record" : "records"}
+                  </span>
+                </div>
+                <div className="grid items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                  {group.photos.map((photo) => (
+                    <PhotoCard key={photo.id} photo={photo} />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         ) : (
