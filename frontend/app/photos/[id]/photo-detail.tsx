@@ -146,6 +146,8 @@ export default function PhotoDetail({ id }: { id: string }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditingMetadata, setIsEditingMetadata] = useState(false);
   const [isSavingMetadata, setIsSavingMetadata] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [metadataForm, setMetadataForm] =
     useState<MetadataFormState>(emptyMetadataForm);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
@@ -159,6 +161,8 @@ export default function PhotoDetail({ id }: { id: string }) {
     : null;
   const imageFailed =
     detailImageUrl !== null && failedImageUrl === detailImageUrl;
+  const isDeleteConfirmationValid =
+    photo !== null && deleteConfirmationText === photo.original_filename;
 
   useEffect(() => {
     getPhoto(id)
@@ -169,6 +173,22 @@ export default function PhotoDetail({ id }: { id: string }) {
       .catch((nextError: Error) => setError(nextError.message))
       .finally(() => setIsLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!isDeleteDialogOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isDeleting) {
+        setIsDeleteDialogOpen(false);
+        setDeleteConfirmationText("");
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDeleteDialogOpen, isDeleting]);
 
   function updateMetadataForm<FieldName extends keyof MetadataFormState>(
     fieldName: FieldName,
@@ -291,15 +311,29 @@ export default function PhotoDetail({ id }: { id: string }) {
     }
   }
 
-  async function handleDelete() {
+  function handleOpenDeleteDialog() {
+    setError(null);
+    setDeleteConfirmationText("");
+    setIsDeleteDialogOpen(true);
+  }
+
+  function handleCloseDeleteDialog() {
+    if (isDeleting) {
+      return;
+    }
+
+    setIsDeleteDialogOpen(false);
+    setDeleteConfirmationText("");
+  }
+
+  async function handleConfirmDelete(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
     if (!photo) {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Delete photo "${photo.original_filename}"? This cannot be undone.`,
-    );
-    if (!confirmed) {
+    if (isDeleting || !isDeleteConfirmationValid) {
       return;
     }
 
@@ -310,6 +344,8 @@ export default function PhotoDetail({ id }: { id: string }) {
       router.push("/");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Delete failed");
+      setIsDeleteDialogOpen(false);
+      setDeleteConfirmationText("");
       setIsDeleting(false);
     }
   }
@@ -625,11 +661,11 @@ export default function PhotoDetail({ id }: { id: string }) {
                 </p>
                 <button
                   type="button"
-                  onClick={handleDelete}
+                  onClick={handleOpenDeleteDialog}
                   disabled={isBusy || isEditingMetadata}
                   className="mt-3 min-h-11 w-full rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
                 >
-                  {isDeleting ? "Deleting photo" : "Delete photo"}
+                  Delete photo
                 </button>
               </div>
             </aside>
@@ -639,6 +675,76 @@ export default function PhotoDetail({ id }: { id: string }) {
             <h1 className="text-xl font-semibold">Photo not found</h1>
           </div>
         )}
+
+        {photo && isDeleteDialogOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4 py-6">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-photo-title"
+              aria-describedby="delete-photo-description"
+              className="w-full max-w-md rounded-lg border border-stone-200 bg-white p-5 shadow-xl"
+            >
+              <div className="border-b border-red-100 pb-4">
+                <p className="text-xs font-medium uppercase tracking-[0.14em] text-red-700">
+                  Destructive action
+                </p>
+                <h2
+                  id="delete-photo-title"
+                  className="mt-2 text-xl font-semibold text-stone-950"
+                >
+                  Delete photo
+                </h2>
+                <p
+                  id="delete-photo-description"
+                  className="mt-2 text-sm leading-6 text-stone-600"
+                >
+                  This will permanently remove{" "}
+                  <span className="font-semibold text-stone-900">
+                    {photo.original_filename}
+                  </span>{" "}
+                  from your local animal archive. This cannot be undone.
+                </p>
+              </div>
+
+              <form onSubmit={handleConfirmDelete} className="mt-4">
+                <label className="block">
+                  <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                    Type the filename to confirm
+                  </span>
+                  <input
+                    type="text"
+                    value={deleteConfirmationText}
+                    onChange={(event) =>
+                      setDeleteConfirmationText(event.target.value)
+                    }
+                    disabled={isDeleting}
+                    autoFocus
+                    className="mt-2 min-h-11 w-full rounded-md border border-stone-300 bg-white px-3 text-sm text-stone-950 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+                  />
+                </label>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleCloseDeleteDialog}
+                    disabled={isDeleting}
+                    className="min-h-11 rounded-md border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-800 transition hover:border-stone-400 hover:bg-stone-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isDeleting || !isDeleteConfirmationValid}
+                    className="min-h-11 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
+                  >
+                    {isDeleting ? "Deleting photo" : "Delete photo"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
       </div>
     </main>
   );
