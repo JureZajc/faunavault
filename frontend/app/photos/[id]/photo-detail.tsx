@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import ImageLightbox from "../../components/image-lightbox";
 import {
   classifyPhoto,
   deletePhoto,
@@ -162,6 +163,7 @@ export default function PhotoDetail({ id }: { id: string }) {
   const [isEditingMetadata, setIsEditingMetadata] = useState(false);
   const [isSavingMetadata, setIsSavingMetadata] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [metadataForm, setMetadataForm] =
     useState<MetadataFormState>(emptyMetadataForm);
@@ -178,6 +180,12 @@ export default function PhotoDetail({ id }: { id: string }) {
     detailImageUrl !== null && failedImageUrl === detailImageUrl;
   const isDeleteConfirmationValid =
     photo !== null && deleteConfirmationText === photo.original_filename;
+  const lightboxCaption = photo
+    ? photoDisplayTitle(photo) || photo.common_name || undefined
+    : undefined;
+  const closeLightbox = useCallback(() => {
+    setIsLightboxOpen(false);
+  }, []);
 
   useEffect(() => {
     getPhoto(id)
@@ -402,13 +410,23 @@ export default function PhotoDetail({ id }: { id: string }) {
                     Image unavailable
                   </div>
                 ) : (
-                  // eslint-disable-next-line @next/next/no-img-element -- Backend localhost images must bypass Next image optimization.
-                  <img
-                    src={detailImageUrl}
-                    alt={photoDisplayTitle(photo)}
-                    className="max-h-[72vh] w-full object-contain"
-                    onError={() => setFailedImageUrl(detailImageUrl)}
-                  />
+                  <button
+                    type="button"
+                    aria-label="Open fullscreen image"
+                    onClick={() => setIsLightboxOpen(true)}
+                    className="group relative flex w-full cursor-zoom-in items-center justify-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Backend localhost images must bypass Next image optimization. */}
+                    <img
+                      src={detailImageUrl}
+                      alt={photoDisplayTitle(photo)}
+                      className="max-h-[72vh] w-full object-contain"
+                      onError={() => setFailedImageUrl(detailImageUrl)}
+                    />
+                    <span className="pointer-events-none absolute bottom-3 right-3 rounded-md bg-stone-950/75 px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                      View fullscreen
+                    </span>
+                  </button>
                 )}
               </div>
             </section>
@@ -806,6 +824,15 @@ export default function PhotoDetail({ id }: { id: string }) {
               </form>
             </div>
           </div>
+        ) : null}
+
+        {photo && detailImageUrl && isLightboxOpen ? (
+          <ImageLightbox
+            imageUrl={detailImageUrl}
+            alt={photoDisplayTitle(photo)}
+            caption={lightboxCaption}
+            onClose={closeLightbox}
+          />
         ) : null}
       </div>
     </main>
