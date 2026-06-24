@@ -6,7 +6,9 @@ export type Photo = {
   stored_filename: string;
   resized_filename: string;
   thumbnail_filename: string;
+  display_title: string | null;
   common_name: string | null;
+  breed_guess: string | null;
   species_guess: string | null;
   category: string | null;
   confidence: number | null;
@@ -18,7 +20,9 @@ export type Photo = {
 };
 
 export type PhotoUpdate = Partial<{
+  display_title: string | null;
   common_name: string | null;
+  breed_guess: string | null;
   species_guess: string | null;
   category: string | null;
   confidence: number | null;
@@ -40,7 +44,9 @@ export type BatchUploadResponse = {
 export type ClassifyPendingPhotoResult = {
   id: number;
   status: PhotoStatus | "failed";
+  display_title: string | null;
   common_name: string | null;
+  breed_guess: string | null;
   species_guess: string | null;
   error: string | null;
 };

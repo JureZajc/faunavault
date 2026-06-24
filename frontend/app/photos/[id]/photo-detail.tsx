@@ -24,7 +24,9 @@ const statusLabels: Record<PhotoStatus, string> = {
 };
 
 type MetadataFormState = {
+  display_title: string;
   common_name: string;
+  breed_guess: string;
   species_guess: string;
   category: string;
   confidence: string;
@@ -34,7 +36,9 @@ type MetadataFormState = {
 };
 
 const emptyMetadataForm: MetadataFormState = {
+  display_title: "",
   common_name: "",
+  breed_guess: "",
   species_guess: "",
   category: "",
   confidence: "",
@@ -67,7 +71,9 @@ function confidenceInputValue(value: number | null) {
 
 function formStateFromPhoto(photo: Photo): MetadataFormState {
   return {
+    display_title: photo.display_title ?? "",
     common_name: photo.common_name ?? "",
+    breed_guess: photo.breed_guess ?? "",
     species_guess: photo.species_guess ?? "",
     category: photo.category ?? "",
     confidence: confidenceInputValue(photo.confidence),
@@ -75,6 +81,15 @@ function formStateFromPhoto(photo: Photo): MetadataFormState {
     tags: photo.tags.join(", "),
     status: photo.status,
   };
+}
+
+function photoDisplayTitle(photo: Photo) {
+  return (
+    photo.display_title?.trim() ||
+    photo.breed_guess?.trim() ||
+    photo.common_name?.trim() ||
+    "Unclassified"
+  );
 }
 
 function nullIfBlank(value: string) {
@@ -241,7 +256,9 @@ export default function PhotoDetail({ id }: { id: string }) {
     }
 
     const metadata: PhotoUpdate = {
+      display_title: nullIfBlank(metadataForm.display_title),
       common_name: nullIfBlank(metadataForm.common_name),
+      breed_guess: nullIfBlank(metadataForm.breed_guess),
       species_guess: nullIfBlank(metadataForm.species_guess),
       category: nullIfBlank(metadataForm.category),
       confidence:
@@ -388,7 +405,7 @@ export default function PhotoDetail({ id }: { id: string }) {
                   // eslint-disable-next-line @next/next/no-img-element -- Backend localhost images must bypass Next image optimization.
                   <img
                     src={detailImageUrl}
-                    alt={photo.common_name ?? photo.original_filename}
+                    alt={photoDisplayTitle(photo)}
                     className="max-h-[72vh] w-full object-contain"
                     onError={() => setFailedImageUrl(detailImageUrl)}
                   />
@@ -403,7 +420,7 @@ export default function PhotoDetail({ id }: { id: string }) {
                     Field record
                   </p>
                   <h1 className="mt-2 text-2xl font-semibold text-stone-950">
-                    {photo.common_name ?? "Unclassified"}
+                    {photoDisplayTitle(photo)}
                   </h1>
                   <p className="mt-1 truncate text-sm italic text-stone-500">
                     {photo.species_guess ?? "Species not identified"}
@@ -461,6 +478,24 @@ export default function PhotoDetail({ id }: { id: string }) {
                   <div className="grid gap-4">
                     <label className="block">
                       <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Display title
+                      </span>
+                      <input
+                        type="text"
+                        value={metadataForm.display_title}
+                        onChange={(event) =>
+                          updateMetadataForm(
+                            "display_title",
+                            event.target.value,
+                          )
+                        }
+                        disabled={isSavingMetadata}
+                        className={metadataInputClassName}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
                         Common name
                       </span>
                       <input
@@ -468,6 +503,21 @@ export default function PhotoDetail({ id }: { id: string }) {
                         value={metadataForm.common_name}
                         onChange={(event) =>
                           updateMetadataForm("common_name", event.target.value)
+                        }
+                        disabled={isSavingMetadata}
+                        className={metadataInputClassName}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Breed/type guess
+                      </span>
+                      <input
+                        type="text"
+                        value={metadataForm.breed_guess}
+                        onChange={(event) =>
+                          updateMetadataForm("breed_guess", event.target.value)
                         }
                         disabled={isSavingMetadata}
                         className={metadataInputClassName}
@@ -605,6 +655,18 @@ export default function PhotoDetail({ id }: { id: string }) {
                     <MetadataRow
                       label="Original file"
                       value={photo.original_filename}
+                    />
+                    <MetadataRow
+                      label="Display title"
+                      value={photo.display_title}
+                    />
+                    <MetadataRow
+                      label="Common name"
+                      value={photo.common_name}
+                    />
+                    <MetadataRow
+                      label="Breed/type guess"
+                      value={photo.breed_guess}
                     />
                     <MetadataRow
                       label="Species guess"

@@ -48,7 +48,9 @@ type ClassificationProgressItem = {
   id: number;
   filename: string;
   status: ClassificationProgressStatus;
+  display_title?: string | null;
   common_name?: string | null;
+  breed_guess?: string | null;
   species_guess?: string | null;
   error?: string;
 };
@@ -201,11 +203,56 @@ function normalizeSortText(value: string | null | undefined) {
 }
 
 function getNameSortValue(photo: Photo) {
-  return normalizeSortText(photo.common_name) || photo.original_filename;
+  return (
+    normalizeSortText(photo.display_title) ||
+    normalizeSortText(photo.breed_guess) ||
+    normalizeSortText(photo.common_name) ||
+    photo.original_filename
+  );
 }
 
 function getSpeciesSortValue(photo: Photo) {
   return normalizeSortText(photo.species_guess) || photo.original_filename;
+}
+
+function getPhotoDisplayTitle(photo: Photo) {
+  return (
+    normalizeSortText(photo.display_title) ||
+    normalizeSortText(photo.breed_guess) ||
+    normalizeSortText(photo.common_name) ||
+    "Unclassified"
+  );
+}
+
+function formatCommonNameForSubtitle(value: string) {
+  const normalizedValue = normalizeSortText(value).toLocaleLowerCase();
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  return `${normalizedValue.charAt(0).toLocaleUpperCase()}${normalizedValue.slice(1)}`;
+}
+
+function titleMatchesCommonName(title: string, commonName: string | null) {
+  return normalizeSearchText(title) === normalizeSearchText(commonName);
+}
+
+function getPhotoCardSubtitle(photo: Photo, title: string) {
+  const speciesGuess = normalizeSortText(photo.species_guess);
+  const commonName = normalizeSortText(photo.common_name);
+
+  if (!speciesGuess) {
+    return commonName
+      ? formatCommonNameForSubtitle(commonName)
+      : "Species not identified";
+  }
+
+  if (!commonName || titleMatchesCommonName(title, commonName)) {
+    return speciesGuess;
+  }
+
+  return `${formatCommonNameForSubtitle(commonName)} · ${speciesGuess}`;
 }
 
 function photoMatchesSearch(photo: Photo, searchQuery: string) {
@@ -216,7 +263,9 @@ function photoMatchesSearch(photo: Photo, searchQuery: string) {
   }
 
   const searchableText = [
+    photo.display_title,
     photo.common_name,
+    photo.breed_guess,
     photo.species_guess,
     photo.category,
     photo.description,
@@ -509,8 +558,8 @@ function PhotoCard({ photo }: { photo: Photo }) {
   const thumbnailUrl = imageUrl("thumbs", photo.thumbnail_filename);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const imageFailed = failedImageUrl === thumbnailUrl;
-  const title = photo.common_name ?? "Unclassified";
-  const speciesGuess = photo.species_guess ?? "Species not identified";
+  const title = getPhotoDisplayTitle(photo);
+  const subtitle = getPhotoCardSubtitle(photo, title);
 
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
@@ -537,11 +586,17 @@ function PhotoCard({ photo }: { photo: Photo }) {
         <Link href={`/photos/${photo.id}`} className="block flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="truncate text-base font-semibold text-stone-950">
+              <h2
+                title={title}
+                className="line-clamp-2 text-base font-semibold leading-6 text-stone-950"
+              >
                 {title}
               </h2>
-              <p className="mt-1 truncate text-sm italic text-stone-500">
-                {speciesGuess}
+              <p
+                title={subtitle}
+                className="mt-1 line-clamp-2 text-sm italic leading-5 text-stone-500"
+              >
+                {subtitle}
               </p>
             </div>
             <StatusBadge status={photo.status} />
@@ -957,7 +1012,9 @@ export default function Home() {
             id: updatedPhoto.id,
             filename: updatedPhoto.original_filename,
             status: updatedStatus,
+            display_title: updatedPhoto.display_title,
             common_name: updatedPhoto.common_name,
+            breed_guess: updatedPhoto.breed_guess,
             species_guess: updatedPhoto.species_guess,
             error:
               updatedStatus === "failed"
@@ -1223,12 +1280,19 @@ export default function Home() {
                         <p className="truncate text-sm font-medium text-stone-900">
                           Photo {photoResult.id}: {photoResult.filename}
                         </p>
-                        {photoResult.common_name ||
+                        {photoResult.display_title ||
+                        photoResult.common_name ||
+                        photoResult.breed_guess ||
                         photoResult.species_guess ||
                         photoResult.error ? (
                           <p className="mt-0.5 truncate text-xs text-stone-500">
                             {photoResult.error ??
-                              [photoResult.common_name, photoResult.species_guess]
+                              [
+                                photoResult.display_title,
+                                photoResult.common_name,
+                                photoResult.breed_guess,
+                                photoResult.species_guess,
+                              ]
                                 .filter(Boolean)
                                 .join(" · ")}
                           </p>

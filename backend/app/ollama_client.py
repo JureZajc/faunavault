@@ -29,7 +29,9 @@ CLASSIFICATION_PROMPT = """
 Analyze this animal photo and return only valid JSON with this exact shape:
 {
   "is_animal": true,
+  "display_title": "...",
   "common_name": "...",
+  "breed_guess": null,
   "species_guess": "...",
   "category": "mammal | bird | reptile | amphibian | fish | insect | arachnid | mollusk | crustacean | unknown",
   "confidence": 0.0,
@@ -40,6 +42,12 @@ Analyze this animal photo and return only valid JSON with this exact shape:
 
 Use category "unknown", lower confidence, and needs_review true if you are uncertain.
 Use is_animal false when the image does not appear to contain an animal.
+display_title is the short user-facing album title. Prefer the breed/type/variety when clearly visible, otherwise use common_name.
+common_name is the general animal name, such as dog, cat, horse, cow, cattle, lion, or cattle egret.
+breed_guess is for breed/type/variety, especially domestic animals. Use null when unsure.
+species_guess must be a biological/taxonomic species name when possible.
+Do not put dog breeds into species_guess. For dogs use species_guess "Canis lupus familiaris"; for cats use "Felis catus"; for horses use "Equus ferus caballus"; for cows or cattle use "Bos taurus".
+Horse breeds, coat colors, riding context, or stable context belong in breed_guess, display_title, tags, or description, not species_guess.
 Do not include markdown, code fences, or explanatory text.
 """.strip()
 
@@ -64,7 +72,9 @@ def response_error_detail(response: httpx.Response) -> str:
 @dataclass(frozen=True)
 class ClassificationResult:
     is_animal: bool
+    display_title: str | None
     common_name: str
+    breed_guess: str | None
     species_guess: str
     category: str
     confidence: float
@@ -142,7 +152,9 @@ def extract_json_object(text: str) -> dict[str, Any]:
 
 def validate_classification(data: dict[str, Any], model: str) -> ClassificationResult:
     is_animal = require_bool(data, "is_animal")
+    display_title = optional_string(data, "display_title")
     common_name = require_string(data, "common_name")
+    breed_guess = optional_string(data, "breed_guess")
     species_guess = require_string(data, "species_guess")
     category = require_string(data, "category").lower()
     confidence = require_number(data, "confidence")
@@ -157,14 +169,18 @@ def validate_classification(data: dict[str, Any], model: str) -> ClassificationR
         raise OllamaClassificationError("Model returned confidence outside the 0.0 to 1.0 range")
 
     if not is_animal:
+        display_title = display_title or "Not an animal"
         common_name = common_name or "Not an animal"
+        breed_guess = None
         species_guess = species_guess or "unknown"
         category = "unknown"
         needs_review = True
 
     return ClassificationResult(
         is_animal=is_animal,
+        display_title=display_title,
         common_name=common_name,
+        breed_guess=breed_guess,
         species_guess=species_guess,
         category=category,
         confidence=confidence,
@@ -187,6 +203,18 @@ def require_string(data: dict[str, Any], key: str) -> str:
     if not isinstance(value, str):
         raise OllamaClassificationError(f"Model JSON field {key!r} must be a string")
     return value.strip()
+
+
+def optional_string(data: dict[str, Any], key: str) -> str | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise OllamaClassificationError(
+            f"Model JSON field {key!r} must be a string or null"
+        )
+    stripped_value = value.strip()
+    return stripped_value or None
 
 
 def require_number(data: dict[str, Any], key: str) -> float:
