@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import AnimalNameEditor from "../../components/animal-name-editor";
 import ImageLightbox from "../../components/image-lightbox";
 import TaxonomyPicker from "../../components/taxonomy-picker";
 import {
+  Animal,
   classifyPhoto,
   deletePhoto,
+  getAnimal,
   getPhoto,
   imageUrl,
   mockClassifyPhoto,
@@ -157,7 +160,9 @@ function MetadataRow({
 export default function PhotoDetail({ id }: { id: string }) {
   const router = useRouter();
   const [photo, setPhoto] = useState<Photo | null>(null);
+  const [animal, setAnimal] = useState<Animal | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAnimalLoading, setIsAnimalLoading] = useState(false);
   const [isMockClassifying, setIsMockClassifying] = useState(false);
   const [isAiClassifying, setIsAiClassifying] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -170,6 +175,7 @@ export default function PhotoDetail({ id }: { id: string }) {
     useState<MetadataFormState>(emptyMetadataForm);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [animalLoadError, setAnimalLoadError] = useState<string | null>(null);
   const isBusy =
     isMockClassifying || isAiClassifying || isDeleting || isSavingMetadata;
   const detailImageUrl = photo
@@ -189,13 +195,53 @@ export default function PhotoDetail({ id }: { id: string }) {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
+
     getPhoto(id)
       .then((nextPhoto) => {
+        if (!mounted) {
+          return;
+        }
         setPhoto(nextPhoto);
         setMetadataForm(formStateFromPhoto(nextPhoto));
+        setAnimal(null);
+        setAnimalLoadError(null);
+        if (nextPhoto.animal_id) {
+          setIsAnimalLoading(true);
+          getAnimal(nextPhoto.animal_id)
+            .then((nextAnimal) => {
+              if (mounted) {
+                setAnimal(nextAnimal);
+              }
+            })
+            .catch((nextError: Error) => {
+              if (mounted) {
+                setAnimalLoadError(nextError.message);
+              }
+            })
+            .finally(() => {
+              if (mounted) {
+                setIsAnimalLoading(false);
+              }
+            });
+        } else {
+          setIsAnimalLoading(false);
+        }
       })
-      .catch((nextError: Error) => setError(nextError.message))
-      .finally(() => setIsLoading(false));
+      .catch((nextError: Error) => {
+        if (mounted) {
+          setError(nextError.message);
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -733,6 +779,27 @@ export default function PhotoDetail({ id }: { id: string }) {
                       <span className="text-sm text-stone-500">No tags</span>
                     )}
                   </div>
+                  {photo.animal_id ? (
+                    <section className="mt-5 border-t border-stone-200 pt-5">
+                      <h2 className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+                        Linked individual
+                      </h2>
+                      {isAnimalLoading ? (
+                        <p className="text-sm text-stone-500">
+                          Loading individual…
+                        </p>
+                      ) : animal ? (
+                        <AnimalNameEditor
+                          animal={animal}
+                          onUpdated={setAnimal}
+                        />
+                      ) : (
+                        <p role="alert" className="text-sm text-red-700">
+                          {animalLoadError ?? "Could not load linked individual."}
+                        </p>
+                      )}
+                    </section>
+                  ) : null}
                   {photo.animal_id ? (
                     <TaxonomyPicker animalId={photo.animal_id} />
                   ) : null}

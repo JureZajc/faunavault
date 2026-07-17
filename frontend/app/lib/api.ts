@@ -226,6 +226,21 @@ export function selectAnimalTaxon(animalId: number, gbifKey: number) {
   });
 }
 
+export function getAnimal(animalId: number) {
+  return request<Animal>(`/animals/${animalId}`);
+}
+
+export function updateAnimalDisplayName(
+  animalId: number,
+  displayName: string | null,
+) {
+  return request<Animal>(`/animals/${animalId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ display_name: displayName }),
+  });
+}
+
 export function reconcileTaxonomy() {
   return request<{
     processed: number;
