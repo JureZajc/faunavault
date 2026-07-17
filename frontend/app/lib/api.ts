@@ -15,8 +15,85 @@ export type Photo = {
   description: string | null;
   tags: string[];
   status: PhotoStatus;
+  animal_id: number | null;
   created_at: string;
   updated_at: string;
+};
+
+export type TaxonCandidate = {
+  provider: "gbif";
+  external_taxon_id: number;
+  scientific_name: string;
+  canonical_name: string;
+  common_name: string | null;
+  rank: string;
+  kingdom: string | null;
+  phylum: string | null;
+  class: string | null;
+  order: string | null;
+  family: string | null;
+  genus: string | null;
+  species: string | null;
+  cached: boolean;
+};
+
+export type TaxonomySearchResponse = {
+  results: TaxonCandidate[];
+  external_available: boolean;
+  warning: string | null;
+};
+
+export type FilterOption = { value: string; count: number };
+export type TaxonomyFilters = {
+  classes: FilterOption[];
+  orders: FilterOption[];
+  families: FilterOption[];
+  genera: FilterOption[];
+  species: FilterOption[];
+};
+
+export type AlbumSummary = {
+  album_key: string;
+  verified: boolean;
+  common_name: string | null;
+  scientific_name: string;
+  rank: string | null;
+  class: string | null;
+  order: string | null;
+  family: string | null;
+  genus: string | null;
+  species: string | null;
+  animal_count: number;
+  photo_count: number;
+  newest_at: string | null;
+  cover_photo_id: number | null;
+  cover_thumbnail_filename: string | null;
+};
+
+export type Paginated<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type Animal = {
+  id: number;
+  identifier: string;
+  display_name: string | null;
+  taxon_id: number | null;
+  legacy_common_name: string | null;
+  legacy_species_name: string | null;
+  taxonomy_status: string;
+  taxonomy_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AlbumDetail = AlbumSummary & {
+  taxonomy: TaxonCandidate | null;
+  animals: Paginated<Animal>;
+  photos: Paginated<Photo>;
 };
 
 export type PhotoUpdate = Partial<{
@@ -105,6 +182,62 @@ export function imageUrl(
   filename: string,
 ) {
   return `${API_BASE_URL}/images/${type}/${encodeURIComponent(filename)}`;
+}
+
+export function getTaxonomyFilters() {
+  return request<TaxonomyFilters>("/taxonomy/filters");
+}
+
+export function getSpeciesAlbums(params: URLSearchParams) {
+  return request<Paginated<AlbumSummary>>(`/species-albums?${params}`);
+}
+
+export function getSpeciesAlbum(
+  albumKey: string,
+  params = new URLSearchParams(),
+) {
+  return request<AlbumDetail>(
+    `/species-albums/${encodeURIComponent(albumKey)}?${params}`,
+  );
+}
+
+export function searchTaxonomy(query: string) {
+  return request<TaxonomySearchResponse>(
+    `/taxonomy/search?q=${encodeURIComponent(query)}`,
+  );
+}
+
+export function selectAlbumTaxon(albumKey: string, gbifKey: number) {
+  return request<{ album_key: string; updated_animals: number }>(
+    `/species-albums/${encodeURIComponent(albumKey)}/taxon`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gbif_key: gbifKey }),
+    },
+  );
+}
+
+export function selectAnimalTaxon(animalId: number, gbifKey: number) {
+  return request(`/animals/${animalId}/taxon`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gbif_key: gbifKey }),
+  });
+}
+
+export function reconcileTaxonomy() {
+  return request<{
+    processed: number;
+    linked: number;
+    ambiguous: number;
+    unmatched: number;
+    failed: number;
+  }>("/taxonomy/reconcile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ limit: 50 }),
+  });
 }
 
 export function getPhotos() {

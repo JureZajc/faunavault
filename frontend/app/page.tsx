@@ -20,6 +20,7 @@ import {
   uploadPhotoBatch,
   uploadPhoto,
 } from "./lib/api";
+import AlbumBrowser from "./components/album-browser";
 
 type StatusFilter = "all" | PhotoStatus;
 type SortOption =
@@ -34,6 +35,7 @@ type SortOption =
   | "needs_review_first"
   | "pending_first";
 type ViewMode = "flat" | "grouped";
+type CollectionView = "list" | "album";
 type UploadNotice = {
   kind: "success" | "warning";
   message: string;
@@ -794,6 +796,8 @@ export default function Home() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOption, setSortOption] = useState<SortOption>("newest");
   const [viewMode, setViewMode] = useState<ViewMode>("flat");
+  const [collectionView, setCollectionView] =
+    useState<CollectionView>("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -847,6 +851,15 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (new URLSearchParams(window.location.search).get("view") === "album") {
+        setCollectionView("album");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const categoryOptions = useMemo(() => getCategoryOptions(photos), [photos]);
@@ -1102,6 +1115,17 @@ export default function Home() {
     setCategoryFilter("all");
   }
 
+  function changeCollectionView(view: CollectionView) {
+    setCollectionView(view);
+    const url = new URL(window.location.href);
+    if (view === "album") {
+      url.searchParams.set("view", "album");
+    } else {
+      url.searchParams.delete("view");
+    }
+    window.history.replaceState(null, "", url);
+  }
+
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
       <section className="border-b border-stone-200 bg-white">
@@ -1192,6 +1216,34 @@ export default function Home() {
       </section>
 
       <section className="mx-auto max-w-7xl px-6 py-6">
+        <div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="inline-grid min-h-11 grid-cols-2 rounded-lg border border-stone-200 bg-stone-100 p-1">
+            {(["list", "album"] as CollectionView[]).map((view) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => changeCollectionView(view)}
+                className={`min-w-28 rounded-md px-4 text-sm font-semibold capitalize transition ${
+                  collectionView === view
+                    ? "bg-white text-emerald-900 shadow-sm"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+              >
+                {view}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-stone-500 sm:text-right">
+            {collectionView === "list"
+              ? "Manage individual photo records"
+              : "Browse the collection by species"}
+          </p>
+        </div>
+
+        {collectionView === "album" ? (
+          <AlbumBrowser />
+        ) : (
+          <>
         <CatalogToolbar
           searchQuery={searchQuery}
           statusFilter={statusFilter}
@@ -1427,6 +1479,8 @@ export default function Home() {
               }
             />
           </div>
+        )}
+          </>
         )}
       </section>
     </main>
