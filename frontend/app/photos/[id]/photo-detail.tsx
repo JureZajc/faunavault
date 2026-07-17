@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import ImageLightbox from "../../components/image-lightbox";
+import TaxonomyPicker from "../../components/taxonomy-picker";
 import {
   classifyPhoto,
   deletePhoto,
@@ -732,6 +733,9 @@ export default function PhotoDetail({ id }: { id: string }) {
                       <span className="text-sm text-stone-500">No tags</span>
                     )}
                   </div>
+                  {photo.animal_id ? (
+                    <TaxonomyPicker animalId={photo.animal_id} />
+                  ) : null}
                 </>
               )}
 
