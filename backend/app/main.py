@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
-from pydantic import model_validator
+from pydantic import ConfigDict, field_validator, model_validator
 import httpx
 from sqlalchemy import Column, JSON, UniqueConstraint, text
 from sqlmodel import Field, Session, SQLModel, create_engine, select
@@ -148,6 +148,20 @@ class Animal(SQLModel, table=True):
     taxonomy_note: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class AnimalUpdate(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, max_length=100)
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def normalize_display_name(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        return normalized or None
 
 
 class Photo(SQLModel, table=True):
@@ -1104,15 +1118,43 @@ def assign_taxon(animal: Animal, taxon: Taxon, status: str) -> None:
     animal.updated_at = utc_now()
 
 
+def animal_or_404(animal_id: int, session: Session) -> Animal:
+    animal = session.get(Animal, animal_id)
+    if animal is None:
+        raise HTTPException(status_code=404, detail="Animal not found")
+    return animal
+
+
+@app.get("/animals/{animal_id}", response_model=Animal)
+def get_animal(animal_id: int, session: SessionDep) -> Animal:
+    return animal_or_404(animal_id, session)
+
+
+@app.patch("/animals/{animal_id}", response_model=Animal)
+def update_animal(
+    animal_id: int,
+    update: AnimalUpdate,
+    session: SessionDep,
+) -> Animal:
+    animal = animal_or_404(animal_id, session)
+    if "display_name" not in update.model_fields_set:
+        return animal
+
+    animal.display_name = update.display_name
+    animal.updated_at = utc_now()
+    session.add(animal)
+    session.commit()
+    session.refresh(animal)
+    return animal
+
+
 @app.put("/animals/{animal_id}/taxon")
 def select_animal_taxon(
     animal_id: int,
     selection: TaxonSelection,
     session: SessionDep,
 ) -> dict:
-    animal = session.get(Animal, animal_id)
-    if animal is None:
-        raise HTTPException(status_code=404, detail="Animal not found")
+    animal = animal_or_404(animal_id, session)
     taxon = persist_gbif_taxon(session, selection.gbif_key)
     assign_taxon(animal, taxon, "manually_linked")
     session.add(animal)

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AnimalNameEditor from "../../components/animal-name-editor";
 import ImageLightbox from "../../components/image-lightbox";
 import {
   AlbumDetail,
+  Animal,
   getSpeciesAlbum,
   imageUrl,
   searchTaxonomy,
@@ -106,6 +108,22 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
     }
   }
 
+  function handleAnimalUpdated(updatedAnimal: Animal) {
+    setAlbum((currentAlbum) =>
+      currentAlbum
+        ? {
+            ...currentAlbum,
+            animals: {
+              ...currentAlbum.animals,
+              items: currentAlbum.animals.items.map((animal) =>
+                animal.id === updatedAnimal.id ? updatedAnimal : animal,
+              ),
+            },
+          }
+        : currentAlbum,
+    );
+  }
+
   const lightboxImages = useMemo(() => album?.photos.items.map((photo) => {
     const animal = album.animals.items.find((item) => item.id === photo.animal_id);
     return {
@@ -140,7 +158,45 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
         </section> : null}
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside><h2 className="text-lg font-semibold">Individuals</h2><div className="mt-3 space-y-2">{album.animals.items.map((animal) => <div key={animal.id} className="rounded-lg border border-stone-200 bg-white p-3"><p className="font-medium">{animal.display_name || animal.identifier}</p><p className="mt-1 text-xs text-stone-500">{animal.taxonomy_status.replaceAll("_", " ")}</p></div>)}</div>{album.animals.total > album.animals.page_size ? <div className="mt-3 flex gap-2"><button disabled={animalPage === 1} onClick={() => setAnimalPage((value) => value - 1)} className="rounded border bg-white px-2 py-1 text-xs disabled:opacity-40">Previous</button><button disabled={animalPage * album.animals.page_size >= album.animals.total} onClick={() => setAnimalPage((value) => value + 1)} className="rounded border bg-white px-2 py-1 text-xs disabled:opacity-40">Next</button></div> : null}</aside>
+          <aside>
+            <h2 className="text-lg font-semibold">Individuals</h2>
+            <div className="mt-3 space-y-2">
+              {album.animals.items.map((animal) => (
+                <div
+                  key={animal.id}
+                  className="rounded-lg border border-stone-200 bg-white p-3"
+                >
+                  <AnimalNameEditor
+                    animal={animal}
+                    onUpdated={handleAnimalUpdated}
+                  />
+                  <p className="mt-2 text-xs capitalize text-stone-500">
+                    {animal.taxonomy_status.replaceAll("_", " ")}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {album.animals.total > album.animals.page_size ? (
+              <div className="mt-3 flex gap-2">
+                <button
+                  disabled={animalPage === 1}
+                  onClick={() => setAnimalPage((value) => value - 1)}
+                  className="rounded border bg-white px-2 py-1 text-xs disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={
+                    animalPage * album.animals.page_size >= album.animals.total
+                  }
+                  onClick={() => setAnimalPage((value) => value + 1)}
+                  className="rounded border bg-white px-2 py-1 text-xs disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
+          </aside>
           <section><h2 className="text-lg font-semibold">Photographs</h2>{album.photos.items.length ? <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{album.photos.items.map((photo, index) => <button key={photo.id} onClick={() => setLightboxIndex(index)} className="group overflow-hidden rounded-lg border border-stone-200 bg-white text-left shadow-sm"><div className="aspect-[4/3] bg-stone-100">
             {/* eslint-disable-next-line @next/next/no-img-element -- Backend localhost images bypass Next optimization. */}
             <img src={imageUrl("thumbs", photo.thumbnail_filename)} alt={photo.display_title || photo.original_filename} loading="lazy" className="h-full w-full object-cover" />

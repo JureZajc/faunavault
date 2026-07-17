@@ -221,3 +221,106 @@ def test_migration_preserves_legacy_names_and_is_idempotent(tmp_path, monkeypatc
         assert len(animals) == 1
         assert animals[0].legacy_species_name == "Panthera leo"
         assert photo.animal_id == animals[0].id
+
+
+def test_update_animal_display_name_trims_and_preserves_identity_and_taxonomy(
+    client, database
+):
+    with Session(database) as session:
+        taxon = main.Taxon(
+            external_taxon_id="5219404",
+            scientific_name="Panthera leo",
+            canonical_name="Panthera leo",
+            common_name="Lion",
+            taxonomic_rank="SPECIES",
+            kingdom="Animalia",
+        )
+        session.add(taxon)
+        session.flush()
+        animal = main.Animal(
+            identifier="FV-P000012",
+            taxon_id=taxon.id,
+            legacy_common_name="lion",
+            legacy_species_name="Panthera leo",
+            taxonomy_status="manually_linked",
+            taxonomy_note="Verified locally",
+        )
+        session.add(animal)
+        session.commit()
+        animal_id = animal.id
+        taxon_id = taxon.id
+
+    response = client.patch(
+        f"/animals/{animal_id}",
+        json={"display_name": "  Bella  "},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["display_name"] == "Bella"
+    assert updated["identifier"] == "FV-P000012"
+    assert updated["taxon_id"] == taxon_id
+    assert updated["legacy_common_name"] == "lion"
+    assert updated["legacy_species_name"] == "Panthera leo"
+    assert updated["taxonomy_status"] == "manually_linked"
+    assert updated["taxonomy_note"] == "Verified locally"
+    assert client.get(f"/animals/{animal_id}").json()["display_name"] == "Bella"
+
+
+def test_update_animal_display_name_can_be_cleared(client, database):
+    with Session(database) as session:
+        animal = main.Animal(identifier="FV-P000013", display_name="Bella")
+        session.add(animal)
+        session.commit()
+        animal_id = animal.id
+
+    response = client.patch(
+        f"/animals/{animal_id}",
+        json={"display_name": "   "},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] is None
+
+
+def test_update_animal_display_name_rejects_values_over_maximum(client, database):
+    with Session(database) as session:
+        animal = main.Animal(identifier="FV-P000014")
+        session.add(animal)
+        session.commit()
+        animal_id = animal.id
+
+    response = client.patch(
+        f"/animals/{animal_id}",
+        json={"display_name": "x" * 101},
+    )
+
+    assert response.status_code == 422
+    with Session(database) as session:
+        assert session.get(main.Animal, animal_id).display_name is None
+
+
+def test_update_animal_rejects_stable_identifier_changes(client, database):
+    with Session(database) as session:
+        animal = main.Animal(identifier="FV-P000015", display_name="Bella")
+        session.add(animal)
+        session.commit()
+        animal_id = animal.id
+
+    response = client.patch(
+        f"/animals/{animal_id}",
+        json={"identifier": "FV-P999999"},
+    )
+
+    assert response.status_code == 422
+    assert client.get(f"/animals/{animal_id}").json()["identifier"] == "FV-P000015"
+
+
+def test_update_unknown_animal_returns_404(client):
+    response = client.patch(
+        "/animals/999999",
+        json={"display_name": "Bella"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Animal not found"
