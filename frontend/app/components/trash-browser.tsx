@@ -11,9 +11,13 @@ import {
 
 type TrashBrowserProps = {
   onNotice: (message: string) => void;
+  onRestored: (photo: Photo) => void | Promise<void>;
 };
 
-export default function TrashBrowser({ onNotice }: TrashBrowserProps) {
+export default function TrashBrowser({
+  onNotice,
+  onRestored,
+}: TrashBrowserProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -51,11 +55,21 @@ export default function TrashBrowser({ onNotice }: TrashBrowserProps) {
     setError(null);
     try {
       await restoreTrashPhoto(photo.id);
-      setPhotos((current) => current.filter((item) => item.id !== photo.id));
-      setTotal((value) => Math.max(0, value - 1));
-      onNotice(`Restored ${photo.original_filename} to the catalog.`);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Restore failed");
+      setBusyId(null);
+      return;
+    }
+
+    setPhotos((current) => current.filter((item) => item.id !== photo.id));
+    setTotal((value) => Math.max(0, value - 1));
+    onNotice(`Restored ${photo.original_filename} to the catalog.`);
+    try {
+      await onRestored(photo);
+    } catch (nextError) {
+      const detail =
+        nextError instanceof Error ? `: ${nextError.message}` : ".";
+      setError(`Photo was restored, but the catalog could not be updated${detail}`);
     } finally {
       setBusyId(null);
     }

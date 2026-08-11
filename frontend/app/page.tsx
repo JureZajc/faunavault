@@ -1187,6 +1187,14 @@ export default function Home() {
     setSuccessNotice(`Moved ${photo.original_filename} to Trash.`);
   }
 
+  function handlePhotoRestored(photo: Photo) {
+    const restoredPhoto = { ...photo, deleted_at: null };
+    setPhotos((currentPhotos) => [
+      ...currentPhotos.filter((item) => item.id !== restoredPhoto.id),
+      restoredPhoto,
+    ]);
+  }
+
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
       <section className="border-b border-stone-200 bg-white">
@@ -1333,7 +1341,10 @@ export default function Home() {
         {collectionView === "album" ? (
           <AlbumBrowser />
         ) : collectionView === "trash" ? (
-          <TrashBrowser onNotice={setSuccessNotice} />
+          <TrashBrowser
+            onNotice={setSuccessNotice}
+            onRestored={handlePhotoRestored}
+          />
         ) : (
           <>
         <CatalogToolbar
