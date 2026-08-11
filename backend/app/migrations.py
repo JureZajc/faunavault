@@ -13,7 +13,7 @@ from sqlalchemy.engine import make_url
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 4
+LATEST_SCHEMA_VERSION = 5
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -133,6 +133,12 @@ def _migration_4(connection) -> None:
     )
 
 
+def _migration_5(normalize_metadata: Callable[[], None] | None) -> None:
+    if normalize_metadata is None:
+        raise RuntimeError("Migration 5 requires domestic metadata normalization")
+    normalize_metadata()
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -153,7 +159,11 @@ def run_migrations(
             for row in connection.execute(text("SELECT version FROM schema_migration"))
         }
 
-    pending = [version for version in (2, 3, 4) if version not in applied]
+    pending = [
+        version
+        for version in range(2, LATEST_SCHEMA_VERSION + 1)
+        if version not in applied
+    ]
     if not pending:
         return []
 
@@ -172,6 +182,8 @@ def run_migrations(
                 _migration_3(connection, settings)
             elif version == 4:
                 _migration_4(connection)
+            elif version == 5:
+                _migration_5(normalize_metadata)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "
@@ -180,7 +192,4 @@ def run_migrations(
                 {"version": version},
             )
         completed.append(version)
-
-    if normalize_metadata is not None:
-        normalize_metadata()
     return completed

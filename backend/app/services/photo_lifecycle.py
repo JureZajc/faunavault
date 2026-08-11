@@ -276,6 +276,23 @@ def trash_photo_or_404(photo_id: int, session: Session) -> Photo:
     return photo
 
 
+def trash_photo_for_permanent_delete(photo_id: int, session: Session) -> Photo:
+    photo = session.get(Photo, photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found in Trash")
+    if photo.deleted_at is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "photo_not_in_trash",
+                "message": (
+                    "Photo must be moved to Trash before it can be permanently deleted."
+                ),
+            },
+        )
+    return photo
+
+
 def move_to_trash(photo_id: int, session: Session) -> TrashMutationResponse:
     photo = active_photo_or_404(photo_id, session)
     photo.deleted_at = utc_now()
@@ -330,7 +347,7 @@ def permanently_delete_photo(
     session: Session,
     settings: Settings,
 ) -> TrashMutationResponse:
-    photo = trash_photo_or_404(photo_id, session)
+    photo = trash_photo_for_permanent_delete(photo_id, session)
     operation_dir = settings.purge_dir / uuid4().hex
     operation_dir.mkdir(parents=True, exist_ok=False)
     files = [
