@@ -22,7 +22,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 
 The default Windows configuration stores image files under `E:/FaunaVault/data/images` and SQLite metadata under `backend/data/faunavault.db`. Existing `.env` values take precedence; upgrades do not relocate data. Originals are preserved byte-for-byte. Resized and thumbnail files are reproducible derivatives.
 
-Normal deletion only sets a deleted timestamp. Trash continues to reference the same local files. Permanent deletion stages variants in a private journal, commits the row deletion, and cleans the staged files; interrupted work is reconciled on the next backend startup.
+Normal deletion only sets a deleted timestamp. Trash continues to reference the same local files. A photo must be moved to Trash before it can be permanently deleted. Permanent deletion stages variants in a private journal, commits the row deletion, and cleans the staged files; interrupted work is reconciled on the next backend startup.
 
 ## Windows setup
 
@@ -95,7 +95,7 @@ Use a cold backup for a consistent, easy-to-understand recovery point:
 
 To restore, keep FaunaVault stopped, preserve the current database/image directory as a separate fallback, restore both members of the same backup set to their configured paths, then start the backend. Check the catalog, Trash, albums, and several original images before removing the fallback copy. Never restore only the database or only the image directory.
 
-Before schema upgrades, FaunaVault creates timestamped SQLite backups next to the active database. These supplement but do not replace full archive backups.
+Before schema upgrades, FaunaVault creates timestamped SQLite backups next to the active database. Domestic metadata normalization is schema migration 5, so it is recorded only after successful normalization and safely retried if startup is interrupted. These backups supplement but do not replace full archive backups.
 
 ## Troubleshooting
 
