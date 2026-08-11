@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AnimalNameEditor from "../../components/animal-name-editor";
 import ImageLightbox from "../../components/image-lightbox";
+import MoveToTrashButton from "../../components/move-to-trash-button";
+import SuccessNotice from "../../components/success-notice";
 import {
   AlbumDetail,
   Animal,
   getSpeciesAlbum,
   imageUrl,
+  Photo,
   searchTaxonomy,
   selectAlbumTaxon,
   TaxonCandidate,
@@ -39,6 +42,7 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
   const [isSelecting, setIsSelecting] = useState(false);
   const [animalPage, setAnimalPage] = useState(1);
   const [photoPage, setPhotoPage] = useState(1);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const detailParams = useMemo(() => {
     const params = new URLSearchParams();
     params.set("animal_page", String(animalPage));
@@ -124,6 +128,30 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
     );
   }
 
+  async function handlePhotoMoved(photo: Photo) {
+    setLightboxIndex(null);
+    setSuccessNotice(`Moved ${photo.original_filename} to Trash.`);
+    const wasLastItem = album?.photos.items.length === 1;
+    setAlbum((current) =>
+      current
+        ? {
+            ...current,
+            photo_count: Math.max(0, current.photo_count - 1),
+            photos: {
+              ...current.photos,
+              total: Math.max(0, current.photos.total - 1),
+              items: current.photos.items.filter((item) => item.id !== photo.id),
+            },
+          }
+        : current,
+    );
+    if (wasLastItem && photoPage > 1) {
+      setPhotoPage((value) => value - 1);
+    } else {
+      await load();
+    }
+  }
+
   const lightboxImages = useMemo(() => album?.photos.items.map((photo) => {
     const animal = album.animals.items.find((item) => item.id === photo.animal_id);
     return {
@@ -140,6 +168,15 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
       <div className="mx-auto max-w-7xl px-6 py-8">
+        {successNotice ? (
+          <SuccessNotice
+            message={successNotice}
+            onDismiss={() => setSuccessNotice(null)}
+            onViewTrash={() => {
+              window.location.href = "/?view=trash";
+            }}
+          />
+        ) : null}
         <Link href="/?view=album" className="inline-flex rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:border-emerald-300">Back to albums</Link>
         <header className="mt-6 rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -197,10 +234,30 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
               </div>
             ) : null}
           </aside>
-          <section><h2 className="text-lg font-semibold">Photographs</h2>{album.photos.items.length ? <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{album.photos.items.map((photo, index) => <button key={photo.id} onClick={() => setLightboxIndex(index)} className="group overflow-hidden rounded-lg border border-stone-200 bg-white text-left shadow-sm"><div className="aspect-[4/3] bg-stone-100">
-            {/* eslint-disable-next-line @next/next/no-img-element -- Backend localhost images bypass Next optimization. */}
-            <img src={imageUrl("thumbs", photo.thumbnail_filename)} alt={photo.display_title || photo.original_filename} loading="lazy" className="h-full w-full object-cover" />
-          </div><div className="p-3"><p className="truncate text-sm font-semibold">{photo.display_title || photo.common_name || photo.original_filename}</p><p className="mt-1 truncate text-xs text-stone-500">{photo.original_filename}</p></div></button>)}</div> : <div className="mt-3 rounded-xl border border-dashed border-stone-300 bg-white p-12 text-center text-stone-500">No photographs for this species.</div>}{album.photos.total > album.photos.page_size ? <div className="mt-4 flex justify-center gap-2"><button disabled={photoPage === 1} onClick={() => setPhotoPage((value) => value - 1)} className="rounded border bg-white px-3 py-2 text-sm disabled:opacity-40">Previous</button><button disabled={photoPage * album.photos.page_size >= album.photos.total} onClick={() => setPhotoPage((value) => value + 1)} className="rounded border bg-white px-3 py-2 text-sm disabled:opacity-40">Next</button></div> : null}</section>
+          <section>
+            <h2 className="text-lg font-semibold">Photographs</h2>
+            {album.photos.items.length ? (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {album.photos.items.map((photo, index) => (
+                  <article key={photo.id} className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+                    <button type="button" onClick={() => setLightboxIndex(index)} className="group block w-full text-left">
+                      <div className="aspect-[4/3] bg-stone-100">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- Backend localhost images bypass Next optimization. */}
+                        <img src={imageUrl("thumbs", photo.thumbnail_filename)} alt={photo.display_title || photo.original_filename} loading="lazy" className="h-full w-full object-cover" />
+                      </div>
+                      <div className="p-3 pb-2"><p className="truncate text-sm font-semibold">{photo.display_title || photo.common_name || photo.original_filename}</p><p className="mt-1 truncate text-xs text-stone-500">{photo.original_filename}</p></div>
+                    </button>
+                    <div className="px-3 pb-3">
+                      <MoveToTrashButton photo={photo} onMoved={handlePhotoMoved} onError={setError} className="min-h-9 w-full rounded-md border border-stone-200 text-xs font-semibold text-stone-600 hover:border-red-200 hover:text-red-700" />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-xl border border-dashed border-stone-300 bg-white p-12 text-center text-stone-500">No photographs for this species.</div>
+            )}
+            {album.photos.total > album.photos.page_size ? <div className="mt-4 flex justify-center gap-2"><button disabled={photoPage === 1} onClick={() => setPhotoPage((value) => value - 1)} className="rounded border bg-white px-3 py-2 text-sm disabled:opacity-40">Previous</button><button disabled={photoPage * album.photos.page_size >= album.photos.total} onClick={() => setPhotoPage((value) => value + 1)} className="rounded border bg-white px-3 py-2 text-sm disabled:opacity-40">Next</button></div> : null}
+          </section>
         </div>
       </div>
       {lightboxIndex !== null ? <ImageLightbox images={lightboxImages} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} /> : null}

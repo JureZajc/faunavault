@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
 import app.main as main
+from app.config import Settings
 
 
 @pytest.fixture()
@@ -14,7 +15,17 @@ def database(tmp_path, monkeypatch):
         connect_args={"check_same_thread": False},
     )
     SQLModel.metadata.create_all(engine)
+    settings = Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        image_dir=tmp_path / "images",
+        database_url=f"sqlite:///{tmp_path / 'test.db'}",
+    )
     monkeypatch.setattr(main, "engine", engine)
+    monkeypatch.setattr(main, "settings", settings)
+    monkeypatch.setattr(main, "DATABASE_PATH", tmp_path / "test.db")
+    monkeypatch.setattr(main, "IMAGE_ROOT", settings.image_dir)
+    monkeypatch.setattr(main, "IMAGE_DIRS", settings.image_dirs)
     main._taxonomy_search_cache.clear()
     return engine
 
@@ -197,7 +208,7 @@ def test_migration_preserves_legacy_names_and_is_idempotent(tmp_path, monkeypatc
     engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
     monkeypatch.setattr(main, "engine", engine)
     SQLModel.metadata.create_all(engine)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with Session(engine) as session:
         session.add(
             main.Photo(
