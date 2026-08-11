@@ -1,6 +1,5 @@
 import base64
 import json
-import os
 from dataclasses import dataclass
 from json import JSONDecodeError
 from pathlib import Path
@@ -8,9 +7,12 @@ from typing import Any
 
 import httpx
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-AI_PRIMARY_MODEL = os.getenv("AI_PRIMARY_MODEL", "qwen3-vl:8b")
-AI_FALLBACK_MODEL = os.getenv("AI_FALLBACK_MODEL", "gemma4:e4b")
+from app.config import get_settings
+
+settings = get_settings()
+OLLAMA_BASE_URL = settings.ollama_base_url.rstrip("/")
+AI_PRIMARY_MODEL = settings.ai_primary_model
+AI_FALLBACK_MODEL = settings.ai_fallback_model
 
 ALLOWED_CATEGORIES = {
     "mammal",
@@ -126,11 +128,15 @@ def classify_image(image_path: Path, model: str) -> ClassificationResult:
     try:
         body = response.json()
     except JSONDecodeError as exc:
-        raise OllamaClassificationError("Ollama returned an invalid JSON response") from exc
+        raise OllamaClassificationError(
+            "Ollama returned an invalid JSON response"
+        ) from exc
 
     model_text = body.get("response")
     if not isinstance(model_text, str) or not model_text.strip():
-        raise OllamaClassificationError("Ollama response did not include classification text")
+        raise OllamaClassificationError(
+            "Ollama response did not include classification text"
+        )
 
     parsed = extract_json_object(model_text)
     return validate_classification(parsed, model)
@@ -147,7 +153,9 @@ def extract_json_object(text: str) -> dict[str, Any]:
             continue
         if isinstance(parsed, dict):
             return parsed
-    raise OllamaClassificationError("Model response did not contain a valid JSON object")
+    raise OllamaClassificationError(
+        "Model response did not contain a valid JSON object"
+    )
 
 
 def validate_classification(data: dict[str, Any], model: str) -> ClassificationResult:
@@ -163,10 +171,14 @@ def validate_classification(data: dict[str, Any], model: str) -> ClassificationR
     needs_review = require_bool(data, "needs_review")
 
     if category not in ALLOWED_CATEGORIES:
-        raise OllamaClassificationError(f"Model returned unsupported category: {category}")
+        raise OllamaClassificationError(
+            f"Model returned unsupported category: {category}"
+        )
 
     if confidence < 0 or confidence > 1:
-        raise OllamaClassificationError("Model returned confidence outside the 0.0 to 1.0 range")
+        raise OllamaClassificationError(
+            "Model returned confidence outside the 0.0 to 1.0 range"
+        )
 
     if not is_animal:
         display_title = display_title or "Not an animal"
@@ -232,7 +244,9 @@ def require_string_list(data: dict[str, Any], key: str) -> list[str]:
     tags: list[str] = []
     for item in value:
         if not isinstance(item, str):
-            raise OllamaClassificationError(f"Model JSON field {key!r} must contain only strings")
+            raise OllamaClassificationError(
+                f"Model JSON field {key!r} must contain only strings"
+            )
         tag = item.strip()
         if tag:
             tags.append(tag)

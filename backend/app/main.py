@@ -1,76 +1,58 @@
 import base64
-from collections import defaultdict
-from datetime import datetime, timezone
-from io import BytesIO
 import logging
-import os
-from pathlib import Path
 import shutil
 import time
+from collections import defaultdict
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
 from typing import Annotated
-from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from PIL import Image, ImageOps, UnidentifiedImageError
-from pydantic import ConfigDict, field_validator, model_validator
-import httpx
-from sqlalchemy import Column, JSON, UniqueConstraint, text
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlalchemy import text
+from sqlmodel import Session, SQLModel, select
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-
-
-def load_backend_env(env_path: Path) -> None:
-    if not env_path.exists():
-        return
-
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not key:
-            continue
-
-        os.environ.setdefault(key, value.strip().strip("\"'"))
-
-
-load_backend_env(BACKEND_DIR / ".env")
-
-from app.ollama_client import (  # noqa: E402
+from app.config import BACKEND_DIR, get_settings
+from app.db import engine, get_session
+from app.migrations import database_path_for_engine, run_migrations
+from app.models import Animal, Photo, Taxon, utc_now
+from app.ollama_client import (
     AI_FALLBACK_MODEL,
     AI_PRIMARY_MODEL,
     ClassificationResult,
     OllamaClassificationError,
     classify_image,
 )
+from app.routers.photo_lifecycle import create_photo_lifecycle_router
+from app.schemas import (
+    AnimalUpdate,
+    ClassifyPendingPhotoResult,
+    ClassifyPendingRequest,
+    ClassifyPendingResponse,
+    PhotoUpdate,
+    ReconcileRequest,
+    TaxonSelection,
+)
+from app.services.photo_lifecycle import (
+    active_photo_or_404,
+    reconcile_purge_journal,
+)
+from app.services.photo_lifecycle import (
+    ensure_storage as ensure_lifecycle_storage,
+)
 
 logger = logging.getLogger(__name__)
-
-DATABASE_PATH = BACKEND_DIR / "data" / "faunavault.db"
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_PATH}")
-
-
-def default_image_root() -> Path:
-    if os.name == "nt":
-        return Path("E:/FaunaVault/data/images")
-    return Path("/mnt/e/FaunaVault/data/images")
-
-
-IMAGE_ROOT = Path(os.getenv("IMAGE_DIR", str(default_image_root()))).expanduser()
-IMAGE_DIRS = {
-    "original": IMAGE_ROOT / "original",
-    "resized": IMAGE_ROOT / "resized",
-    "thumbs": IMAGE_ROOT / "thumbs",
-}
+settings = get_settings()
+DATABASE_PATH = settings.database_path or BACKEND_DIR / "data" / "faunavault.db"
+DATABASE_URL = settings.resolved_database_url
+IMAGE_ROOT = settings.image_dir
+IMAGE_DIRS = settings.image_dirs
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_IMAGE_TYPES = set(IMAGE_DIRS)
-ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}
 RESIZED_MAX_SIZE = (1600, 1600)
 THUMBNAIL_MAX_SIZE = (480, 480)
 DOMESTIC_SPECIES_BY_COMMON_NAME = {
@@ -104,165 +86,17 @@ DOG_BREED_GUESSES = {
 }
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def confidence_threshold() -> float:
-    try:
-        return float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.65"))
-    except ValueError:
-        return 0.65
+    return settings.ai_confidence_threshold
 
 
-class Taxon(SQLModel, table=True):
-    __table_args__ = (
-        UniqueConstraint("provider", "external_taxon_id", name="uq_taxon_provider_id"),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    provider: str = Field(default="gbif", index=True)
-    external_taxon_id: str = Field(index=True)
-    scientific_name: str
-    canonical_name: str
-    common_name: str | None = None
-    taxonomic_rank: str
-    kingdom: str | None = Field(default=None, index=True)
-    phylum: str | None = None
-    taxonomic_class: str | None = Field(default=None, index=True)
-    taxonomic_order: str | None = Field(default=None, index=True)
-    family: str | None = Field(default=None, index=True)
-    genus: str | None = Field(default=None, index=True)
-    species: str | None = Field(default=None, index=True)
-    synchronized_at: datetime = Field(default_factory=utc_now)
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    on_startup()
+    yield
 
 
-class Animal(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    identifier: str = Field(index=True, unique=True)
-    display_name: str | None = None
-    taxon_id: int | None = Field(default=None, foreign_key="taxon.id", index=True)
-    legacy_common_name: str | None = None
-    legacy_species_name: str | None = Field(default=None, index=True)
-    taxonomy_status: str = Field(default="unreviewed", index=True)
-    taxonomy_note: str | None = None
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-
-
-class AnimalUpdate(SQLModel):
-    model_config = ConfigDict(extra="forbid")
-
-    display_name: str | None = Field(default=None, max_length=100)
-
-    @field_validator("display_name", mode="before")
-    @classmethod
-    def normalize_display_name(cls, value: object) -> object:
-        if not isinstance(value, str):
-            return value
-        normalized = value.strip()
-        return normalized or None
-
-
-class Photo(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    original_filename: str
-    stored_filename: str
-    resized_filename: str
-    thumbnail_filename: str
-    display_title: str | None = None
-    common_name: str | None = None
-    breed_guess: str | None = None
-    species_guess: str | None = None
-    category: str | None = None
-    confidence: float | None = None
-    description: str | None = None
-    tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    status: str = "pending"
-    animal_id: int | None = Field(default=None, foreign_key="animal.id", index=True)
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-
-
-class PhotoUpdate(SQLModel):
-    display_title: str | None = None
-    common_name: str | None = None
-    breed_guess: str | None = None
-    species_guess: str | None = None
-    category: str | None = None
-    confidence: float | None = None
-    description: str | None = None
-    tags: list[str] | None = None
-    status: str | None = None
-
-    @model_validator(mode="after")
-    def validate_metadata(self) -> "PhotoUpdate":
-        if self.confidence is not None and not 0 <= self.confidence <= 1:
-            raise ValueError("confidence must be null or between 0 and 1")
-
-        if "status" in self.model_fields_set and self.status not in ALLOWED_PHOTO_STATUSES:
-            allowed_statuses = ", ".join(sorted(ALLOWED_PHOTO_STATUSES))
-            raise ValueError(f"status must be one of: {allowed_statuses}")
-
-        return self
-
-
-class TaxonSelection(SQLModel):
-    gbif_key: int
-
-
-class ReconcileRequest(SQLModel):
-    limit: int = Field(default=50, ge=1, le=100)
-
-
-class BatchUploadFailure(SQLModel):
-    filename: str
-    error: str
-
-
-class BatchUploadResponse(SQLModel):
-    uploaded: list[Photo]
-    failed: list[BatchUploadFailure]
-
-
-class ClassifyPendingRequest(SQLModel):
-    limit: int | None = None
-    photo_ids: list[int] | None = None
-
-    @model_validator(mode="after")
-    def validate_request(self) -> "ClassifyPendingRequest":
-        if self.limit is not None and self.limit < 1:
-            raise ValueError("limit must be greater than 0")
-
-        if self.photo_ids is not None:
-            invalid_ids = [photo_id for photo_id in self.photo_ids if photo_id < 1]
-            if invalid_ids:
-                raise ValueError("photo_ids must contain positive IDs")
-
-        return self
-
-
-class ClassifyPendingPhotoResult(SQLModel):
-    id: int
-    status: str
-    display_title: str | None = None
-    common_name: str | None = None
-    breed_guess: str | None = None
-    species_guess: str | None = None
-    error: str | None = None
-
-
-class ClassifyPendingResponse(SQLModel):
-    total_found: int
-    classified: int
-    needs_review: int
-    failed: int
-    results: list[ClassifyPendingPhotoResult]
-
-
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-
-app = FastAPI(title="FaunaVault API")
+app = FastAPI(title="FaunaVault API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -278,9 +112,7 @@ app.add_middleware(
 
 
 def ensure_storage() -> None:
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    for directory in IMAGE_DIRS.values():
-        directory.mkdir(parents=True, exist_ok=True)
+    ensure_lifecycle_storage(settings)
 
 
 def ensure_photo_metadata_columns() -> None:
@@ -290,15 +122,18 @@ def ensure_photo_metadata_columns() -> None:
         }
         for column_name in ("display_title", "breed_guess"):
             if column_name not in columns:
-                connection.execute(text(f"ALTER TABLE photo ADD COLUMN {column_name} TEXT"))
+                connection.execute(
+                    text(f"ALTER TABLE photo ADD COLUMN {column_name} TEXT")
+                )
 
 
 def backup_database_before_taxonomy_migration() -> None:
-    if not DATABASE_PATH.exists():
+    database_path = database_path_for_engine(engine)
+    if database_path is None or not database_path.exists():
         return
-    backup_path = DATABASE_PATH.with_suffix(".pre-taxonomy.bak")
+    backup_path = database_path.with_suffix(".pre-taxonomy.bak")
     if not backup_path.exists():
-        shutil.copy2(DATABASE_PATH, backup_path)
+        shutil.copy2(database_path, backup_path)
 
 
 def migrate_animals_and_taxonomy() -> None:
@@ -319,7 +154,9 @@ def migrate_animals_and_taxonomy() -> None:
         if "animal_id" not in columns:
             connection.execute(text("ALTER TABLE photo ADD COLUMN animal_id INTEGER"))
             connection.execute(
-                text("CREATE INDEX IF NOT EXISTS ix_photo_animal_id ON photo (animal_id)")
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_photo_animal_id ON photo (animal_id)"
+                )
             )
         if applied is None:
             connection.execute(
@@ -358,91 +195,22 @@ def migrate_animals_and_taxonomy() -> None:
             )
 
 
-@app.on_event("startup")
 def on_startup() -> None:
     ensure_storage()
     backup_database_before_taxonomy_migration()
     SQLModel.metadata.create_all(engine)
-    ensure_photo_metadata_columns()
     migrate_animals_and_taxonomy()
-    normalize_existing_domestic_metadata()
-
-
-def get_session():
+    run_migrations(engine, settings, normalize_existing_domestic_metadata)
     with Session(engine) as session:
-        yield session
+        reconcile_purge_journal(session, settings)
 
 
 SessionDep = Annotated[Session, Depends(get_session)]
-
-
-def clean_extension(filename: str) -> str:
-    extension = Path(filename).suffix.lower().lstrip(".")
-    if extension == "jpg":
-        return "jpeg"
-    return extension
-
-
-def output_format(extension: str) -> str:
-    return "JPEG" if extension in {"jpg", "jpeg"} else extension.upper()
-
-
-def save_variant(image: Image.Image, path: Path, extension: str, size: tuple[int, int]) -> None:
-    variant = ImageOps.exif_transpose(image).copy()
-    variant.thumbnail(size, Image.Resampling.LANCZOS)
-    if extension in {"jpg", "jpeg"} and variant.mode not in ("RGB", "L"):
-        variant = variant.convert("RGB")
-    save_kwargs = {"quality": 88, "optimize": True} if extension in {"jpg", "jpeg", "webp"} else {}
-    variant.save(path, format=output_format(extension), **save_kwargs)
-
-
-def remove_partial_files(paths: tuple[Path, ...]) -> None:
-    for path in paths:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            logger.warning("Failed to remove partial image file: %s", path, exc_info=True)
-
-
-def stored_image_path(image_type: str, filename: str) -> Path | None:
-    raw_path = Path(filename)
-    if not filename or raw_path.name != filename or raw_path.name in {".", ".."}:
-        logger.warning("Skipped unsafe image filename for deletion: %s", filename)
-        return None
-
-    image_dir = IMAGE_DIRS[image_type].resolve()
-    image_path = (image_dir / raw_path.name).resolve()
-    try:
-        image_path.relative_to(image_dir)
-    except ValueError:
-        logger.warning("Skipped image path outside storage directory: %s", image_path)
-        return None
-
-    if image_path.parent != image_dir:
-        logger.warning("Skipped nested image path outside flat storage directory: %s", image_path)
-        return None
-
-    return image_path
-
-
-def delete_photo_file(image_type: str, filename: str) -> bool:
-    image_path = stored_image_path(image_type, filename)
-    if image_path is None or not image_path.exists():
-        return False
-
-    if not image_path.is_file():
-        logger.warning("Skipped non-file image path during deletion: %s", image_path)
-        return False
-
-    image_path.unlink()
-    return True
+app.include_router(create_photo_lifecycle_router(lambda: settings))
 
 
 def photo_or_404(photo_id: int, session: Session) -> Photo:
-    photo = session.get(Photo, photo_id)
-    if photo is None:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    return photo
+    return active_photo_or_404(photo_id, session)
 
 
 def normalize_tags(tags: list[str] | None) -> list[str]:
@@ -505,17 +273,25 @@ def apply_domestic_metadata_normalization(photo: Photo) -> None:
     if expected_species is None:
         return
 
-    if common_lookup == "dog" and species_guess and not is_expected_species(
-        species_guess,
-        expected_species,
+    if (
+        common_lookup == "dog"
+        and species_guess
+        and not is_expected_species(
+            species_guess,
+            expected_species,
+        )
     ):
         if is_dog_breed_guess(species_guess):
             photo.breed_guess = breed_guess or species_guess
             photo.display_title = display_title or species_guess
 
-    if common_lookup == "horse" and species_guess and not is_expected_species(
-        species_guess,
-        expected_species,
+    if (
+        common_lookup == "horse"
+        and species_guess
+        and not is_expected_species(
+            species_guess,
+            expected_species,
+        )
     ):
         photo.breed_guess = breed_guess or species_guess
         photo.display_title = display_title or species_guess
@@ -564,7 +340,9 @@ def classification_image_path(photo: Photo) -> Path:
     if original_path.exists() and original_path.is_file():
         return original_path
 
-    raise HTTPException(status_code=404, detail="No image file found for classification")
+    raise HTTPException(
+        status_code=404, detail="No image file found for classification"
+    )
 
 
 def classify_with_fallback(image_path: Path, threshold: float) -> ClassificationResult:
@@ -576,7 +354,9 @@ def classify_with_fallback(image_path: Path, threshold: float) -> Classification
     except OllamaClassificationError as exc:
         errors.append(str(exc))
 
-    should_try_fallback = primary_result is None or primary_result.confidence < threshold
+    should_try_fallback = (
+        primary_result is None or primary_result.confidence < threshold
+    )
     if should_try_fallback and AI_FALLBACK_MODEL != AI_PRIMARY_MODEL:
         try:
             return classify_image(image_path, AI_FALLBACK_MODEL)
@@ -590,7 +370,9 @@ def classify_with_fallback(image_path: Path, threshold: float) -> Classification
     raise HTTPException(status_code=502, detail=detail)
 
 
-def apply_classification(photo: Photo, result: ClassificationResult, threshold: float) -> None:
+def apply_classification(
+    photo: Photo, result: ClassificationResult, threshold: float
+) -> None:
     photo.display_title = result.display_title
     photo.common_name = result.common_name
     photo.breed_guess = result.breed_guess
@@ -602,123 +384,17 @@ def apply_classification(photo: Photo, result: ClassificationResult, threshold: 
     apply_domestic_metadata_normalization(photo)
     photo.status = (
         "classified"
-        if result.is_animal and not result.needs_review and result.confidence >= threshold
+        if result.is_animal
+        and not result.needs_review
+        and result.confidence >= threshold
         else "needs_review"
     )
     photo.updated_at = utc_now()
 
 
-async def create_photo_from_upload(session: Session, file: UploadFile) -> Photo:
-    extension = clean_extension(file.filename or "")
-    if extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Unsupported image format")
-
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
-
-    try:
-        image = Image.open(BytesIO(contents))
-        image.load()
-    except UnidentifiedImageError as exc:
-        raise HTTPException(status_code=400, detail="Uploaded file is not a valid image") from exc
-
-    safe_id = uuid4().hex
-    stored_filename = f"{safe_id}.{extension}"
-    resized_filename = f"{safe_id}_resized.{extension}"
-    thumbnail_filename = f"{safe_id}_thumb.{extension}"
-
-    original_path = IMAGE_DIRS["original"] / stored_filename
-    resized_path = IMAGE_DIRS["resized"] / resized_filename
-    thumbnail_path = IMAGE_DIRS["thumbs"] / thumbnail_filename
-
-    ensure_storage()
-    try:
-        original_path.write_bytes(contents)
-    except OSError as exc:
-        logger.exception("Failed to store original image at %s", original_path)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to store original image file",
-        ) from exc
-
-    try:
-        save_variant(image, resized_path, extension, RESIZED_MAX_SIZE)
-        save_variant(image, thumbnail_path, extension, THUMBNAIL_MAX_SIZE)
-    except Exception as exc:
-        logger.exception(
-            "Failed to process uploaded image variants with Pillow: resized=%s thumbnail=%s",
-            resized_path,
-            thumbnail_path,
-        )
-        remove_partial_files((original_path, resized_path, thumbnail_path))
-        raise HTTPException(
-            status_code=400,
-            detail="Uploaded image could not be processed",
-        ) from exc
-
-    animal = Animal(identifier=f"FV-{uuid4().hex[:12].upper()}")
-    session.add(animal)
-    session.flush()
-    photo = Photo(
-        original_filename=Path(file.filename or "upload").name,
-        stored_filename=stored_filename,
-        resized_filename=resized_filename,
-        thumbnail_filename=thumbnail_filename,
-        animal_id=animal.id,
-    )
-    session.add(photo)
-    session.commit()
-    session.refresh(photo)
-    return photo
-
-
-def upload_error_detail(error: HTTPException) -> str:
-    return str(error.detail) if error.detail else "Upload failed"
-
-
-def snapshot_photo(photo: Photo) -> Photo:
-    return Photo(**photo.model_dump())
-
-
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.post("/photos/upload", response_model=Photo)
-async def upload_photo(session: SessionDep, file: UploadFile = File(...)) -> Photo:
-    return await create_photo_from_upload(session, file)
-
-
-@app.post("/photos/upload-batch", response_model=BatchUploadResponse)
-async def upload_photo_batch(
-    session: SessionDep,
-    files: list[UploadFile] = File(...),
-) -> BatchUploadResponse:
-    uploaded: list[Photo] = []
-    failed: list[BatchUploadFailure] = []
-
-    for file in files:
-        filename = Path(file.filename or "upload").name
-        try:
-            photo = await create_photo_from_upload(session, file)
-            uploaded.append(snapshot_photo(photo))
-        except HTTPException as exc:
-            failed.append(
-                BatchUploadFailure(filename=filename, error=upload_error_detail(exc))
-            )
-        except Exception:
-            logger.exception("Unexpected failure during batch upload for %s", filename)
-            failed.append(BatchUploadFailure(filename=filename, error="Upload failed"))
-
-    return BatchUploadResponse(uploaded=uploaded, failed=failed)
-
-
-@app.get("/photos", response_model=list[Photo])
-def list_photos(session: SessionDep) -> list[Photo]:
-    statement = select(Photo).order_by(Photo.created_at.desc())
-    return list(session.exec(statement).all())
 
 
 @app.post("/photos/classify-pending", response_model=ClassifyPendingResponse)
@@ -729,7 +405,7 @@ def classify_pending_photos(
     request = request or ClassifyPendingRequest()
     statement = (
         select(Photo)
-        .where(Photo.status == "pending")
+        .where(Photo.status == "pending", Photo.deleted_at.is_(None))
         .order_by(Photo.created_at.asc())
     )
 
@@ -843,30 +519,6 @@ def update_photo(photo_id: int, metadata: PhotoUpdate, session: SessionDep) -> P
     return photo
 
 
-@app.delete("/photos/{photo_id}")
-def delete_photo(photo_id: int, session: SessionDep) -> dict[str, int | str]:
-    photo = photo_or_404(photo_id, session)
-    image_files = (
-        ("original", photo.stored_filename),
-        ("resized", photo.resized_filename),
-        ("thumbs", photo.thumbnail_filename),
-    )
-
-    try:
-        for image_type, filename in image_files:
-            delete_photo_file(image_type, filename)
-    except OSError as exc:
-        logger.exception("Failed to delete image file for photo %s", photo_id)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to delete one or more image files",
-        ) from exc
-
-    session.delete(photo)
-    session.commit()
-    return {"status": "deleted", "photo_id": photo_id}
-
-
 @app.post("/photos/{photo_id}/mock-classify", response_model=Photo)
 def mock_classify_photo(photo_id: int, session: SessionDep) -> Photo:
     photo = photo_or_404(photo_id, session)
@@ -901,7 +553,7 @@ def classify_photo(photo_id: int, session: SessionDep) -> Photo:
     return photo
 
 
-GBIF_BASE_URL = os.getenv("GBIF_BASE_URL", "https://api.gbif.org/v1").rstrip("/")
+GBIF_BASE_URL = settings.gbif_base_url.rstrip("/")
 GBIF_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 TAXONOMY_CACHE_TTL_SECONDS = 600
 _taxonomy_search_cache: dict[str, tuple[float, list[dict]]] = {}
@@ -912,9 +564,11 @@ def normalized_species_group(value: str | None) -> str:
 
 
 def legacy_album_key(value: str | None) -> str:
-    encoded = base64.urlsafe_b64encode(
-        normalized_species_group(value).encode("utf-8")
-    ).decode("ascii").rstrip("=")
+    encoded = (
+        base64.urlsafe_b64encode(normalized_species_group(value).encode("utf-8"))
+        .decode("ascii")
+        .rstrip("=")
+    )
     return f"legacy:{encoded}"
 
 
@@ -985,8 +639,7 @@ def map_gbif_usage(usage: dict, common_name: str | None = None) -> dict:
         "provider": "gbif",
         "external_taxon_id": int(key),
         "scientific_name": usage.get("scientificName") or usage.get("canonicalName"),
-        "canonical_name": usage.get("canonicalName")
-        or usage.get("scientificName"),
+        "canonical_name": usage.get("canonicalName") or usage.get("scientificName"),
         "common_name": common_name,
         "rank": str(usage.get("rank", "SPECIES")).upper(),
         "kingdom": usage.get("kingdom"),
@@ -1055,11 +708,13 @@ def search_taxonomy(
     query = q.strip()
     local_taxa = list(
         session.exec(
-            select(Taxon).where(
+            select(Taxon)
+            .where(
                 (Taxon.scientific_name.contains(query))
                 | (Taxon.canonical_name.contains(query))
                 | (Taxon.common_name.contains(query))
-            ).limit(limit)
+            )
+            .limit(limit)
         ).all()
     )
     local_results = [taxon_to_candidate(taxon) for taxon in local_taxa]
@@ -1163,9 +818,11 @@ def select_animal_taxon(
     return {"animal": animal, "taxon": taxon_to_candidate(taxon)}
 
 
-def album_records(session: Session) -> tuple[list[Animal], list[Photo], dict[int, Taxon]]:
+def album_records(
+    session: Session,
+) -> tuple[list[Animal], list[Photo], dict[int, Taxon]]:
     animals = list(session.exec(select(Animal)).all())
-    photos = list(session.exec(select(Photo)).all())
+    photos = list(session.exec(select(Photo).where(Photo.deleted_at.is_(None))).all())
     taxa = {taxon.id: taxon for taxon in session.exec(select(Taxon)).all() if taxon.id}
     return animals, photos, taxa
 
@@ -1211,9 +868,7 @@ def album_summary(group: dict) -> dict:
         "album_key": group["album_key"],
         "verified": group["verified"],
         "common_name": taxon.common_name if taxon else None,
-        "scientific_name": (
-            taxon.canonical_name if taxon else group["legacy_name"]
-        ),
+        "scientific_name": (taxon.canonical_name if taxon else group["legacy_name"]),
         "rank": taxon.taxonomic_rank if taxon else None,
         "class": taxon.taxonomic_class if taxon else None,
         "order": taxon.taxonomic_order if taxon else None,
@@ -1243,8 +898,10 @@ def taxonomy_filters(session: SessionDep) -> dict:
         counts: dict[str, int] = defaultdict(int)
         for group in groups:
             taxon: Taxon | None = group["taxon"]
-            value = getattr(taxon, field_name) if taxon else (
-                group["legacy_name"] if field_name == "species" else None
+            value = (
+                getattr(taxon, field_name)
+                if taxon
+                else (group["legacy_name"] if field_name == "species" else None)
             )
             if value:
                 counts[value] += len(group["animals"])
@@ -1267,16 +924,27 @@ def list_species_albums(
     genus: str | None = None,
     species: str | None = None,
     only_with_photos: bool = False,
-    sort: str = Query(default="name", pattern="^(name|newest|animal_count|photo_count)$"),
+    sort: str = Query(
+        default="name", pattern="^(name|newest|animal_count|photo_count)$"
+    ),
 ) -> dict:
     summaries = [album_summary(group) for group in build_album_groups(session)]
     query = q.strip().lower()
     if query:
         summaries = [
-            item for item in summaries
-            if query in " ".join(
+            item
+            for item in summaries
+            if query
+            in " ".join(
                 str(item.get(field) or "").lower()
-                for field in ("common_name", "scientific_name", "class", "order", "family", "genus")
+                for field in (
+                    "common_name",
+                    "scientific_name",
+                    "class",
+                    "order",
+                    "family",
+                    "genus",
+                )
             )
         ]
     filters = {
@@ -1292,10 +960,12 @@ def list_species_albums(
     if only_with_photos:
         summaries = [item for item in summaries if item["photo_count"] > 0]
     if sort == "name":
-        summaries.sort(key=lambda item: (
-            (item["common_name"] or item["scientific_name"]).lower(),
-            item["album_key"],
-        ))
+        summaries.sort(
+            key=lambda item: (
+                (item["common_name"] or item["scientific_name"]).lower(),
+                item["album_key"],
+            )
+        )
     elif sort == "newest":
         summaries.sort(key=lambda item: item["newest_at"] or datetime.min, reverse=True)
     else:
@@ -1306,7 +976,7 @@ def list_species_albums(
     total = len(summaries)
     start = (page - 1) * page_size
     return {
-        "items": summaries[start:start + page_size],
+        "items": summaries[start : start + page_size],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -1315,7 +985,11 @@ def list_species_albums(
 
 def find_album_group(session: Session, album_key: str) -> dict:
     group = next(
-        (group for group in build_album_groups(session) if group["album_key"] == album_key),
+        (
+            group
+            for group in build_album_groups(session)
+            if group["album_key"] == album_key
+        ),
         None,
     )
     if group is None:
@@ -1344,13 +1018,13 @@ def get_species_album(
         **summary,
         "taxonomy": taxon_to_candidate(group["taxon"]) if group["taxon"] else None,
         "animals": {
-            "items": animals[animal_start:animal_start + animal_page_size],
+            "items": animals[animal_start : animal_start + animal_page_size],
             "total": len(animals),
             "page": animal_page,
             "page_size": animal_page_size,
         },
         "photos": {
-            "items": photos[photo_start:photo_start + photo_page_size],
+            "items": photos[photo_start : photo_start + photo_page_size],
             "total": len(photos),
             "page": photo_page,
             "page_size": photo_page_size,
@@ -1366,7 +1040,9 @@ def select_album_taxon(
 ) -> dict:
     group = find_album_group(session, album_key)
     if group["verified"]:
-        raise HTTPException(status_code=409, detail="Album already has verified taxonomy")
+        raise HTTPException(
+            status_code=409, detail="Album already has verified taxonomy"
+        )
     taxon = persist_gbif_taxon(session, selection.gbif_key)
     for animal in group["animals"]:
         assign_taxon(animal, taxon, "manually_linked")
@@ -1385,15 +1061,20 @@ def reconcile_taxonomy(
     session: SessionDep,
 ) -> dict:
     groups = [
-        group for group in build_album_groups(session)
+        group
+        for group in build_album_groups(session)
         if not group["verified"] and group["legacy_name"] != "Unidentified"
-    ][:request.limit]
+    ][: request.limit]
     result = {"processed": 0, "linked": 0, "ambiguous": 0, "unmatched": 0, "failed": 0}
     for group in groups:
         try:
             match = gbif_request(
                 "/species/match",
-                {"name": group["legacy_name"], "kingdom": "Animalia", "verbose": "true"},
+                {
+                    "name": group["legacy_name"],
+                    "kingdom": "Animalia",
+                    "verbose": "true",
+                },
             )
         except HTTPException:
             result["failed"] += len(group["animals"])
@@ -1423,7 +1104,9 @@ def reconcile_taxonomy(
         else:
             for animal in group["animals"]:
                 animal.taxonomy_status = status
-                animal.taxonomy_note = match.get("note") or "No confident exact GBIF match"
+                animal.taxonomy_note = (
+                    match.get("note") or "No confident exact GBIF match"
+                )
                 animal.updated_at = utc_now()
                 session.add(animal)
             result[status] += len(group["animals"])

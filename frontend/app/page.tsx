@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import {
+  ApiError,
   BatchUploadFailure,
   classifyPhoto,
   getPhotos,
@@ -21,6 +22,9 @@ import {
   uploadPhoto,
 } from "./lib/api";
 import AlbumBrowser from "./components/album-browser";
+import MoveToTrashButton from "./components/move-to-trash-button";
+import SuccessNotice from "./components/success-notice";
+import TrashBrowser from "./components/trash-browser";
 
 type StatusFilter = "all" | PhotoStatus;
 type SortOption =
@@ -35,10 +39,12 @@ type SortOption =
   | "needs_review_first"
   | "pending_first";
 type ViewMode = "flat" | "grouped";
-type CollectionView = "list" | "album";
+type CollectionView = "list" | "album" | "trash";
 type UploadNotice = {
   kind: "success" | "warning";
   message: string;
+  duplicatePhotoId?: number;
+  duplicateLocation?: "catalog" | "trash";
 };
 type ClassificationProgressStatus =
   | "queued"
@@ -556,7 +562,17 @@ function TagList({ tags, limit = 3 }: { tags: string[]; limit?: number }) {
   );
 }
 
-function PhotoCard({ photo }: { photo: Photo }) {
+function PhotoCard({
+  photo,
+  returnTo,
+  onMoved,
+  onError,
+}: {
+  photo: Photo;
+  returnTo: string;
+  onMoved: (photo: Photo) => void;
+  onError: (message: string) => void;
+}) {
   const thumbnailUrl = imageUrl("thumbs", photo.thumbnail_filename);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const imageFailed = failedImageUrl === thumbnailUrl;
@@ -565,7 +581,10 @@ function PhotoCard({ photo }: { photo: Photo }) {
 
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
-      <Link href={`/photos/${photo.id}`} className="block">
+      <Link
+        href={`/photos/${photo.id}?returnTo=${encodeURIComponent(returnTo)}`}
+        className="block"
+      >
         <div className="aspect-[4/3] overflow-hidden bg-stone-100">
           {imageFailed ? (
             <div className="flex h-full w-full items-center justify-center px-4 text-center text-sm font-medium text-stone-500">
@@ -585,7 +604,10 @@ function PhotoCard({ photo }: { photo: Photo }) {
       </Link>
 
       <div className="flex flex-1 flex-col p-4">
-        <Link href={`/photos/${photo.id}`} className="block flex-1">
+        <Link
+          href={`/photos/${photo.id}?returnTo=${encodeURIComponent(returnTo)}`}
+          className="block flex-1"
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2
@@ -620,7 +642,14 @@ function PhotoCard({ photo }: { photo: Photo }) {
             <span className="truncate">{photo.original_filename}</span>
           </div>
         </Link>
-
+        <div className="mt-3 border-t border-stone-100 pt-3">
+          <MoveToTrashButton
+            photo={photo}
+            onMoved={onMoved}
+            onError={onError}
+            className="min-h-9 w-full rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-600 hover:border-red-200 hover:text-red-700"
+          />
+        </div>
       </div>
     </article>
   );
@@ -810,6 +839,8 @@ export default function Home() {
     useState<ClassificationRunSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState<UploadNotice | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [returnTo, setReturnTo] = useState("/");
 
   const loadPhotos = useCallback(async () => {
     setIsLoading(true);
@@ -855,9 +886,20 @@ export default function Home() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (new URLSearchParams(window.location.search).get("view") === "album") {
-        setCollectionView("album");
+      setReturnTo(`${window.location.pathname}${window.location.search}`);
+      const storedNotice = window.sessionStorage.getItem("faunavault.success");
+      if (storedNotice) {
+        setSuccessNotice(storedNotice);
+        window.sessionStorage.removeItem("faunavault.success");
       }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [collectionView, searchQuery, statusFilter, categoryFilter, sortOption]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const view = new URLSearchParams(window.location.search).get("view");
+      if (view === "album" || view === "trash") setCollectionView(view);
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -965,7 +1007,19 @@ export default function Home() {
       setSelectedFiles([]);
       form.reset();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Upload failed");
+      if (
+        nextError instanceof ApiError &&
+        nextError.details.code === "duplicate_photo"
+      ) {
+        setUploadNotice({
+          kind: "warning",
+          message: nextError.message,
+          duplicatePhotoId: nextError.details.photo_id,
+          duplicateLocation: nextError.details.location,
+        });
+      } else {
+        setError(nextError instanceof Error ? nextError.message : "Upload failed");
+      }
     } finally {
       setIsUploading(false);
     }
@@ -1118,12 +1172,19 @@ export default function Home() {
   function changeCollectionView(view: CollectionView) {
     setCollectionView(view);
     const url = new URL(window.location.href);
-    if (view === "album") {
-      url.searchParams.set("view", "album");
+    if (view !== "list") {
+      url.searchParams.set("view", view);
     } else {
       url.searchParams.delete("view");
     }
     window.history.replaceState(null, "", url);
+  }
+
+  function handlePhotoMoved(photo: Photo) {
+    setPhotos((currentPhotos) =>
+      currentPhotos.filter((item) => item.id !== photo.id),
+    );
+    setSuccessNotice(`Moved ${photo.original_filename} to Trash.`);
   }
 
   return (
@@ -1208,7 +1269,24 @@ export default function Home() {
                     : "border-emerald-200 bg-emerald-50 text-emerald-800"
                 }`}
               >
-                {uploadNotice.message}
+                <p>{uploadNotice.message}</p>
+                {uploadNotice.duplicateLocation === "catalog" &&
+                uploadNotice.duplicatePhotoId ? (
+                  <Link
+                    href={`/photos/${uploadNotice.duplicatePhotoId}?returnTo=${encodeURIComponent(returnTo)}`}
+                    className="mt-2 inline-block font-semibold underline"
+                  >
+                    View existing photo
+                  </Link>
+                ) : uploadNotice.duplicateLocation === "trash" ? (
+                  <button
+                    type="button"
+                    onClick={() => changeCollectionView("trash")}
+                    className="mt-2 font-semibold underline"
+                  >
+                    View Trash
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </form>
@@ -1216,9 +1294,19 @@ export default function Home() {
       </section>
 
       <section className="mx-auto max-w-7xl px-6 py-6">
+        {successNotice ? (
+          <SuccessNotice
+            message={successNotice}
+            onDismiss={() => setSuccessNotice(null)}
+            onViewTrash={() => {
+              setSuccessNotice(null);
+              changeCollectionView("trash");
+            }}
+          />
+        ) : null}
         <div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="inline-grid min-h-11 grid-cols-2 rounded-lg border border-stone-200 bg-stone-100 p-1">
-            {(["list", "album"] as CollectionView[]).map((view) => (
+          <div className="inline-grid min-h-11 grid-cols-3 rounded-lg border border-stone-200 bg-stone-100 p-1">
+            {(["list", "album", "trash"] as CollectionView[]).map((view) => (
               <button
                 key={view}
                 type="button"
@@ -1236,12 +1324,16 @@ export default function Home() {
           <p className="text-sm text-stone-500 sm:text-right">
             {collectionView === "list"
               ? "Manage individual photo records"
-              : "Browse the collection by species"}
+              : collectionView === "album"
+                ? "Browse the collection by species"
+                : "Restore or permanently remove deleted photos"}
           </p>
         </div>
 
         {collectionView === "album" ? (
           <AlbumBrowser />
+        ) : collectionView === "trash" ? (
+          <TrashBrowser onNotice={setSuccessNotice} />
         ) : (
           <>
         <CatalogToolbar
@@ -1437,7 +1529,13 @@ export default function Home() {
         ) : visiblePhotos.length > 0 && viewMode === "flat" ? (
           <div className="grid items-stretch gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {visiblePhotos.map((photo) => (
-              <PhotoCard key={photo.id} photo={photo} />
+              <PhotoCard
+                key={photo.id}
+                photo={photo}
+                returnTo={returnTo}
+                onMoved={handlePhotoMoved}
+                onError={setError}
+              />
             ))}
           </div>
         ) : visiblePhotos.length > 0 ? (
@@ -1455,7 +1553,13 @@ export default function Home() {
                 </div>
                 <div className="grid items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                   {group.photos.map((photo) => (
-                    <PhotoCard key={photo.id} photo={photo} />
+                    <PhotoCard
+                      key={photo.id}
+                      photo={photo}
+                      returnTo={returnTo}
+                      onMoved={handlePhotoMoved}
+                      onError={setError}
+                    />
                   ))}
                 </div>
               </section>

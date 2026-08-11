@@ -157,7 +157,20 @@ function MetadataRow({
   );
 }
 
-export default function PhotoDetail({ id }: { id: string }) {
+function safeReturnLocation(returnTo: string | undefined) {
+  if (!returnTo || !returnTo.startsWith("/") || returnTo.startsWith("//")) {
+    return "/";
+  }
+  return returnTo;
+}
+
+export default function PhotoDetail({
+  id,
+  returnTo,
+}: {
+  id: string;
+  returnTo?: string;
+}) {
   const router = useRouter();
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [animal, setAnimal] = useState<Animal | null>(null);
@@ -413,7 +426,11 @@ export default function PhotoDetail({ id }: { id: string }) {
     setError(null);
     try {
       await deletePhoto(photo.id);
-      router.push("/");
+      window.sessionStorage.setItem(
+        "faunavault.success",
+        `Moved ${photo.original_filename} to Trash.`,
+      );
+      router.push(safeReturnLocation(returnTo));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Delete failed");
       setIsDeleteDialogOpen(false);
@@ -427,7 +444,7 @@ export default function PhotoDetail({ id }: { id: string }) {
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <Link
-            href="/"
+            href={safeReturnLocation(returnTo)}
             className="inline-flex w-fit rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 transition hover:border-emerald-300 hover:text-emerald-900"
           >
             Back to catalog
@@ -816,7 +833,7 @@ export default function PhotoDetail({ id }: { id: string }) {
                   disabled={isBusy || isEditingMetadata}
                   className="mt-3 min-h-11 w-full rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
                 >
-                  Delete photo
+                  Move to Trash
                 </button>
               </div>
             </aside>
@@ -844,17 +861,17 @@ export default function PhotoDetail({ id }: { id: string }) {
                   id="delete-photo-title"
                   className="mt-2 text-xl font-semibold text-stone-950"
                 >
-                  Delete photo
+                  Move photo to Trash
                 </h2>
                 <p
                   id="delete-photo-description"
                   className="mt-2 text-sm leading-6 text-stone-600"
                 >
-                  This will permanently remove{" "}
+                  This will hide{" "}
                   <span className="font-semibold text-stone-900">
                     {photo.original_filename}
                   </span>{" "}
-                  from your local animal archive. This cannot be undone.
+                  from your active collection. You can restore it from Trash.
                 </p>
               </div>
 
@@ -889,7 +906,7 @@ export default function PhotoDetail({ id }: { id: string }) {
                     disabled={isDeleting || !isDeleteConfirmationValid}
                     className="min-h-11 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-400"
                   >
-                    {isDeleting ? "Deleting photo" : "Delete photo"}
+                    {isDeleting ? "Moving photo" : "Move to Trash"}
                   </button>
                 </div>
               </form>

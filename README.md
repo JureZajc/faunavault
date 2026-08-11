@@ -1,81 +1,53 @@
 # FaunaVault
 
-FaunaVault is a local-first AI animal photo archive for organizing animal images on a Windows machine. It stores photo files on disk, keeps metadata in a local SQLite database, and shows the collection as a visual catalog with detail pages. AI classification runs through local Ollama, so no cloud storage is required.
+FaunaVault is a local-first animal photo archive. Originals and derived images stay on your computer, metadata lives in SQLite, and optional AI classification runs through local Ollama vision models. GBIF taxonomy lookup is the only network-backed product integration and degrades to locally cached taxonomy when unavailable.
 
-Images are stored locally under `E:/FaunaVault/data/images`, metadata is stored locally in `backend/data/faunavault.db`, and the backend talks to Ollama at `http://localhost:11434`. WSL was used earlier during development, but the documented runtime below is Windows only.
+![FaunaVault album view](faunavault-album-desktop.png)
 
-## Current Features
+## Features
 
-- Image upload
-- Local original, resized, and thumbnail image storage
-- Visual catalog view
-- Photo detail page
-- Mock classification for testing
-- Local Ollama classification
-- Delete photo and related image files
+- Single and batch image upload with JPEG, PNG, and WebP content validation
+- Exact duplicate detection using SHA-256, including duplicates currently in Trash
+- Original, resized, and thumbnail variants with EXIF orientation handling
+- Searchable/filterable photo catalog, species albums, animals, and GBIF taxonomy linking
+- Local Ollama classification with confidence-based review state and manual metadata editing
+- Recoverable Trash with restore and explicitly confirmed permanent deletion
+- Versioned, backed-up SQLite migrations and local-only storage
 
-## Tech Stack
+## Architecture and storage
 
-- Frontend: Next.js, TypeScript, Tailwind CSS
-- Backend: FastAPI, Python, uv, SQLModel
-- Database: SQLite
-- Image processing: Pillow
-- AI: Ollama with `qwen3-vl:8b` and `gemma4:e4b` fallback
-- Storage: local filesystem
+- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
+- Backend: FastAPI, Python 3.12+, SQLModel, SQLite, Pillow
+- AI: local Ollama (`qwen3-vl:8b`, with `gemma4:e4b` fallback by default)
 
-## Windows Setup
+The default Windows configuration stores image files under `E:/FaunaVault/data/images` and SQLite metadata under `backend/data/faunavault.db`. Existing `.env` values take precedence; upgrades do not relocate data. Originals are preserved byte-for-byte. Resized and thumbnail files are reproducible derivatives.
 
-Open PowerShell from the project root.
+Normal deletion only sets a deleted timestamp. Trash continues to reference the same local files. Permanent deletion stages variants in a private journal, commits the row deletion, and cleans the staged files; interrupted work is reconciled on the next backend startup.
 
-Check `uv`:
+## Windows setup
 
-```powershell
-uv --version
-```
-
-If `uv` is missing, install uv for Windows from the official uv installation instructions, then open a new PowerShell window and check again.
-
-Check Node.js and npm:
+Install Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 24+, npm, and [Ollama](https://ollama.com/). From the repository root:
 
 ```powershell
-node --version
-npm --version
-```
-
-Check Ollama:
-
-```powershell
-ollama list
-curl http://localhost:11434/api/tags
-```
-
-Pull the primary vision model:
-
-```powershell
+cd backend
+uv sync
 ollama pull qwen3-vl:8b
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The configured fallback model is `gemma4:e4b`.
-
-Create the local image folders:
+In a second terminal:
 
 ```powershell
-New-Item -ItemType Directory -Force E:/FaunaVault/data/images/original
-New-Item -ItemType Directory -Force E:/FaunaVault/data/images/resized
-New-Item -ItemType Directory -Force E:/FaunaVault/data/images/thumbs
+cd frontend
+npm ci
+npm run dev
 ```
 
-## Environment Configuration
+Open [http://localhost:3000](http://localhost:3000). Backend health is available at [http://localhost:8000/health](http://localhost:8000/health).
 
-Example files are included for local setup:
+## Configuration
 
-- Root example: `.env.example`
-- Backend example: `backend/.env.example`
-- Frontend example: `frontend/.env.local.example`
-
-Do not commit real local config files such as `backend/.env` or `frontend/.env.local`.
-
-Backend values:
+Copy `backend/.env.example` and `frontend/.env.local.example` to their non-example names as needed. Important backend values:
 
 ```env
 DATA_DIR=E:/FaunaVault/data
@@ -85,42 +57,51 @@ OLLAMA_BASE_URL=http://localhost:11434
 AI_PRIMARY_MODEL=qwen3-vl:8b
 AI_FALLBACK_MODEL=gemma4:e4b
 AI_CONFIDENCE_THRESHOLD=0.65
+MAX_UPLOAD_BYTES=52428800
+MAX_IMAGE_PIXELS=80000000
 ```
 
-Frontend value:
+Frontend:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-## Run The Backend
+## Validation
 
 ```powershell
 cd backend
-uv sync
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv sync --frozen
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+
+cd ../frontend
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
-## Run The Frontend
+## Backup and recovery
 
-In a second PowerShell window from the project root:
+Use a cold backup for a consistent, easy-to-understand recovery point:
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+1. Stop the backend so no upload, edit, classification, migration, or Trash operation is running.
+2. Copy the resolved SQLite database file shown by `DATABASE_URL`.
+3. Copy the complete `IMAGE_DIR`, including hidden `.purge` data if an interrupted permanent deletion exists.
+4. Store both copies together and record the date plus configured paths.
 
-## Browser URLs
+To restore, keep FaunaVault stopped, preserve the current database/image directory as a separate fallback, restore both members of the same backup set to their configured paths, then start the backend. Check the catalog, Trash, albums, and several original images before removing the fallback copy. Never restore only the database or only the image directory.
 
-- Frontend: [http://localhost:3000](http://localhost:3000/)
-- Backend health: [http://localhost:8000/health](http://localhost:8000/health)
-- Ollama tags: [http://localhost:11434/api/tags](http://localhost:11434/api/tags)
+Before schema upgrades, FaunaVault creates timestamped SQLite backups next to the active database. These supplement but do not replace full archive backups.
 
-## Future Ideas
+## Troubleshooting
 
-- Manual metadata correction
-- Category filters
-- Search
-- Duplicate detection
-- Docker support later
+- Ollama unavailable: verify `ollama list` and `curl http://localhost:11434/api/tags`.
+- Duplicate response: open the referenced catalog photo or use “View Trash” and restore the deleted copy.
+- Image rejected: confirm extension, MIME type, actual format, file size, and pixel dimensions agree with configured limits.
+- Migration failure: keep the backend stopped and inspect the newest `*.pre-migrate-*.db` backup before retrying.
+
+See [docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md) for the audit and prioritized remaining work.

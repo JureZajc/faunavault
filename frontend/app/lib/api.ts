@@ -16,6 +16,10 @@ export type Photo = {
   tags: string[];
   status: PhotoStatus;
   animal_id: number | null;
+  content_sha256: string | null;
+  original_size_bytes: number | null;
+  media_type: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -111,6 +115,9 @@ export type PhotoUpdate = Partial<{
 export type BatchUploadFailure = {
   filename: string;
   error: string;
+  code: string | null;
+  photo_id: number | null;
+  location: "catalog" | "trash" | null;
 };
 
 export type BatchUploadResponse = {
@@ -138,6 +145,24 @@ export type ClassifyPendingResponse = {
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+export type ApiErrorDetails = {
+  code?: string;
+  message?: string;
+  photo_id?: number;
+  location?: "catalog" | "trash";
+};
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly details: ApiErrorDetails = {},
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 function formatErrorDetail(detail: unknown) {
   if (typeof detail === "string") {
@@ -171,7 +196,26 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(formatErrorDetail(body?.detail));
+    const detail = body?.detail;
+    const safeDetails: ApiErrorDetails =
+      typeof detail === "object" && detail !== null && !Array.isArray(detail)
+        ? {
+            code: typeof detail.code === "string" ? detail.code : undefined,
+            message:
+              typeof detail.message === "string" ? detail.message : undefined,
+            photo_id:
+              typeof detail.photo_id === "number" ? detail.photo_id : undefined,
+            location:
+              detail.location === "catalog" || detail.location === "trash"
+                ? detail.location
+                : undefined,
+          }
+        : {};
+    throw new ApiError(
+      safeDetails.message ?? formatErrorDetail(detail),
+      response.status,
+      safeDetails,
+    );
   }
 
   return response.json() as Promise<T>;
@@ -264,9 +308,30 @@ export function getPhoto(id: string) {
 }
 
 export function deletePhoto(id: number) {
-  return request<{ status: string; photo_id: number }>(`/photos/${id}`, {
+  return request<{ status: "trashed"; photo_id: number }>(`/photos/${id}`, {
     method: "DELETE",
   });
+}
+
+export function getTrashPhotos(page = 1, pageSize = 24) {
+  return request<Paginated<Photo>>(
+    `/trash/photos?page=${page}&page_size=${pageSize}`,
+  );
+}
+
+export function restoreTrashPhoto(id: number) {
+  return request<{ status: "restored"; photo_id: number }>(
+    `/trash/photos/${id}/restore`,
+    { method: "POST" },
+  );
+}
+
+export function permanentlyDeleteTrashPhoto(id: number) {
+  return request<{
+    status: "deleted";
+    photo_id: number;
+    missing_files: number;
+  }>(`/trash/photos/${id}`, { method: "DELETE" });
 }
 
 export function updatePhoto(id: number, metadata: PhotoUpdate) {
