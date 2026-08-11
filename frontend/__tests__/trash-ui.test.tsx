@@ -63,15 +63,38 @@ beforeEach(() => {
 
 test("restores a photo and removes it from the Trash view", async () => {
   const onNotice = vi.fn();
-  render(<TrashBrowser onNotice={onNotice} />);
+  const onRestored = vi.fn();
+  render(<TrashBrowser onNotice={onNotice} onRestored={onRestored} />);
   await userEvent.click(await screen.findByRole("button", { name: "Restore" }));
   expect(api.restoreTrashPhoto).toHaveBeenCalledWith(7);
   expect(screen.queryByText("Red fox")).toBeNull();
+  expect(onRestored).toHaveBeenCalledWith(photo());
   expect(onNotice).toHaveBeenCalledWith("Restored fox.jpg to the catalog.");
 });
 
+test("does not report a successful backend restore as failed when catalog sync fails", async () => {
+  const onNotice = vi.fn();
+  render(
+    <TrashBrowser
+      onNotice={onNotice}
+      onRestored={vi.fn().mockRejectedValue(new Error("Catalog unavailable"))}
+    />,
+  );
+
+  await userEvent.click(await screen.findByRole("button", { name: "Restore" }));
+
+  expect(await screen.findByText("Trash is empty.")).toBeTruthy();
+  expect(onNotice).toHaveBeenCalledWith("Restored fox.jpg to the catalog.");
+  expect(
+    screen.getByText(
+      "Photo was restored, but the catalog could not be updated: Catalog unavailable",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText("Restore failed")).toBeNull();
+});
+
 test("requires the filename before permanent deletion", async () => {
-  render(<TrashBrowser onNotice={vi.fn()} />);
+  render(<TrashBrowser onNotice={vi.fn()} onRestored={vi.fn()} />);
   await userEvent.click(
     await screen.findByRole("button", { name: "Permanently delete" }),
   );
