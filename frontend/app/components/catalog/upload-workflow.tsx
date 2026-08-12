@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef } from "react";
 import PossibleDuplicateReview from "../possible-duplicate-review";
 import { usePhotoUpload } from "../../hooks/use-photo-upload";
+import UploadProgressList from "./upload-progress-list";
 
 type UploadWorkflowProps = {
   refreshCatalog: () => Promise<unknown>;
@@ -18,19 +18,19 @@ export default function UploadWorkflow({
   returnTo,
   onViewTrash,
 }: UploadWorkflowProps) {
-  const uploadButtonRef = useRef<HTMLButtonElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const focusTimer = useRef<number | null>(null);
-  const focusUploadTrigger = useCallback(() => {
+  const focusFilePicker = useCallback(() => {
     if (focusTimer.current !== null) window.clearTimeout(focusTimer.current);
     focusTimer.current = window.setTimeout(() => {
       focusTimer.current = null;
-      uploadButtonRef.current?.focus();
+      fileInputRef.current?.focus();
     }, 0);
   }, []);
   const upload = usePhotoUpload({
     refreshCatalog,
     onError,
-    onQueueDrained: focusUploadTrigger,
+    onQueueDrained: focusFilePicker,
   });
 
   useEffect(() => {
@@ -41,8 +41,12 @@ export default function UploadWorkflow({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void upload.submit(event.currentTarget);
+    void upload.actions.submit(event.currentTarget);
   }
+
+  const selectedCount = upload.state.isSelectionReady
+    ? upload.state.summary.total
+    : 0;
 
   return (
     <>
@@ -54,81 +58,58 @@ export default function UploadWorkflow({
           <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
             Add to collection
           </span>
-          <span className="mt-2 flex min-h-12 cursor-pointer items-center rounded-md border border-dashed border-stone-300 bg-white px-3 text-sm text-stone-600 transition hover:border-emerald-500">
+          <span className="mt-2 flex min-h-12 cursor-pointer items-center rounded-md border border-dashed border-stone-300 bg-white px-3 text-sm text-stone-600 transition hover:border-emerald-500 focus-within:border-emerald-700 focus-within:ring-2 focus-within:ring-emerald-700/20 has-[:disabled]:cursor-not-allowed has-[:disabled]:bg-stone-100">
             <input
+              ref={fileInputRef}
               type="file"
               accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
               onChange={(event) =>
-                upload.selectFiles(Array.from(event.target.files ?? []))
+                upload.actions.selectFiles(Array.from(event.target.files ?? []))
               }
               multiple
-              disabled={upload.hasPendingReviews}
+              disabled={upload.state.isQueueActive}
               className="sr-only"
             />
-            <span className="truncate">{upload.selectedFileLabel}</span>
+            <span className="truncate">{upload.state.selectedFileLabel}</span>
           </span>
         </label>
-        {upload.selectedFiles.length > 0 ? (
+        {selectedCount > 0 ? (
           <p className="mt-2 text-xs text-stone-500">
-            {upload.selectedFiles.length}{" "}
-            {upload.selectedFiles.length === 1 ? "file" : "files"} ready to
+            {selectedCount} {selectedCount === 1 ? "file" : "files"} ready to
             upload.
           </p>
         ) : null}
         <button
-          ref={uploadButtonRef}
           type="submit"
-          disabled={
-            upload.selectedFiles.length === 0 ||
-            upload.isUploading ||
-            upload.hasPendingReviews
-          }
+          disabled={!upload.state.canSubmit}
           className="mt-3 min-h-11 w-full rounded-md bg-emerald-800 px-5 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
         >
-          {upload.isUploading
-            ? `Uploading ${upload.selectedFiles.length} ${upload.selectedFiles.length === 1 ? "photo" : "photos"}`
-            : upload.selectedFiles.length > 1
+          {upload.state.isQueueActive
+            ? upload.state.isProcessing
+              ? "Uploading photos"
+              : "Review uploads"
+            : selectedCount > 1
               ? "Upload photos"
               : "Upload photo"}
         </button>
-        {upload.notice ? (
-          <div
-            className={`mt-3 rounded-md border px-3 py-2 text-sm ${
-              upload.notice.kind === "warning"
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-emerald-200 bg-emerald-50 text-emerald-800"
-            }`}
-          >
-            <p>{upload.notice.message}</p>
-            {upload.notice.duplicateLocation === "catalog" &&
-            upload.notice.duplicatePhotoId ? (
-              <Link
-                href={`/photos/${upload.notice.duplicatePhotoId}?returnTo=${encodeURIComponent(returnTo)}`}
-                className="mt-2 inline-block font-semibold underline"
-              >
-                View existing photo
-              </Link>
-            ) : upload.notice.duplicateLocation === "trash" ? (
-              <button
-                type="button"
-                onClick={onViewTrash}
-                className="mt-2 font-semibold underline"
-              >
-                View Trash
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+        <UploadProgressList
+          items={upload.state.items}
+          statusMessage={upload.state.statusMessage}
+          catalogRefreshError={upload.state.catalogRefreshError}
+          returnTo={returnTo}
+          onViewTrash={onViewTrash}
+          onRetry={(itemId) => void upload.actions.retryItem(itemId)}
+        />
       </form>
-      {upload.currentReview ? (
+      {upload.state.currentReview ? (
         <PossibleDuplicateReview
-          key={upload.currentReview.reviewId}
-          file={upload.currentReview.file}
-          candidates={upload.currentReview.candidates}
-          isSubmitting={upload.isConfirmingReview}
-          error={upload.reviewError}
-          onKeep={() => void upload.keepCurrentReview()}
-          onCancel={upload.cancelCurrentReview}
+          key={upload.state.currentReview.id}
+          file={upload.state.currentReview.file}
+          candidates={upload.state.currentReview.candidates}
+          isSubmitting={upload.state.isConfirmingReview}
+          error={upload.state.currentReview.error}
+          onKeep={() => void upload.actions.keepCurrentReview()}
+          onCancel={upload.actions.cancelCurrentReview}
         />
       ) : null}
     </>
