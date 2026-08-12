@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.album_identity import parse_album_key
+from app.clients.gbif import (
+    GBIF_UNAVAILABLE_DETAIL,
+    GbifClientDep,
+    GbifClientError,
+)
 from app.db import SessionDep
-from app.models import Taxon
 from app.schemas import (
     AlbumDetailRead,
     AlbumPage,
@@ -33,9 +36,7 @@ def _identity_or_404(album_key: str):
     return identity
 
 
-def create_albums_router(
-    persist_taxon: Callable[[Session, int], Taxon],
-) -> APIRouter:
+def create_albums_router() -> APIRouter:
     router = APIRouter(tags=["albums"])
 
     @router.get("/taxonomy/filters", response_model=TaxonomyFiltersRead)
@@ -101,13 +102,14 @@ def create_albums_router(
         album_key: str,
         selection: TaxonSelection,
         session: SessionDep,
+        client: GbifClientDep,
     ):
         try:
             return assign_album_taxon(
                 session,
                 _identity_or_404(album_key),
                 selection.gbif_key,
-                persist_taxon,
+                client,
             )
         except AlbumNotFoundError as exc:
             raise HTTPException(
@@ -117,6 +119,17 @@ def create_albums_router(
             raise HTTPException(
                 status_code=409,
                 detail="Album already has verified taxonomy",
+            ) from exc
+        except GbifClientError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=GBIF_UNAVAILABLE_DETAIL,
+            ) from exc
+        except (RuntimeError, SQLAlchemyError) as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="Taxonomy update failed",
             ) from exc
 
     return router

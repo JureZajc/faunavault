@@ -48,3 +48,20 @@ unchanged for display and URL compatibility. Generated isolated query plans use
 the existing photo relationship/active indexes and animal taxon index; a tested
 additional photo composite index did not improve those plans, so no speculative
 photo index was added.
+
+Taxonomy is local-first and separated from remote GBIF access. Every taxonomy
+search reads current local `Taxon` rows from SQLite, then merges parsed remote
+GBIF search records. Successful remote search records alone are cached in a
+bounded in-process cache for ten minutes; cache hits are re-deduplicated against
+fresh local state. If GBIF fails, matching local results remain available with a
+warning, while a search with no local result retains the safe HTTP 503 response.
+
+`app.clients.gbif.GbifClient` owns GBIF requests, response validation, accepted
+taxon resolution, a 3-second connection timeout, and a 10-second request/read
+timeout. It performs no automatic retries. The application lifespan owns one
+underlying synchronous `httpx.Client` and explicitly closes it during shutdown,
+including exceptional cleanup paths. Taxonomy services receive the client
+explicitly, so backend tests use deterministic fakes or `httpx.MockTransport`
+and never require internet access. Remote resolution finishes before short
+SQLite write transactions; accepted GBIF taxa are reused through the existing
+unique provider/external-ID constraint.

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+import logging
 
 from sqlalchemy import (
     String,
@@ -24,8 +23,16 @@ from app.album_identity import (
     legacy_album_key_from_group,
     taxon_album_key,
 )
+from app.clients.gbif import GbifClient
 from app.models import Animal, Photo, Taxon, utc_now
-from app.services.taxonomy import taxon_to_candidate
+from app.services.taxonomy import (
+    legacy_taxonomy_groups_query,
+    persist_taxon_selection,
+    prepare_taxon_selection,
+    taxon_to_candidate,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class AlbumNotFoundError(Exception):
@@ -34,50 +41,6 @@ class AlbumNotFoundError(Exception):
 
 class AlbumAlreadyVerifiedError(Exception):
     pass
-
-
-@dataclass(frozen=True)
-class LegacyReconciliationGroup:
-    legacy_group: str
-    legacy_name: str
-    animal_count: int
-
-
-def _legacy_groups_without_photos():
-    core = (
-        select(
-            Animal.legacy_species_group.label("legacy_group"),
-            func.min(Animal.id).label("representative_id"),
-            func.count(Animal.id).label("animal_count"),
-        )
-        .select_from(Animal)
-        .outerjoin(Taxon, Animal.taxon_id == Taxon.id)
-        .where(Taxon.id.is_(None))
-        .group_by(Animal.legacy_species_group)
-        .subquery("legacy_groups_without_photos")
-    )
-    representative = aliased(Animal)
-    legacy_name = case(
-        (
-            or_(
-                representative.legacy_species_name.is_(None),
-                representative.legacy_species_name == "",
-            ),
-            "Unidentified",
-        ),
-        else_=representative.legacy_species_name,
-    )
-    return (
-        select(
-            core.c.legacy_group,
-            core.c.representative_id,
-            legacy_name.label("legacy_name"),
-            core.c.animal_count,
-        )
-        .select_from(core)
-        .join(representative, representative.id == core.c.representative_id)
-        .subquery("legacy_groups")
-    )
 
 
 def _photo_stats():
@@ -377,7 +340,7 @@ def taxonomy_filters(session: Session) -> dict:
         "genera": Taxon.genus,
         "species": Taxon.species,
     }
-    legacy = _legacy_groups_without_photos()
+    legacy = legacy_taxonomy_groups_query()
     for output_name, field in field_map.items():
         verified = (
             select(field.label("value"), func.count(Animal.id).label("count"))
@@ -485,7 +448,7 @@ def assign_album_taxon(
     session: Session,
     identity: AlbumIdentity,
     gbif_key: int,
-    persist_taxon: Callable[[Session, int], Taxon],
+    client: GbifClient,
 ) -> dict:
     groups = _album_groups(identity)
     row = session.execute(select(groups)).mappings().first()
@@ -493,75 +456,45 @@ def assign_album_taxon(
         raise AlbumNotFoundError
     if identity.kind == "taxon":
         raise AlbumAlreadyVerifiedError
+    expected_count = row.animal_count
     try:
-        taxon = persist_taxon(session, gbif_key)
-        now = utc_now()
-        result = session.execute(
-            update(Animal)
-            .where(_unverified_group_condition(identity.legacy_group or ""))
-            .values(
-                taxon_id=taxon.id,
-                taxonomy_status="manually_linked",
-                taxonomy_note=None,
-                updated_at=now,
+        selection = prepare_taxon_selection(session, client, gbif_key)
+        with session.begin():
+            current = (
+                session.execute(select(_album_groups(identity))).mappings().first()
             )
-        )
-        updated = result.rowcount
-        if updated != row.animal_count:
-            raise RuntimeError("Album membership changed during taxonomy assignment")
-        session.commit()
+            if current is None or current.animal_count != expected_count:
+                raise RuntimeError(
+                    "Album membership changed during taxonomy assignment"
+                )
+            taxon = persist_taxon_selection(session, selection)
+            now = utc_now()
+            result = session.execute(
+                update(Animal)
+                .where(_unverified_group_condition(identity.legacy_group or ""))
+                .values(
+                    taxon_id=taxon.id,
+                    taxonomy_status="manually_linked",
+                    taxonomy_note=None,
+                    updated_at=now,
+                )
+            )
+            updated = result.rowcount
+            if updated != expected_count:
+                raise RuntimeError(
+                    "Album membership changed during taxonomy assignment"
+                )
+            response = {
+                "album_key": taxon_album_key(taxon.id or 0),
+                "updated_animals": updated,
+                "taxon": taxon_to_candidate(taxon),
+            }
     except Exception:
         session.rollback()
+        logger.exception(
+            "Album taxonomy assignment album_key=%s gbif_key=%s failed",
+            _album_key(row),
+            gbif_key,
+        )
         raise
-    return {
-        "album_key": taxon_album_key(taxon.id or 0),
-        "updated_animals": updated,
-        "taxon": taxon_to_candidate(taxon),
-    }
-
-
-def list_legacy_reconciliation_groups(
-    session: Session, limit: int
-) -> list[LegacyReconciliationGroup]:
-    groups = _legacy_groups_without_photos()
-    rows = (
-        session.execute(
-            select(groups)
-            .where(groups.c.legacy_name != "Unidentified")
-            .order_by(groups.c.representative_id)
-            .limit(limit)
-        )
-        .mappings()
-        .all()
-    )
-    return [
-        LegacyReconciliationGroup(
-            legacy_group=row.legacy_group,
-            legacy_name=row.legacy_name,
-            animal_count=row.animal_count,
-        )
-        for row in rows
-    ]
-
-
-def update_reconciliation_group(
-    session: Session,
-    group: LegacyReconciliationGroup,
-    *,
-    taxon: Taxon | None = None,
-    status: str,
-    note: str | None = None,
-) -> int:
-    values = {
-        "taxonomy_status": status,
-        "taxonomy_note": note,
-        "updated_at": utc_now(),
-    }
-    if taxon is not None:
-        values["taxon_id"] = taxon.id
-    result = session.execute(
-        update(Animal)
-        .where(_unverified_group_condition(group.legacy_group))
-        .values(**values)
-    )
-    return result.rowcount
+    return response

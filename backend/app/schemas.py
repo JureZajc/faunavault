@@ -50,7 +50,7 @@ class PhotoUpdate(SQLModel):
 
 
 class TaxonSelection(SQLModel):
-    gbif_key: int
+    gbif_key: int = Field(ge=1)
 
 
 class ReconcileRequest(SQLModel):
@@ -231,6 +231,20 @@ class TaxonCandidateRead(SQLModel):
     genus: str | None
     species: str | None
     cached: bool
+
+
+class TaxonomySearchResponse(SQLModel):
+    results: list[TaxonCandidateRead]
+    external_available: bool
+    warning: str | None
+
+
+class ReconcileResponse(SQLModel):
+    processed: int
+    linked: int
+    ambiguous: int
+    unmatched: int
+    failed: int
 
 
 class AlbumSummaryRead(SQLModel):

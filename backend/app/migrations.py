@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import shutil
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -27,6 +28,94 @@ def database_path_for_engine(engine: Engine) -> Path | None:
         return None
     path = Path(url.database)
     return path if path.is_absolute() else (BACKEND_DIR / path).resolve()
+
+
+def backup_database_before_taxonomy_migration(engine: Engine) -> None:
+    database_path = database_path_for_engine(engine)
+    if database_path is None or not database_path.exists():
+        return
+    backup_path = database_path.with_suffix(".pre-taxonomy.bak")
+    if not backup_path.exists():
+        shutil.copy2(database_path, backup_path)
+
+
+def migrate_animals_and_taxonomy(engine: Engine) -> None:
+    """Add the nullable photo link and conservatively backfill one animal per photo."""
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS schema_migration "
+                "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
+            )
+        )
+        applied = connection.execute(
+            text("SELECT 1 FROM schema_migration WHERE version = 1")
+        ).first()
+        columns = _columns(connection, "photo")
+        if "animal_id" not in columns:
+            connection.execute(text("ALTER TABLE photo ADD COLUMN animal_id INTEGER"))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_photo_animal_id ON photo (animal_id)"
+                )
+            )
+        if applied is None:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO animal (
+                        identifier, display_name, taxon_id, legacy_common_name,
+                        legacy_species_name, taxonomy_status, taxonomy_note,
+                        created_at, updated_at
+                    )
+                    SELECT
+                        printf('FV-P%06d', p.id), NULL, NULL, p.common_name,
+                        p.species_guess, 'unreviewed', NULL, p.created_at, p.updated_at
+                    FROM photo p
+                    WHERE p.animal_id IS NULL
+                    """
+                )
+            )
+            animal_columns = _columns(connection, "animal")
+            if "legacy_species_group" in animal_columns:
+                rows = connection.execute(
+                    text("SELECT id, legacy_species_name FROM animal")
+                ).all()
+                if rows:
+                    connection.execute(
+                        text(
+                            "UPDATE animal "
+                            "SET legacy_species_group = :legacy_species_group "
+                            "WHERE id = :animal_id"
+                        ),
+                        [
+                            {
+                                "animal_id": animal_id,
+                                "legacy_species_group": normalize_legacy_species_group(
+                                    legacy_name
+                                ),
+                            }
+                            for animal_id, legacy_name in rows
+                        ],
+                    )
+            connection.execute(
+                text(
+                    """
+                    UPDATE photo
+                    SET animal_id = (
+                        SELECT a.id FROM animal a
+                        WHERE a.identifier = printf('FV-P%06d', photo.id)
+                    )
+                    WHERE animal_id IS NULL
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO schema_migration(version, applied_at) "
+                    "VALUES (1, CURRENT_TIMESTAMP)"
+                )
+            )
 
 
 def create_migration_backup(database_path: Path) -> Path | None:

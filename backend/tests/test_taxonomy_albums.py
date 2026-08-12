@@ -1,19 +1,76 @@
 import base64
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 import app.main as main
+import app.services.albums as albums_service
 from app.album_identity import (
     legacy_album_key,
     normalize_legacy_species_group,
     parse_album_key,
     taxon_album_key,
 )
+from app.clients.gbif import (
+    GbifClient,
+    GbifClientError,
+    GbifMatch,
+    GbifResolvedTaxon,
+    GbifUsage,
+    get_gbif_client,
+)
 from app.config import Settings
 from app.services.albums import assign_album_taxon
+from app.services.taxonomy import search_taxonomy
+
+
+class FakeGbifClient:
+    def __init__(self):
+        self.search_handler = lambda _query, _limit: (_ for _ in ()).throw(
+            GbifClientError("unavailable", "search")
+        )
+        self.resolve_handler = lambda _key: (_ for _ in ()).throw(
+            GbifClientError("unavailable", "resolve")
+        )
+        self.match_handler = lambda _name: (_ for _ in ()).throw(
+            GbifClientError("unavailable", "match")
+        )
+        self.closed = False
+
+    def search_taxa(self, query, limit):
+        return self.search_handler(query, limit)
+
+    def resolve_taxon(self, key):
+        return self.resolve_handler(key)
+
+    def match_taxon(self, name):
+        return self.match_handler(name)
+
+    def close(self):
+        self.closed = True
+
+
+def resolved_taxon(key, canonical_name, common_name=None, **ranks):
+    return GbifResolvedTaxon(
+        requested_key=key,
+        usage=GbifUsage(
+            key=key,
+            scientific_name=ranks.get("scientific_name", canonical_name),
+            canonical_name=canonical_name,
+            common_name=common_name,
+            rank=ranks.get("rank", "SPECIES"),
+            kingdom=ranks.get("kingdom", "Animalia"),
+            phylum=ranks.get("phylum"),
+            taxonomic_class=ranks.get("taxonomic_class"),
+            taxonomic_order=ranks.get("taxonomic_order"),
+            family=ranks.get("family"),
+            genus=ranks.get("genus"),
+            species=ranks.get("species", canonical_name),
+        ),
+    )
 
 
 @pytest.fixture()
@@ -34,17 +91,22 @@ def database(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "DATABASE_PATH", tmp_path / "test.db")
     monkeypatch.setattr(main, "IMAGE_ROOT", settings.image_dir)
     monkeypatch.setattr(main, "IMAGE_DIRS", settings.image_dirs)
-    main._taxonomy_search_cache.clear()
     return engine
 
 
 @pytest.fixture()
-def client(database):
+def fake_gbif():
+    return FakeGbifClient()
+
+
+@pytest.fixture()
+def client(database, fake_gbif):
     def session_override():
         with Session(database) as session:
             yield session
 
     main.app.dependency_overrides[main.get_session] = session_override
+    main.app.dependency_overrides[get_gbif_client] = lambda: fake_gbif
     with TestClient(main.app) as test_client:
         yield test_client
     main.app.dependency_overrides.clear()
@@ -411,30 +473,23 @@ def test_album_detail_paginates_and_rejects_invalid_keys(client, database):
         assert client.get(f"/species-albums/{invalid}").status_code == 404
 
 
-def test_taxon_persistence_and_album_assignment(client, database, monkeypatch):
+def test_taxon_persistence_and_album_assignment(client, database, fake_gbif):
     with Session(database) as session:
         animal = add_animal_with_photos(session, "lion", 1)
         animal_id = animal.id
         album_key = legacy_album_key("lion")
 
-    def fake_request(path, params=None):
-        assert path == "/species/5219404"
-        return {
-            "key": 5219404,
-            "scientificName": "Panthera leo (Linnaeus, 1758)",
-            "canonicalName": "Panthera leo",
-            "rank": "SPECIES",
-            "kingdom": "Animalia",
-            "phylum": "Chordata",
-            "class": "Mammalia",
-            "order": "Carnivora",
-            "family": "Felidae",
-            "genus": "Panthera",
-            "species": "Panthera leo",
-        }
-
-    monkeypatch.setattr(main, "gbif_request", fake_request)
-    monkeypatch.setattr(main, "preferred_vernacular", lambda key: "Lion")
+    fake_gbif.resolve_handler = lambda key: resolved_taxon(
+        key,
+        "Panthera leo",
+        "Lion",
+        scientific_name="Panthera leo (Linnaeus, 1758)",
+        phylum="Chordata",
+        taxonomic_class="Mammalia",
+        taxonomic_order="Carnivora",
+        family="Felidae",
+        genus="Panthera",
+    )
     response = client.put(
         f"/species-albums/{album_key}/taxon", json={"gbif_key": 5219404}
     )
@@ -443,10 +498,10 @@ def test_taxon_persistence_and_album_assignment(client, database, monkeypatch):
         stored = session.get(main.Animal, animal_id)
         assert stored.taxonomy_status == "manually_linked"
         assert stored.taxon_id is not None
-        assert len(session.exec(main.select(main.Taxon)).all()) == 1
+        assert len(session.exec(select(main.Taxon)).all()) == 1
 
 
-def test_album_assignment_updates_exact_normalized_group(client, database, monkeypatch):
+def test_album_assignment_updates_exact_normalized_group(client, database, fake_gbif):
     with Session(database) as session:
         first = add_named_animal(session, "FV-LINK-1", "  Panthera   leo ")
         second = add_named_animal(session, "FV-LINK-2", "PANTHERA LEO")
@@ -454,19 +509,7 @@ def test_album_assignment_updates_exact_normalized_group(client, database, monke
         session.commit()
         ids = first.id, second.id, other.id
 
-    monkeypatch.setattr(
-        main,
-        "gbif_request",
-        lambda path, params=None: {
-            "key": 303,
-            "scientificName": "Panthera leo",
-            "canonicalName": "Panthera leo",
-            "rank": "SPECIES",
-            "kingdom": "Animalia",
-            "species": "Panthera leo",
-        },
-    )
-    monkeypatch.setattr(main, "preferred_vernacular", lambda key: "Lion")
+    fake_gbif.resolve_handler = lambda key: resolved_taxon(key, "Panthera leo", "Lion")
     response = client.put(
         f"/species-albums/{legacy_album_key('panthera leo')}/taxon",
         json={"gbif_key": 303},
@@ -489,12 +532,8 @@ def test_album_assignment_updates_exact_normalized_group(client, database, monke
     )
 
 
-def test_unknown_album_assignment_does_not_call_gbif(client, monkeypatch):
-    monkeypatch.setattr(
-        main,
-        "gbif_request",
-        lambda *_args, **_kwargs: pytest.fail("GBIF should not be called"),
-    )
+def test_unknown_album_assignment_does_not_call_gbif(client, fake_gbif):
+    fake_gbif.resolve_handler = lambda _key: pytest.fail("GBIF should not be called")
     response = client.put(
         f"/species-albums/{legacy_album_key('missing')}/taxon",
         json={"gbif_key": 999},
@@ -502,7 +541,9 @@ def test_unknown_album_assignment_does_not_call_gbif(client, monkeypatch):
     assert response.status_code == 404
 
 
-def test_album_assignment_rolls_back_taxon_and_animals(database, monkeypatch):
+def test_album_assignment_rolls_back_taxon_and_animals(
+    database, fake_gbif, monkeypatch
+):
     with Session(database) as session:
         animal = add_named_animal(session, "FV-ROLLBACK", "Žaba")
         session.commit()
@@ -511,20 +552,24 @@ def test_album_assignment_rolls_back_taxon_and_animals(database, monkeypatch):
     with Session(database) as session:
         identity = parse_album_key(legacy_album_key("Žaba"))
 
-        def persist_taxon(current_session, _key):
-            taxon = add_taxon(current_session, 404, "Rollback species")
-            return taxon
+        fake_gbif.resolve_handler = lambda key: resolved_taxon(key, "Rollback species")
+        real_persist = albums_service.persist_taxon_selection
 
-        def fail_commit():
+        def fail_after_persist(current_session, selection):
+            real_persist(current_session, selection)
             raise RuntimeError("simulated commit failure")
 
-        monkeypatch.setattr(session, "commit", fail_commit)
+        monkeypatch.setattr(
+            albums_service,
+            "persist_taxon_selection",
+            fail_after_persist,
+        )
         with pytest.raises(RuntimeError, match="simulated commit failure"):
-            assign_album_taxon(session, identity, 404, persist_taxon)
+            assign_album_taxon(session, identity, 404, fake_gbif)
 
     with Session(database) as session:
         assert session.get(main.Animal, animal_id).taxon_id is None
-        assert session.exec(main.select(main.Taxon)).all() == []
+        assert session.exec(select(main.Taxon)).all() == []
 
 
 def test_taxonomy_filter_counts_are_animal_based_and_ignore_trash(client, database):
@@ -560,51 +605,30 @@ def test_taxonomy_filter_counts_are_animal_based_and_ignore_trash(client, databa
     }
 
 
-def test_reconcile_accepts_only_confident_exact_match(client, database, monkeypatch):
+def test_reconcile_accepts_only_confident_exact_match(client, database, fake_gbif):
     with Session(database) as session:
         add_animal_with_photos(session, "Panthera leo", 1)
         add_animal_with_photos(session, "Shark", 1)
 
-    def fake_request(path, params=None):
-        if path == "/species/match" and params["name"] == "Panthera leo":
-            return {
-                "matchType": "EXACT",
-                "confidence": 100,
-                "usageKey": 1,
-                "rank": "SPECIES",
-                "kingdom": "Animalia",
-            }
-        if path == "/species/match":
-            return {
-                "matchType": "NONE",
-                "confidence": 100,
-                "note": "Multiple equal matches",
-            }
-        if path == "/species/1":
-            return {
-                "key": 1,
-                "scientificName": "Panthera leo",
-                "canonicalName": "Panthera leo",
-                "rank": "SPECIES",
-                "kingdom": "Animalia",
-                "species": "Panthera leo",
-            }
-        raise AssertionError(path)
+    def fake_match(name):
+        if name == "Panthera leo":
+            return GbifMatch("EXACT", 100, 1, None, "SPECIES", "Animalia", None)
+        return GbifMatch("NONE", 100, None, None, None, None, "Multiple equal matches")
 
-    monkeypatch.setattr(main, "gbif_request", fake_request)
-    monkeypatch.setattr(main, "preferred_vernacular", lambda key: "Lion")
+    fake_gbif.match_handler = fake_match
+    fake_gbif.resolve_handler = lambda key: resolved_taxon(key, "Panthera leo", "Lion")
     result = client.post("/taxonomy/reconcile", json={"limit": 50}).json()
     assert result["linked"] == 1
     assert result["unmatched"] == 1
     with Session(database) as session:
         statuses = {
             animal.legacy_species_name: animal.taxonomy_status
-            for animal in session.exec(main.select(main.Animal)).all()
+            for animal in session.exec(select(main.Animal)).all()
         }
     assert statuses == {"Panthera leo": "auto_linked", "Shark": "unmatched"}
 
 
-def test_reconcile_limit_is_by_normalized_group(client, database, monkeypatch):
+def test_reconcile_limit_is_by_normalized_group(client, database, fake_gbif):
     with Session(database) as session:
         add_named_animal(session, "FV-RECON-1", " Lion ")
         add_named_animal(session, "FV-RECON-2", "LION")
@@ -612,11 +636,11 @@ def test_reconcile_limit_is_by_normalized_group(client, database, monkeypatch):
         session.commit()
     calls = []
 
-    def fake_request(path, params=None):
-        calls.append((path, params["name"]))
-        return {"matchType": "NONE", "confidence": 100}
+    def fake_match(name):
+        calls.append(name)
+        return GbifMatch("NONE", 100, None, None, None, None, None)
 
-    monkeypatch.setattr(main, "gbif_request", fake_request)
+    fake_gbif.match_handler = fake_match
     result = client.post("/taxonomy/reconcile", json={"limit": 1}).json()
     assert result == {
         "processed": 2,
@@ -625,11 +649,11 @@ def test_reconcile_limit_is_by_normalized_group(client, database, monkeypatch):
         "unmatched": 2,
         "failed": 0,
     }
-    assert calls == [("/species/match", " Lion ")]
+    assert calls == [" Lion "]
     with Session(database) as session:
         statuses = {
             animal.identifier: animal.taxonomy_status
-            for animal in session.exec(main.select(main.Animal)).all()
+            for animal in session.exec(select(main.Animal)).all()
         }
     assert statuses == {
         "FV-RECON-1": "unmatched",
@@ -638,9 +662,7 @@ def test_reconcile_limit_is_by_normalized_group(client, database, monkeypatch):
     }
 
 
-def test_taxonomy_search_maps_results_and_degrades_to_local(
-    client, database, monkeypatch
-):
+def test_taxonomy_search_maps_results_and_degrades_to_local(client, database):
     with Session(database) as session:
         session.add(
             main.Taxon(
@@ -654,13 +676,6 @@ def test_taxonomy_search_maps_results_and_degrades_to_local(
         )
         session.commit()
 
-    monkeypatch.setattr(
-        main,
-        "gbif_request",
-        lambda path, params=None: (_ for _ in ()).throw(
-            main.HTTPException(status_code=503, detail="offline")
-        ),
-    )
     response = client.get("/taxonomy/search", params={"q": "Vulpes"})
     assert response.status_code == 200
     assert response.json()["external_available"] is False
@@ -668,6 +683,170 @@ def test_taxonomy_search_maps_results_and_degrades_to_local(
 
     response = client.get("/taxonomy/search", params={"q": "unknown"})
     assert response.status_code == 503
+
+
+def test_remote_search_cache_rechecks_fresh_local_taxa(database):
+    calls = 0
+
+    def handler(_request):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "key": 77,
+                        "scientificName": "Panthera leo",
+                        "canonicalName": "Panthera leo",
+                        "rank": "SPECIES",
+                        "kingdom": "Animalia",
+                        "vernacularNames": [{"vernacularName": "Lion"}],
+                    }
+                ]
+            },
+        )
+
+    gbif = GbifClient(
+        "https://example.test/v1",
+        transport=httpx.MockTransport(handler),
+    )
+    with Session(database) as session:
+        first = search_taxonomy(session, gbif, "lion", 12)
+    assert first["results"][0]["cached"] is False
+
+    with Session(database) as session:
+        taxon = add_taxon(session, 77, "Panthera leo")
+        session.commit()
+        taxon_id = taxon.id
+    with Session(database) as session:
+        second = search_taxonomy(session, gbif, "lion", 12)
+    assert second["results"][0]["cached"] is True
+
+    with Session(database) as session:
+        session.delete(session.get(main.Taxon, taxon_id))
+        session.commit()
+    with Session(database) as session:
+        third = search_taxonomy(session, gbif, "lion", 12)
+    assert third["results"][0]["cached"] is False
+    assert calls == 1
+    gbif.close()
+
+
+def test_taxonomy_search_validates_trimmed_query(client):
+    response = client.get("/taxonomy/search", params={"q": "  "})
+    assert response.status_code == 422
+
+
+def test_animal_taxon_assignment_reuses_local_taxon_offline(
+    client, database, fake_gbif
+):
+    with Session(database) as session:
+        animal = main.Animal(
+            identifier="FV-ASSIGN-1",
+            legacy_common_name="lion",
+            legacy_species_name="Panthera leo",
+            taxonomy_status="ambiguous",
+            taxonomy_note="Old note",
+        )
+        session.add(animal)
+        session.commit()
+        animal_id = animal.id
+
+    fake_gbif.resolve_handler = lambda key: resolved_taxon(
+        key,
+        "Panthera leo",
+        "Lion",
+        taxonomic_class="Mammalia",
+        family="Felidae",
+    )
+    response = client.put(
+        f"/animals/{animal_id}/taxon",
+        json={"gbif_key": 88},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["animal"]["taxonomy_status"] == "manually_linked"
+    assert body["animal"]["taxonomy_note"] is None
+    assert body["animal"]["legacy_species_name"] == "Panthera leo"
+    assert body["taxon"]["class"] == "Mammalia"
+
+    fake_gbif.resolve_handler = lambda _key: pytest.fail(
+        "Existing local Taxon should be reused without GBIF"
+    )
+    repeated = client.put(
+        f"/animals/{animal_id}/taxon",
+        json={"gbif_key": 88},
+    )
+    assert repeated.status_code == 200
+    with Session(database) as session:
+        assert len(session.exec(select(main.Taxon)).all()) == 1
+
+
+def test_animal_assignment_persists_resolved_accepted_key(client, database, fake_gbif):
+    with Session(database) as session:
+        animal = main.Animal(identifier="FV-ASSIGN-ACCEPTED")
+        session.add(animal)
+        session.commit()
+        animal_id = animal.id
+
+    fake_gbif.resolve_handler = lambda _key: GbifResolvedTaxon(
+        requested_key=10,
+        usage=resolved_taxon(20, "Accepted species", "Accepted").usage,
+    )
+    response = client.put(
+        f"/animals/{animal_id}/taxon",
+        json={"gbif_key": 10},
+    )
+    assert response.status_code == 200
+    assert response.json()["taxon"]["external_taxon_id"] == 20
+    with Session(database) as session:
+        assert [
+            taxon.external_taxon_id for taxon in session.exec(select(main.Taxon))
+        ] == ["20"]
+
+
+def test_animal_assignment_validates_key_and_unknown_animal_before_gbif(
+    client, fake_gbif
+):
+    fake_gbif.resolve_handler = lambda _key: pytest.fail("GBIF should not be called")
+    assert client.put("/animals/999999/taxon", json={"gbif_key": 1}).status_code == 404
+    assert client.put("/animals/999999/taxon", json={"gbif_key": 0}).status_code == 422
+
+
+def test_reconciliation_keeps_ambiguous_and_failed_groups_independent(
+    client, database, fake_gbif
+):
+    with Session(database) as session:
+        add_named_animal(session, "FV-AMBIGUOUS", "Ambiguous animal")
+        add_named_animal(session, "FV-OFFLINE", "Offline animal")
+        session.commit()
+
+    def match(name):
+        if name == "Ambiguous animal":
+            return GbifMatch(
+                "FUZZY", 90, 5, None, "SPECIES", "Animalia", "Multiple matches"
+            )
+        raise GbifClientError("unavailable", "match")
+
+    fake_gbif.match_handler = match
+    body = client.post("/taxonomy/reconcile", json={"limit": 50}).json()
+    assert body == {
+        "processed": 1,
+        "linked": 0,
+        "ambiguous": 1,
+        "unmatched": 0,
+        "failed": 1,
+    }
+    with Session(database) as session:
+        statuses = {
+            animal.identifier: animal.taxonomy_status
+            for animal in session.exec(select(main.Animal)).all()
+        }
+    assert statuses == {
+        "FV-AMBIGUOUS": "ambiguous",
+        "FV-OFFLINE": "unreviewed",
+    }
 
 
 def test_migration_preserves_legacy_names_and_is_idempotent(tmp_path, monkeypatch):
@@ -689,11 +868,11 @@ def test_migration_preserves_legacy_names_and_is_idempotent(tmp_path, monkeypatc
             )
         )
         session.commit()
-    main.migrate_animals_and_taxonomy()
-    main.migrate_animals_and_taxonomy()
+    main.migrate_animals_and_taxonomy(engine)
+    main.migrate_animals_and_taxonomy(engine)
     with Session(engine) as session:
-        photo = session.exec(main.select(main.Photo)).one()
-        animals = session.exec(main.select(main.Animal)).all()
+        photo = session.exec(select(main.Photo)).one()
+        animals = session.exec(select(main.Animal)).all()
         assert photo.species_guess == "Panthera leo"
         assert len(animals) == 1
         assert animals[0].legacy_species_name == "Panthera leo"
