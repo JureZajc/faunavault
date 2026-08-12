@@ -114,6 +114,7 @@ def upload(client: TestClient, filename: str, color: str = "green") -> dict:
     response = client.post(
         "/photos/upload",
         files={"file": (filename, jpeg_bytes(color), "image/jpeg")},
+        data={"allow_visual_duplicate": "true"},
     )
     assert response.status_code == 200
     return response.json()

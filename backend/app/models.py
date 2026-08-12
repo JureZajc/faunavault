@@ -88,6 +88,11 @@ class Photo(SQLModel, table=True):
     status: str = "pending"
     animal_id: int | None = Field(default=None, foreign_key="animal.id", index=True)
     content_sha256: str | None = Field(default=None, index=True)
+    perceptual_hash: str | None = Field(
+        default=None,
+        exclude=True,
+        sa_column=Column(String(16), nullable=True),
+    )
     original_size_bytes: int | None = None
     media_type: str | None = None
     deleted_at: datetime | None = Field(default=None, index=True)

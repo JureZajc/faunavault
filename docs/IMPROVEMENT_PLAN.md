@@ -35,7 +35,7 @@ Audit date: 2026-08-11
 | Main catalog loads every photo | `GET /photos` returns a complete list and the former List implementation filtered it locally | Increasing latency and memory use for thousands of photos | Add a separate paginated catalog endpoint with backend search/status/category/taxonomy filters; retain `GET /photos` compatibility | Implemented with SQL-backed `/catalog/photos`, bounded lazy `/catalog/taxa` options, deterministic sorting, and URL-restorable List state. Generated 120,000-row SQLite plans verified the migration 7 active/status/category indexes avoid scans and temporary sorts on their target paths; substring search remains scan-based. |
 | Album pagination happens after loading all records | Album grouping loads all animals, photos, and taxa before slicing | Album requests scale poorly | Replace in-memory aggregation with query-level counts and pagination | Implemented with SQL-backed verified/legacy grouping, counts, filters, Unicode search, deterministic covers/sorts, direct detail pagination, and bounded reconciliation discovery |
 | AI calls are long synchronous requests | Each UI classification waited for an Ollama HTTP request | Refreshes lost progress; batch runs were fragile | Add a lightweight SQLite-backed job queue and polling | Implemented; retained classification URLs now return asynchronous HTTP 202 job resources |
-| Only exact duplicates are detected | SHA-256 catches identical bytes, not resized/re-encoded copies | Visually identical files may accumulate | Add optional perceptual hashes with explicit user confirmation | Must not silently merge records |
+| Only exact duplicates are detected | SHA-256 catches identical bytes, not resized/re-encoded copies | Visually identical files may accumulate | Add optional perceptual hashes with explicit user confirmation | Implemented with Pillow-only `phash64-v1`, conservative distance `<= 4`, exact-first enforcement, active/Trash candidates, explicit per-file Keep both review, ID-based previews, and throttled resumable migration-9 backfill; no automatic merge or deletion |
 | Backup is manual | Data spans SQLite plus an external image root | Recovery requires careful coordination | Add verified archive manifests and non-destructive backup tooling | Implemented with cold local backup creation, versioned manifests, SHA-256 payload verification, SQLite/archive consistency checks, atomic publication, standalone verification, and documented manual restore; automated restore remains deferred |
 
 ## P3 — Polish
@@ -49,6 +49,6 @@ Audit date: 2026-08-11
 ## Deliberately not implemented in this slice
 
 - Cloud services, authentication, telemetry, external queues, Redis, Celery, or deployment workflows.
-- Automatic Trash expiration, perceptual duplicate matching, destructive restore automation, scheduled/remote/incremental backup management, or legacy-record deduplication.
+- Automatic Trash expiration, destructive restore automation, scheduled/remote/incremental backup management, perceptual clustering/search, or legacy-record deduplication.
 - A breaking change to `GET /photos`, a full catalog rewrite, or a framework/global-state migration.
 

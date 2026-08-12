@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 8
+LATEST_SCHEMA_VERSION = 9
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -342,6 +342,14 @@ def _migration_8(connection) -> None:
     )
 
 
+def _migration_9(connection) -> None:
+    columns = _columns(connection, "photo")
+    if "perceptual_hash" not in columns:
+        connection.execute(
+            text("ALTER TABLE photo ADD COLUMN perceptual_hash VARCHAR(16)")
+        )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -393,6 +401,8 @@ def run_migrations(
                 _migration_7(connection)
             elif version == 8:
                 _migration_8(connection)
+            elif version == 9:
+                _migration_9(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

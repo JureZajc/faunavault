@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,7 @@ from app.backup.manifest import SourceWarning
 
 CHUNK_SIZE = 1024 * 1024
 JOB_STATUSES = ("queued", "running", "succeeded", "failed")
+PERCEPTUAL_HASH_PATTERN = re.compile(r"[0-9a-f]{16}")
 
 
 class BackupError(RuntimeError):
@@ -26,6 +28,7 @@ class PhotoRecord:
     deleted: bool
     content_sha256: str | None
     original_size_bytes: int | None
+    perceptual_hash: str | None
 
     def signature(self) -> tuple[object, ...]:
         return (
@@ -118,12 +121,23 @@ def inspect_database(path: Path, supported_schema_version: int) -> DatabaseInven
                 deleted=row[4] is not None,
                 content_sha256=row[5],
                 original_size_bytes=row[6],
+                perceptual_hash=row[7],
             )
             for row in connection.execute(
                 "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
-                "deleted_at, content_sha256, original_size_bytes FROM photo ORDER BY id"
+                "deleted_at, content_sha256, original_size_bytes, perceptual_hash "
+                "FROM photo ORDER BY id"
             )
         ]
+        malformed_perceptual_hashes = [
+            photo.id
+            for photo in photos
+            if photo.perceptual_hash is not None
+            and PERCEPTUAL_HASH_PATTERN.fullmatch(photo.perceptual_hash) is None
+        ]
+        if malformed_perceptual_hashes:
+            ids = ", ".join(str(photo_id) for photo_id in malformed_perceptual_hashes)
+            raise BackupError(f"Invalid perceptual hash for photo id(s): {ids}")
         job_counts = {
             status: int(
                 connection.execute(
