@@ -234,6 +234,11 @@ def test_catalog_search_taxonomy_filter_and_lifecycle_refresh(catalog_app):
         assert result["total"] == 1
     filtered = client.get("/catalog/photos", params={"taxon_id": taxon_id}).json()
     assert [item["id"] for item in filtered["items"]] == [photo_id]
+    searched_and_filtered = client.get(
+        "/catalog/photos",
+        params={"search": "vulpes", "taxon_id": taxon_id},
+    ).json()
+    assert [item["id"] for item in searched_and_filtered["items"]] == [photo_id]
 
     assert client.delete(f"/photos/{photo_id}").status_code == 200
     assert (
