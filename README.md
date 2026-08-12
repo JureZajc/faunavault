@@ -121,14 +121,71 @@ npm run build
 
 ## Backup and recovery
 
-Use a cold backup for a consistent, easy-to-understand recovery point:
+FaunaVault creates self-contained, verified local backup directories. Backups are
+deliberately **cold**: stop the backend and keep it stopped for the complete
+`create` command. SQLite can provide an online database snapshot, but a separate
+image upload or permanent-delete operation could otherwise produce a mixed-time
+database and filesystem set.
 
-1. Stop the backend so no upload, edit, classification, migration, or Trash operation is running.
-2. Copy the resolved SQLite database file shown by `DATABASE_URL`.
-3. Copy the complete `IMAGE_DIR`, including hidden `.purge` data if an interrupted permanent deletion exists.
-4. Store both copies together and record the date plus configured paths.
+From `backend`, pass an existing local destination directory:
 
-To restore, keep FaunaVault stopped, preserve the current database/image directory as a separate fallback, restore both members of the same backup set to their configured paths, then start the backend. Check the catalog, Trash, albums, and several original images before removing the fallback copy. Never restore only the database or only the image directory.
+```powershell
+uv run faunavault-backup create E:\FaunaVaultBackups
+uv run faunavault-backup verify E:\FaunaVaultBackups\faunavault-backup-20260812T151500.123456Z-1a2b3c4d
+```
+
+Creation validates the source archive, snapshots SQLite with its supported
+backup API, copies files with streaming SHA-256 checksums, verifies the complete
+temporary set, rechecks lifecycle state, and only then publishes it under a
+unique name. It never overwrites an existing backup. Warnings such as excluded
+orphan files do not make an otherwise recoverable backup invalid; missing or
+changed owned files do.
+
+Backup format version 1 is an uncompressed directory:
+
+```text
+faunavault-backup-<UTC timestamp>-<id>/
+  manifest.json
+  database/
+    faunavault.db
+  images/
+    original/
+    resized/
+    thumbs/
+```
+
+The SQLite snapshot contains photos, animals, taxonomy, schema migrations, and
+classification jobs. All referenced original, resized, and thumbnail files are
+included for both active photos and Trash. Derived variants are retained because
+the current application has no repair/regeneration command. Upload staging,
+purge journals, SQLite sidecars, pre-migration database copies, environment
+files, credentials, caches, dependencies, and build artifacts are excluded.
+Non-empty `.staging` or `.purge` state blocks creation; let normal backend
+startup reconcile an interrupted purge, stop the backend again, and retry.
+
+`manifest.json` records only backup-relative payload paths, counts, schema and
+format versions, and SHA-256 checksums. Normal backups omit absolute source
+paths, and verification never needs the original machine or live FaunaVault
+configuration. Checksums detect accidental corruption, not malicious rewriting
+of both the payload and manifest. Unexpected regular files are warnings;
+symlinks and junctions are rejected and never followed.
+
+### Safe manual restore
+
+Automated restore is intentionally not provided. To recover manually:
+
+1. Stop FaunaVault and verify the selected backup. Do not continue if verification fails.
+2. Preserve the current database and complete image root as a separately named fallback. Never overwrite the only current copy.
+3. Prefer fresh, empty restore locations. Copy `database/faunavault.db` to the path selected by `DATABASE_URL` and copy the three directories under `images` to the root selected by `IMAGE_DIR`.
+4. Update `backend/.env` for those locations. Restore paths do not need to match the machine on which the backup was created.
+5. Do not copy staging, purge, sidecars, migration backups, or manifest warnings into runtime storage.
+6. Start the backend so normal migrations and startup recovery run. A restored `running` classification job becomes failed for explicit retry; queued jobs retain normal queue behavior.
+7. Inspect catalog and Trash counts, albums, and representative original/resized/thumbnail files.
+8. For an end-to-end post-restore integrity check, stop the backend and create a new verified backup of the restored archive in another safe destination.
+9. Retain the pre-restore fallback until recovery has been fully validated.
+
+Backup creation does not provide scheduling, retention, compression, encryption,
+incremental storage, cloud upload, or remote destinations.
 
 Before schema upgrades, FaunaVault creates timestamped SQLite backups next to the active database. Domestic metadata normalization is schema migration 5, so it is recorded only after successful normalization and safely retried if startup is interrupted. These backups supplement but do not replace full archive backups.
 
