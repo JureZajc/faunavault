@@ -303,22 +303,6 @@ export default function PhotoDetail({
     };
   }, [id]);
 
-  useEffect(() => {
-    if (!isDeleteDialogOpen) {
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !isDeleting) {
-        setIsDeleteDialogOpen(false);
-        setDeleteConfirmationText("");
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDeleteDialogOpen, isDeleting]);
-
   function updateMetadataForm<FieldName extends keyof MetadataFormState>(
     fieldName: FieldName,
     value: MetadataFormState[FieldName],
