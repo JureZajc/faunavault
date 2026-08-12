@@ -20,6 +20,10 @@ from app.config import Settings
 from app.models import Animal, Photo, utc_now
 from app.schemas import TrashMutationResponse, TrashPage
 from app.services.classification_jobs import fail_active_jobs_for_photo
+from app.services.perceptual_duplicates import (
+    find_visual_duplicate_candidates,
+    perceptual_hash_for_path,
+)
 
 logger = logging.getLogger(__name__)
 UPLOAD_LOCK = asyncio.Lock()
@@ -205,10 +209,23 @@ def _duplicate_error(photo: Photo) -> HTTPException:
     )
 
 
+def _visual_duplicate_error(candidates) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "possible_visual_duplicate",
+            "message": "This photo looks very similar to one already in FaunaVault.",
+            "candidates": [candidate.model_dump() for candidate in candidates],
+        },
+    )
+
+
 async def create_photo_from_upload(
     session: Session,
     file: UploadFile,
     settings: Settings,
+    *,
+    allow_visual_duplicate: bool = False,
 ) -> Photo:
     prepared = await prepare_upload(file, settings)
     staged = [
@@ -231,6 +248,27 @@ async def create_photo_from_upload(
 
         promoted: list[Path] = []
         try:
+            try:
+                uploaded_perceptual_hash = perceptual_hash_for_path(
+                    prepared.staged_original, settings.max_image_pixels
+                )
+            except (
+                Image.DecompressionBombError,
+                Image.DecompressionBombWarning,
+                UnidentifiedImageError,
+                OSError,
+                ValueError,
+            ) as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Uploaded file could not be processed as an image",
+                ) from exc
+            visual_candidates = find_visual_duplicate_candidates(
+                session, uploaded_perceptual_hash
+            )
+            if visual_candidates and not allow_visual_duplicate:
+                raise _visual_duplicate_error(visual_candidates)
+
             for source, destination in zip(staged, final, strict=True):
                 source.replace(destination)
                 promoted.append(destination)
@@ -247,6 +285,7 @@ async def create_photo_from_upload(
                 thumbnail_filename=prepared.thumbnail_filename,
                 animal_id=animal.id,
                 content_sha256=prepared.digest,
+                perceptual_hash=uploaded_perceptual_hash,
                 original_size_bytes=prepared.size,
                 media_type=prepared.media_type,
             )

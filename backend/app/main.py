@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -37,6 +38,7 @@ from app.services.classification_jobs import (
     ClassificationWorker,
     recover_interrupted_jobs,
 )
+from app.services.perceptual_duplicates import run_perceptual_hash_backfill
 from app.services.photo_lifecycle import active_photo_or_404, reconcile_purge_journal
 from app.services.photo_lifecycle import (
     ensure_storage as ensure_lifecycle_storage,
@@ -55,6 +57,15 @@ RESIZED_MAX_SIZE = (1600, 1600)
 THUMBNAIL_MAX_SIZE = (480, 480)
 
 
+async def _run_perceptual_hash_backfill() -> None:
+    try:
+        await run_perceptual_hash_backfill(engine, settings)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Perceptual hash backfill stopped after an unexpected failure")
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     on_startup()
@@ -68,8 +79,13 @@ async def lifespan(application: FastAPI):
     worker = None
     managed_worker = False
     worker_started = False
+    backfill_task = None
     try:
         recover_interrupted_jobs(engine)
+        backfill_task = asyncio.create_task(
+            _run_perceptual_hash_backfill(),
+            name="perceptual-hash-backfill",
+        )
         worker = getattr(application.state, "classification_worker", None)
         managed_worker = worker is None
         if worker is None:
@@ -80,16 +96,26 @@ async def lifespan(application: FastAPI):
         yield
     finally:
         try:
-            if worker_started and worker is not None:
-                await worker.stop()
+            if backfill_task is not None:
+                backfill_task.cancel()
+                try:
+                    await backfill_task
+                except asyncio.CancelledError:
+                    pass
         finally:
-            if managed_worker and hasattr(application.state, "classification_worker"):
-                del application.state.classification_worker
             try:
-                gbif_client.close()
+                if worker_started and worker is not None:
+                    await worker.stop()
             finally:
-                if getattr(application.state, "gbif_client", None) is gbif_client:
-                    del application.state.gbif_client
+                if managed_worker and hasattr(
+                    application.state, "classification_worker"
+                ):
+                    del application.state.classification_worker
+                try:
+                    gbif_client.close()
+                finally:
+                    if getattr(application.state, "gbif_client", None) is gbif_client:
+                        del application.state.gbif_client
 
 
 app = FastAPI(title="FaunaVault API", lifespan=lifespan)

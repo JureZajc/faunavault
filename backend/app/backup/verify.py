@@ -19,8 +19,9 @@ from app.backup.manifest import (
     BackupManifest,
     read_manifest,
 )
+from app.migrations import LATEST_SCHEMA_VERSION
 
-SUPPORTED_SCHEMA_VERSION = 8
+SUPPORTED_SCHEMA_VERSION = LATEST_SCHEMA_VERSION
 
 
 @dataclass

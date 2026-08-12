@@ -165,6 +165,7 @@ export type PhotoUpdate = Partial<{
 }>;
 
 export type BatchUploadFailure = {
+  file_index: number;
   filename: string;
   error: string;
   code: string | null;
@@ -172,8 +173,26 @@ export type BatchUploadFailure = {
   location: "catalog" | "trash" | null;
 };
 
+export type VisualDuplicateCandidate = {
+  photo_id: number;
+  original_filename: string;
+  display_title: string | null;
+  common_name: string | null;
+  species_guess: string | null;
+  location: "catalog" | "trash";
+  hamming_distance: number;
+};
+
+export type PossibleVisualDuplicate = {
+  file_index: number;
+  filename: string;
+  message: string;
+  candidates: VisualDuplicateCandidate[];
+};
+
 export type BatchUploadResponse = {
   uploaded: Photo[];
+  possible_duplicates: PossibleVisualDuplicate[];
   failed: BatchUploadFailure[];
 };
 
@@ -234,6 +253,7 @@ export type ApiErrorDetails = {
   message?: string;
   photo_id?: number;
   location?: "catalog" | "trash";
+  candidates?: VisualDuplicateCandidate[];
 };
 
 export class ApiError extends Error {
@@ -269,6 +289,39 @@ function formatErrorDetail(detail: unknown) {
   return "Request failed";
 }
 
+function parseVisualDuplicateCandidate(
+  value: unknown,
+): VisualDuplicateCandidate | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.photo_id !== "number" ||
+    typeof candidate.original_filename !== "string" ||
+    (candidate.location !== "catalog" && candidate.location !== "trash") ||
+    typeof candidate.hamming_distance !== "number"
+  ) {
+    return null;
+  }
+  return {
+    photo_id: candidate.photo_id,
+    original_filename: candidate.original_filename,
+    display_title:
+      typeof candidate.display_title === "string"
+        ? candidate.display_title
+        : null,
+    common_name:
+      typeof candidate.common_name === "string" ? candidate.common_name : null,
+    species_guess:
+      typeof candidate.species_guess === "string"
+        ? candidate.species_guess
+        : null,
+    location: candidate.location,
+    hamming_distance: candidate.hamming_distance,
+  };
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
@@ -292,6 +345,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
               detail.location === "catalog" || detail.location === "trash"
                 ? detail.location
                 : undefined,
+            candidates: Array.isArray(detail.candidates)
+              ? (detail.candidates as unknown[])
+                  .map((candidate: unknown) =>
+                    parseVisualDuplicateCandidate(candidate),
+                  )
+                  .filter(
+                    (candidate): candidate is VisualDuplicateCandidate =>
+                      candidate !== null,
+                  )
+              : undefined,
           }
         : {};
     throw new ApiError(
@@ -309,6 +372,10 @@ export function imageUrl(
   filename: string,
 ) {
   return `${API_BASE_URL}/images/${type}/${encodeURIComponent(filename)}`;
+}
+
+export function photoThumbnailUrl(photoId: number) {
+  return `${API_BASE_URL}/photos/${photoId}/thumbnail`;
 }
 
 export function getTaxonomyFilters() {
@@ -455,9 +522,12 @@ export function updatePhoto(id: number, metadata: PhotoUpdate) {
   });
 }
 
-export function uploadPhoto(file: File) {
+export function uploadPhoto(file: File, allowVisualDuplicate = false) {
   const formData = new FormData();
   formData.append("file", file);
+  if (allowVisualDuplicate) {
+    formData.append("allow_visual_duplicate", "true");
+  }
 
   return request<Photo>("/photos/upload", {
     method: "POST",

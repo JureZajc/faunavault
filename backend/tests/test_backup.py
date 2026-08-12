@@ -43,7 +43,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for migration in range(1, 9):
+        for migration in range(1, 10):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (migration,),
@@ -119,8 +119,8 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert backup_path.name.startswith("faunavault-backup-")
     manifest = read_manifest(backup_path / "manifest.json")
     assert manifest.backup_format_version == 1
-    assert manifest.database.schema_version == 8
-    assert manifest.database.applied_migrations == list(range(1, 9))
+    assert manifest.database.schema_version == 9
+    assert manifest.database.applied_migrations == list(range(1, 10))
     assert manifest.counts.photos == 2
     assert manifest.counts.active_photos == 1
     assert manifest.counts.trashed_photos == 1
@@ -257,6 +257,23 @@ def test_missing_variant_and_database_hash_mismatch_are_fatal(archive):
     finally:
         connection.close()
     with pytest.raises(BackupError, match="checksum disagrees"):
+        create_backup(destination, settings)
+
+
+def test_invalid_perceptual_hash_is_rejected_without_recomputing_images(archive):
+    settings, destination, _ = archive
+    connection = sqlite3.connect(settings.database_path)
+    try:
+        connection.execute(
+            "UPDATE photo SET perceptual_hash = ? WHERE id = 1", ("NOT-A-HASH",)
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with pytest.raises(
+        BackupError, match=r"Invalid perceptual hash for photo id\(s\): 1"
+    ):
         create_backup(destination, settings)
 
 

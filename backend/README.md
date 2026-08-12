@@ -17,6 +17,26 @@ uv run pytest
 
 Configuration is loaded through `pydantic-settings` from `backend/.env`. Relative SQLite paths resolve against this directory. See the root README for storage, backup, migration, and recovery details.
 
+## Perceptual duplicate detection
+
+Uploads retain the authoritative SHA-256 duplicate check. After it finds no
+exact match, the lifecycle service calculates the Pillow-only `phash64-v1`
+fingerprint and scans persisted active and Trash hashes. Matches at Hamming
+distance four or less return `possible_visual_duplicate`; they never mutate an
+existing photo. `allow_visual_duplicate=true` still recalculates the hash and
+scans current candidates, but authorizes the new record after that analysis.
+
+Migration 9 adds the nullable 16-character hash. Lifespan startup runs a
+resumable backfill outside the migration transaction: one decode at a time,
+25 rows per batch, short database updates, and a 100 ms yield between batches.
+Missing/unreadable originals remain null and exact duplicate handling remains
+fully available. `GET /photos/{id}/thumbnail` provides safe active-or-Trash
+candidate previews without returning storage filenames in duplicate responses.
+
+Backup format version 1 is unchanged. Verification checks only the persisted
+hash format and never decodes images or recomputes perceptual hashes; SHA-256
+continues to protect original-file integrity.
+
 ## Verified local backups
 
 Keep the backend stopped for the entire backup creation command, and provide an

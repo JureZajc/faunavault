@@ -21,6 +21,7 @@ import {
   imageUrl,
   Photo,
   PhotoStatus,
+  PossibleVisualDuplicate,
   uploadPhotoBatch,
   uploadPhoto,
 } from "./lib/api";
@@ -35,6 +36,7 @@ import {
 import AlbumBrowser from "./components/album-browser";
 import ClassificationJobsPanel from "./components/classification-jobs-panel";
 import MoveToTrashButton from "./components/move-to-trash-button";
+import PossibleDuplicateReview from "./components/possible-duplicate-review";
 import SuccessNotice from "./components/success-notice";
 import TrashBrowser from "./components/trash-browser";
 import { useClassificationJobs } from "./hooks/use-classification-jobs";
@@ -50,6 +52,10 @@ type UploadNotice = {
   message: string;
   duplicatePhotoId?: number;
   duplicateLocation?: "catalog" | "trash";
+};
+type PendingVisualDuplicate = PossibleVisualDuplicate & {
+  file: File;
+  reviewId: string;
 };
 
 const statusFilters: StatusFilter[] = [
@@ -615,7 +621,17 @@ function HomeContent() {
   const [isUploading, setIsUploading] = useState(false);
   const [actionError, setError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState<UploadNotice | null>(null);
+  const [visualDuplicateQueue, setVisualDuplicateQueue] = useState<
+    PendingVisualDuplicate[]
+  >([]);
+  const [isConfirmingVisualDuplicate, setIsConfirmingVisualDuplicate] =
+    useState(false);
+  const [visualDuplicateError, setVisualDuplicateError] = useState<string | null>(
+    null,
+  );
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const uploadButtonRef = useRef<HTMLButtonElement>(null);
+  const reviewSequence = useRef(0);
   const refreshTimer = useRef<number | null>(null);
   const searchTimer = useRef<number | null>(null);
   const scheduleCatalogRefresh = useCallback(() => {
@@ -692,6 +708,11 @@ function HomeContent() {
   const returnTo = paramsString ? `${pathname}?${paramsString}` : pathname;
   const selectedFileLabel = formatSelectedFiles(selectedFiles);
 
+  function nextReviewId(fileIndex: number) {
+    reviewSequence.current += 1;
+    return `${fileIndex}-${reviewSequence.current}`;
+  }
+
   function handleSearchChange(value: string) {
     setSearchQuery(value);
     if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
@@ -727,12 +748,37 @@ function HomeContent() {
         setUploadNotice({ kind: "success", message: "Uploaded 1 photo." });
       } else {
         const result = await uploadPhotoBatch(selectedFiles);
+        const pendingReviews = result.possible_duplicates.flatMap((item) => {
+          const file = selectedFiles[item.file_index];
+          return file
+            ? [
+                {
+                  ...item,
+                  file,
+                  reviewId: nextReviewId(item.file_index),
+                },
+              ]
+            : [];
+        });
+        if (pendingReviews.length > 0) {
+          setVisualDuplicateQueue(pendingReviews);
+          setVisualDuplicateError(null);
+        }
 
         if (result.uploaded.length > 0) {
           await loadPhotos();
         }
 
-        if (result.failed.length > 0 && result.uploaded.length > 0) {
+        if (pendingReviews.length > 0) {
+          const failureSuffix =
+            result.failed.length > 0
+              ? ` ${result.failed.length} failed: ${formatBatchFailureMessage(result.failed)}.`
+              : "";
+          setUploadNotice({
+            kind: "warning",
+            message: `${result.uploaded.length} uploaded. ${pendingReviews.length} ${pendingReviews.length === 1 ? "photo needs" : "photos need"} review.${failureSuffix}`,
+          });
+        } else if (result.failed.length > 0 && result.uploaded.length > 0) {
           setUploadNotice({
             kind: "warning",
             message: `Uploaded ${result.uploaded.length} ${result.uploaded.length === 1 ? "photo" : "photos"}. ${result.failed.length} failed: ${formatBatchFailureMessage(result.failed)}.`,
@@ -762,11 +808,86 @@ function HomeContent() {
           duplicatePhotoId: nextError.details.photo_id,
           duplicateLocation: nextError.details.location,
         });
+      } else if (
+        nextError instanceof ApiError &&
+        nextError.details.code === "possible_visual_duplicate" &&
+        nextError.details.candidates?.length
+      ) {
+        setVisualDuplicateQueue([
+          {
+            file_index: 0,
+            filename: selectedFiles[0].name,
+            message: nextError.message,
+            candidates: nextError.details.candidates,
+            file: selectedFiles[0],
+            reviewId: nextReviewId(0),
+          },
+        ]);
+        setVisualDuplicateError(null);
+        setUploadNotice({
+          kind: "warning",
+          message: "This photo needs a possible-duplicate review.",
+        });
+        setSelectedFiles([]);
+        form.reset();
       } else {
         setError(nextError instanceof Error ? nextError.message : "Upload failed");
       }
     } finally {
       setIsUploading(false);
+    }
+  }
+
+  function finishVisualDuplicateReview() {
+    setVisualDuplicateQueue((current) => {
+      const remaining = current.slice(1);
+      if (remaining.length === 0) {
+        window.setTimeout(() => uploadButtonRef.current?.focus(), 0);
+      }
+      return remaining;
+    });
+    setVisualDuplicateError(null);
+  }
+
+  async function handleKeepVisualDuplicate() {
+    const review = visualDuplicateQueue[0];
+    if (!review) return;
+    setIsConfirmingVisualDuplicate(true);
+    setVisualDuplicateError(null);
+    try {
+      await uploadPhoto(review.file, true);
+      try {
+        await loadPhotos();
+        setUploadNotice({
+          kind: "success",
+          message: `Uploaded ${review.filename} and kept both photos.`,
+        });
+      } catch (refreshError) {
+        setUploadNotice({
+          kind: "warning",
+          message: `Uploaded ${review.filename}, but the catalog could not be refreshed: ${refreshError instanceof Error ? refreshError.message : "Catalog unavailable"}.`,
+        });
+      }
+      finishVisualDuplicateReview();
+    } catch (nextError) {
+      setVisualDuplicateError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Could not keep both photos",
+      );
+    } finally {
+      setIsConfirmingVisualDuplicate(false);
+    }
+  }
+
+  function handleCancelVisualDuplicate() {
+    const review = visualDuplicateQueue[0];
+    finishVisualDuplicateReview();
+    if (review) {
+      setUploadNotice({
+        kind: "warning",
+        message: `Cancelled upload of ${review.filename}.`,
+      });
     }
   }
 
@@ -870,6 +991,7 @@ function HomeContent() {
                   accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                   onChange={handleFileChange}
                   multiple
+                  disabled={visualDuplicateQueue.length > 0}
                   className="sr-only"
                 />
                 <span className="truncate">
@@ -885,8 +1007,13 @@ function HomeContent() {
               </p>
             ) : null}
             <button
+              ref={uploadButtonRef}
               type="submit"
-              disabled={selectedFiles.length === 0 || isUploading}
+              disabled={
+                selectedFiles.length === 0 ||
+                isUploading ||
+                visualDuplicateQueue.length > 0
+              }
               className="mt-3 min-h-11 w-full rounded-md bg-emerald-800 px-5 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
             >
               {isUploading
@@ -926,6 +1053,18 @@ function HomeContent() {
           </form>
         </div>
       </section>
+
+      {visualDuplicateQueue[0] ? (
+        <PossibleDuplicateReview
+          key={visualDuplicateQueue[0].reviewId}
+          file={visualDuplicateQueue[0].file}
+          candidates={visualDuplicateQueue[0].candidates}
+          isSubmitting={isConfirmingVisualDuplicate}
+          error={visualDuplicateError}
+          onKeep={() => void handleKeepVisualDuplicate()}
+          onCancel={handleCancelVisualDuplicate}
+        />
+      ) : null}
 
       <section className="mx-auto max-w-7xl px-6 py-6">
         {successNotice ? (

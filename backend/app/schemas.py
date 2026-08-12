@@ -58,6 +58,7 @@ class ReconcileRequest(SQLModel):
 
 
 class BatchUploadFailure(SQLModel):
+    file_index: int
     filename: str
     error: str
     code: str | None = None
@@ -65,8 +66,26 @@ class BatchUploadFailure(SQLModel):
     location: str | None = None
 
 
+class VisualDuplicateCandidate(SQLModel):
+    photo_id: int
+    original_filename: str
+    display_title: str | None = None
+    common_name: str | None = None
+    species_guess: str | None = None
+    location: Literal["catalog", "trash"]
+    hamming_distance: int = Field(ge=0, le=64)
+
+
+class PossibleVisualDuplicate(SQLModel):
+    file_index: int
+    filename: str
+    message: str
+    candidates: list[VisualDuplicateCandidate]
+
+
 class BatchUploadResponse(SQLModel):
     uploaded: list[Photo]
+    possible_duplicates: list[PossibleVisualDuplicate]
     failed: list[BatchUploadFailure]
 
 

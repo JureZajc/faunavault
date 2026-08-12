@@ -8,6 +8,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 
 - Single and batch image upload with JPEG, PNG, and WebP content validation
 - Exact duplicate detection using SHA-256, including duplicates currently in Trash
+- Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
 - Searchable/filterable photo catalog, species albums, animals, and GBIF taxonomy linking
 - Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
@@ -34,6 +35,29 @@ List page, search, filters, sorting, verified taxon, and flat/grouped layout are
 stored in URL search parameters. Refresh, copied URLs, browser Back/Forward,
 and photo detail return navigation restore the same catalog context. Grouping
 is intentionally page-local once pagination is active.
+
+## Exact and possible visual duplicates
+
+Byte-identical uploads are detected by SHA-256 and rejected with HTTP 409. This
+authoritative rule also applies when the existing photo is in Trash and cannot
+be bypassed.
+
+After the SHA check, the backend calculates a local `phash64-v1` perceptual
+fingerprint from EXIF-oriented, metadata-independent pixels and compares it with
+active and Trash photos. A Hamming distance of four or less is treated only as
+evidence of a possible visual duplicate. The upload is not finalized until the
+user chooses `Keep both`; confirmation re-uploads and fully re-analyzes the file,
+including a fresh exact check and candidate scan. Cancel leaves no server-side
+staged file. Burst frames, crops, recoloring, and structurally similar photos can
+produce warnings, while stronger edits may not be detected.
+
+Schema migration 9 adds the nullable fingerprint field. Existing originals are
+hashed by a resumable background task, one image at a time in batches of 25 with
+a short pause between batches so API, upload, and classification work can
+interleave. Missing or unreadable originals remain nullable and are reported by
+photo ID; exact duplicate protection stays active throughout. Candidate previews
+use an ID-based photo endpoint and do not expose perceptual hashes or storage
+filenames.
 
 ## Architecture and storage
 
@@ -194,6 +218,7 @@ Before schema upgrades, FaunaVault creates timestamped SQLite backups next to th
 - Ollama unavailable: verify `ollama list` and `curl http://localhost:11434/api/tags`, then retry the failed job.
 - Duplicate response: open the referenced catalog photo or use “View Trash” and restore the deleted copy.
 - Image rejected: confirm extension, MIME type, actual format, file size, and pixel dimensions agree with configured limits.
+- Possible visual duplicate: compare the previews and choose Keep both or Cancel upload; similarity is evidence, not proof of identity.
 - Migration failure: keep the backend stopped and inspect the newest `*.pre-migrate-*.db` backup before retrying.
 
 See [docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md) for the audit and prioritized remaining work.
