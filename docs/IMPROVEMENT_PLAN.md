@@ -36,7 +36,7 @@ Audit date: 2026-08-11
 | Album pagination happens after loading all records | Album grouping loads all animals, photos, and taxa before slicing | Album requests scale poorly | Replace in-memory aggregation with query-level counts and pagination | Implemented with SQL-backed verified/legacy grouping, counts, filters, Unicode search, deterministic covers/sorts, direct detail pagination, and bounded reconciliation discovery |
 | AI calls are long synchronous requests | Each UI classification waited for an Ollama HTTP request | Refreshes lost progress; batch runs were fragile | Add a lightweight SQLite-backed job queue and polling | Implemented; retained classification URLs now return asynchronous HTTP 202 job resources |
 | Only exact duplicates are detected | SHA-256 catches identical bytes, not resized/re-encoded copies | Visually identical files may accumulate | Add optional perceptual hashes with explicit user confirmation | Must not silently merge records |
-| Backup is manual | Data spans SQLite plus an external image root | Recovery requires careful coordination | Add verified archive manifests and non-destructive backup tooling | Automated restore remains high risk and should require explicit confirmation |
+| Backup is manual | Data spans SQLite plus an external image root | Recovery requires careful coordination | Add verified archive manifests and non-destructive backup tooling | Implemented with cold local backup creation, versioned manifests, SHA-256 payload verification, SQLite/archive consistency checks, atomic publication, standalone verification, and documented manual restore; automated restore remains deferred |
 
 ## P3 — Polish
 
@@ -49,6 +49,6 @@ Audit date: 2026-08-11
 ## Deliberately not implemented in this slice
 
 - Cloud services, authentication, telemetry, external queues, Redis, Celery, or deployment workflows.
-- Automatic Trash expiration, perceptual duplicate matching, destructive restore automation, or legacy-record deduplication.
+- Automatic Trash expiration, perceptual duplicate matching, destructive restore automation, scheduled/remote/incremental backup management, or legacy-record deduplication.
 - A breaking change to `GET /photos`, a full catalog rewrite, or a framework/global-state migration.
 

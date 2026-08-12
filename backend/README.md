@@ -17,6 +17,35 @@ uv run pytest
 
 Configuration is loaded through `pydantic-settings` from `backend/.env`. Relative SQLite paths resolve against this directory. See the root README for storage, backup, migration, and recovery details.
 
+## Verified local backups
+
+Keep the backend stopped for the entire backup creation command, and provide an
+existing local destination directory:
+
+```powershell
+uv run faunavault-backup create E:\FaunaVaultBackups
+uv run faunavault-backup verify E:\FaunaVaultBackups\faunavault-backup-<timestamp>-<id>
+```
+
+`create` resolves the configured SQLite and image locations, rejects active
+upload/purge staging, validates the archive, creates a SQLite backup snapshot,
+copies all active and Trash image variants, writes SHA-256 metadata, verifies
+the temporary backup, rechecks lifecycle state, and atomically publishes it.
+Absolute source paths are not written by default. The destination may not
+overlap the database directory or active image storage.
+
+`verify` is read-only and backup-local: it does not load `.env`, access the live
+archive, run migrations, or modify the backup. It validates format and schema
+versions, safe relative paths, checksums, SQLite integrity/foreign keys,
+migration metadata, counts, and every database-to-image reference. Both commands
+exit `0` for success (including warnings) and `1` for invalid or failed work.
+Unexpected regular files are warnings; missing/changed owned files and symlinks
+or junctions are failures.
+
+The root README contains the format layout, complete inclusion/exclusion policy,
+limitations, and safe manual restore procedure. There is no automated restore
+command.
+
 Classification is asynchronous and local-first. One lifespan-owned in-process worker claims SQLite jobs in `queued_at` order and processes them serially. Status and safe failures survive browser refresh and backend restart; interrupted running jobs are marked failed for explicit retry. The worker records requested/actual model, fallback use, attempt count, duration, and prompt version. FaunaVault supports one backend process, not multiple Uvicorn workers.
 
 `POST /classification-jobs`, `GET /classification-jobs`, `GET /classification-jobs/{id}`, and `POST /classification-jobs/{id}/retry` are the canonical API. The retained `/photos/{id}/classify` and `/photos/classify-pending` URLs now return HTTP 202 job resources and no longer provide synchronous response contracts.
