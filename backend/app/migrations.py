@@ -10,10 +10,11 @@ from pathlib import Path
 from sqlalchemy import Engine, inspect, text
 from sqlalchemy.engine import make_url
 
+from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -220,6 +221,38 @@ def _migration_7(connection) -> None:
     )
 
 
+def _migration_8(connection) -> None:
+    columns = _columns(connection, "animal")
+    if "legacy_species_group" not in columns:
+        connection.execute(
+            text(
+                "ALTER TABLE animal ADD COLUMN legacy_species_group "
+                "TEXT NOT NULL DEFAULT 'unidentified'"
+            )
+        )
+    rows = connection.execute(text("SELECT id, legacy_species_name FROM animal")).all()
+    if rows:
+        connection.execute(
+            text(
+                "UPDATE animal SET legacy_species_group = :legacy_species_group "
+                "WHERE id = :animal_id"
+            ),
+            [
+                {
+                    "animal_id": animal_id,
+                    "legacy_species_group": normalize_legacy_species_group(value),
+                }
+                for animal_id, value in rows
+            ],
+        )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_animal_legacy_species_group "
+            "ON animal (legacy_species_group)"
+        )
+    )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -269,6 +302,8 @@ def run_migrations(
                 _migration_6(connection)
             elif version == 7:
                 _migration_7(connection)
+            elif version == 8:
+                _migration_8(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

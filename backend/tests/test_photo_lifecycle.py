@@ -125,7 +125,7 @@ def upload(client: TestClient, payload: bytes | None = None, filename: str = "fo
 
 
 def test_upload_generates_variants_and_rejects_safe_duplicate(lifecycle):
-    client, _, settings = lifecycle
+    client, engine, settings = lifecycle
     response = upload(client)
     assert response.status_code == 200
     photo = response.json()
@@ -133,6 +133,10 @@ def test_upload_generates_variants_and_rejects_safe_duplicate(lifecycle):
     assert photo["original_size_bytes"] > 0
     assert photo["media_type"] == "image/jpeg"
     assert photo["deleted_at"] is None
+    with Session(engine) as session:
+        animal = session.get(Animal, photo["animal_id"])
+        assert animal is not None
+        assert animal.legacy_species_group == "unidentified"
     assert (settings.image_dirs["original"] / photo["stored_filename"]).is_file()
     assert (settings.image_dirs["resized"] / photo["resized_filename"]).is_file()
     assert (settings.image_dirs["thumbs"] / photo["thumbnail_filename"]).is_file()
@@ -156,7 +160,7 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
                 "SELECT version FROM schema_migration ORDER BY version"
             )
         ]
-    assert versions == [1, 2, 3, 4, 5, 6, 7]
+    assert versions == [1, 2, 3, 4, 5, 6, 7, 8]
     with engine.connect() as connection:
         indexes = {
             row[1] for row in connection.exec_driver_sql("PRAGMA index_list(photo)")
@@ -166,6 +170,11 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
         "ix_photo_catalog_active_status_created",
         "ix_photo_catalog_active_category_created",
     } <= indexes
+    with engine.connect() as connection:
+        animal_indexes = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA index_list(animal)")
+        }
+    assert "ix_animal_legacy_species_group" in animal_indexes
     assert settings.database_path is not None
     backups = list(
         settings.database_path.parent.glob(
@@ -202,8 +211,8 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         calls += 1
         main.normalize_existing_domestic_metadata()
 
-    assert run_migrations(engine, settings, normalize) == [5, 6, 7]
-    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7]
+    assert run_migrations(engine, settings, normalize) == [5, 6, 7, 8]
+    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
         assert photo is not None
@@ -240,12 +249,53 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
 
     assert run_migrations(
         engine, settings, main.normalize_existing_domestic_metadata
-    ) == [5, 6, 7]
-    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7]
+    ) == [5, 6, 7, 8]
+    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
         assert photo is not None
         assert photo.species_guess == "Canis lupus familiaris"
+
+
+def test_migration_8_backfills_normalized_album_group_and_is_idempotent(tmp_path):
+    database_path = tmp_path / "album-migration.db"
+    settings = Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        image_dir=tmp_path / "images",
+        database_url=f"sqlite:///{database_path}",
+    )
+    engine = create_engine(settings.resolved_database_url)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE photo (id INTEGER PRIMARY KEY)")
+        connection.exec_driver_sql(
+            "CREATE TABLE animal (id INTEGER PRIMARY KEY, legacy_species_name TEXT)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE schema_migration "
+            "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
+        )
+        for version in range(1, 8):
+            connection.exec_driver_sql(
+                "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
+                (version,),
+            )
+        connection.exec_driver_sql(
+            "INSERT INTO animal(id, legacy_species_name) VALUES "
+            "(1, '  ČRNA   Štorklja '), (2, NULL), (3, '   ')"
+        )
+
+    assert run_migrations(engine, settings) == [8]
+    with engine.connect() as connection:
+        rows = connection.exec_driver_sql(
+            "SELECT id, legacy_species_group FROM animal ORDER BY id"
+        ).all()
+        indexes = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA index_list(animal)")
+        }
+    assert rows == [(1, "črna štorklja"), (2, "unidentified"), (3, "")]
+    assert "ix_animal_legacy_species_group" in indexes
+    assert run_migrations(engine, settings) == []
 
 
 def test_upload_validates_mime_corruption_size_and_batch_recovery(lifecycle):

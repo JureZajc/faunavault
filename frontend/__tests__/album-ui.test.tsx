@@ -23,6 +23,7 @@ vi.mock("../app/lib/api", async (importOriginal) => {
 });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   window.history.replaceState(null, "", "/");
   api.getCatalogPhotos.mockImplementation(async (query) => ({
     items: [],
@@ -62,6 +63,13 @@ beforeEach(() => {
     page: 1,
     page_size: 24,
   });
+  api.reconcileTaxonomy.mockResolvedValue({
+    processed: 2,
+    linked: 2,
+    ambiguous: 0,
+    unmatched: 0,
+    failed: 0,
+  });
 });
 
 test("switches between List and Album and renders an unverified card", async () => {
@@ -83,6 +91,34 @@ test("album search updates results and URL state", async () => {
   await userEvent.type(search, "lion");
   await waitFor(() => expect(api.getSpeciesAlbums).toHaveBeenCalled());
   expect(window.location.search).toContain("q=lion");
+});
+
+test("taxonomy reconciliation resets a stale album page before refreshing", async () => {
+  window.history.replaceState(null, "", "/?view=album&page=3");
+  api.getSpeciesAlbums.mockImplementation(async (params: URLSearchParams) => ({
+    items: [],
+    total: 72,
+    page: Number(params.get("page")),
+    page_size: 24,
+  }));
+  render(<Home />);
+
+  await waitFor(() =>
+    expect(
+      api.getSpeciesAlbums.mock.calls.some(
+        ([params]) => params.get("page") === "3",
+      ),
+    ).toBe(true),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Match unverified names" }));
+  await waitFor(() =>
+    expect(
+      api.getSpeciesAlbums.mock.calls.some(
+        ([params]) => params.get("page") === "1",
+      ),
+    ).toBe(true),
+  );
+  expect(window.location.search).not.toContain("page=3");
 });
 
 describe("image lightbox", () => {

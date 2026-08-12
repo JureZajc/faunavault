@@ -166,7 +166,11 @@ export default function AlbumBrowser() {
     try {
       const result = await reconcileTaxonomy();
       setNotice(`${result.linked} linked, ${result.ambiguous} ambiguous, ${result.unmatched} unmatched, ${result.failed} failed.`);
-      await Promise.all([load(), getTaxonomyFilters().then(setFilters)]);
+      setPage(1);
+      await Promise.all([
+        page === 1 ? load() : Promise.resolve(),
+        getTaxonomyFilters().then(setFilters),
+      ]);
     } catch (nextError) {
       setNotice(nextError instanceof Error ? nextError.message : "Taxonomy matching failed");
     } finally {

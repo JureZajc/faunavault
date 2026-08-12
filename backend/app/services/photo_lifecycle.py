@@ -15,6 +15,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, func, select
 
+from app.album_identity import normalize_legacy_species_group
 from app.config import Settings
 from app.models import Animal, Photo, utc_now
 from app.schemas import TrashMutationResponse, TrashPage
@@ -233,7 +234,10 @@ async def create_photo_from_upload(
             for source, destination in zip(staged, final, strict=True):
                 source.replace(destination)
                 promoted.append(destination)
-            animal = Animal(identifier=f"FV-{uuid4().hex[:12].upper()}")
+            animal = Animal(
+                identifier=f"FV-{uuid4().hex[:12].upper()}",
+                legacy_species_group=normalize_legacy_species_group(None),
+            )
             session.add(animal)
             session.flush()
             photo = Photo(

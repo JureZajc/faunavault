@@ -214,3 +214,84 @@ class CatalogTaxonPage(SQLModel):
 class AnimalTaxonResponse(SQLModel):
     animal: Animal
     taxon: dict
+
+
+class TaxonCandidateRead(SQLModel):
+    provider: str
+    external_taxon_id: int
+    scientific_name: str
+    canonical_name: str
+    common_name: str | None
+    rank: str
+    kingdom: str | None
+    phylum: str | None
+    taxonomic_class: str | None = Field(alias="class")
+    taxonomic_order: str | None = Field(alias="order")
+    family: str | None
+    genus: str | None
+    species: str | None
+    cached: bool
+
+
+class AlbumSummaryRead(SQLModel):
+    album_key: str
+    verified: bool
+    common_name: str | None
+    scientific_name: str
+    rank: str | None
+    taxonomic_class: str | None = Field(alias="class")
+    taxonomic_order: str | None = Field(alias="order")
+    family: str | None
+    genus: str | None
+    species: str | None
+    animal_count: int
+    photo_count: int
+    newest_at: datetime | None
+    cover_photo_id: int | None
+    cover_thumbnail_filename: str | None
+
+
+class AlbumPage(SQLModel):
+    items: list[AlbumSummaryRead]
+    total: int
+    page: int
+    page_size: int
+
+
+class AnimalPage(SQLModel):
+    items: list[Animal]
+    total: int
+    page: int
+    page_size: int
+
+
+class AlbumPhotoPage(SQLModel):
+    items: list[Photo]
+    total: int
+    page: int
+    page_size: int
+
+
+class AlbumDetailRead(AlbumSummaryRead):
+    taxonomy: TaxonCandidateRead | None
+    animals: AnimalPage
+    photos: AlbumPhotoPage
+
+
+class TaxonomyFilterOption(SQLModel):
+    value: str
+    count: int
+
+
+class TaxonomyFiltersRead(SQLModel):
+    classes: list[TaxonomyFilterOption]
+    orders: list[TaxonomyFilterOption]
+    families: list[TaxonomyFilterOption]
+    genera: list[TaxonomyFilterOption]
+    species: list[TaxonomyFilterOption]
+
+
+class AlbumTaxonResponse(SQLModel):
+    album_key: str
+    updated_animals: int
+    taxon: TaxonCandidateRead
