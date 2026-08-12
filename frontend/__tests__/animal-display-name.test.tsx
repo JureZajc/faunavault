@@ -11,6 +11,8 @@ const api = vi.hoisted(() => ({
   getAnimal: vi.fn(),
   getPhoto: vi.fn(),
   getSpeciesAlbum: vi.fn(),
+  searchTaxonomy: vi.fn(),
+  selectAlbumTaxon: vi.fn(),
   updateAnimalDisplayName: vi.fn(),
 }));
 
@@ -21,6 +23,8 @@ vi.mock("../app/lib/api", async (importOriginal) => {
     getAnimal: api.getAnimal,
     getPhoto: api.getPhoto,
     getSpeciesAlbum: api.getSpeciesAlbum,
+    searchTaxonomy: api.searchTaxonomy,
+    selectAlbumTaxon: api.selectAlbumTaxon,
     updateAnimalDisplayName: api.updateAnimalDisplayName,
   };
 });
@@ -240,6 +244,75 @@ test("updates the animal name in the album without reloading album state", async
     expect(api.updateAnimalDisplayName).toHaveBeenCalledWith(12, "Bella"),
   );
   expect(api.getSpeciesAlbum).toHaveBeenCalledTimes(1);
+});
+
+test("uses the verified album key for loads after taxonomy linking", async () => {
+  api.getSpeciesAlbum.mockResolvedValue({
+    album_key: "legacy:UGFudGhlcmEgbGVv",
+    verified: false,
+    common_name: null,
+    scientific_name: "Panthera leo",
+    rank: null,
+    class: null,
+    order: null,
+    family: null,
+    genus: null,
+    species: "Panthera leo",
+    animal_count: 51,
+    photo_count: 0,
+    newest_at: "2026-01-01T00:00:00Z",
+    cover_photo_id: null,
+    cover_thumbnail_filename: null,
+    taxonomy: null,
+    animals: { items: [makeAnimal()], total: 51, page: 1, page_size: 50 },
+    photos: { items: [], total: 0, page: 1, page_size: 24 },
+  });
+  const candidate = {
+    provider: "gbif" as const,
+    external_taxon_id: 5219404,
+    scientific_name: "Panthera leo",
+    canonical_name: "Panthera leo",
+    common_name: "Lion",
+    rank: "SPECIES",
+    kingdom: "Animalia",
+    phylum: "Chordata",
+    class: "Mammalia",
+    order: "Carnivora",
+    family: "Felidae",
+    genus: "Panthera",
+    species: "Panthera leo",
+    cached: false,
+  };
+  api.searchTaxonomy.mockResolvedValue({
+    results: [candidate],
+    external_available: true,
+    warning: null,
+  });
+  api.selectAlbumTaxon.mockResolvedValue({
+    album_key: "taxon:7",
+    updated_animals: 51,
+    taxon: candidate,
+  });
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  render(<AlbumDetailView albumKey="legacy:UGFudGhlcmEgbGVv" />);
+
+  await userEvent.type(
+    await screen.findByPlaceholderText("e.g. Panthera leo"),
+    "Panthera leo",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Search" }));
+  await userEvent.click(await screen.findByRole("button", { name: /Lion/ }));
+  await waitFor(() =>
+    expect(api.getSpeciesAlbum).toHaveBeenCalledWith(
+      "taxon:7",
+      expect.any(URLSearchParams),
+    ),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  await waitFor(() => {
+    const lastCall = api.getSpeciesAlbum.mock.calls.at(-1);
+    expect(lastCall?.[0]).toBe("taxon:7");
+  });
 });
 
 test("shows and edits the linked animal from photo detail", async () => {

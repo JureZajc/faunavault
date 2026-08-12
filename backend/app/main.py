@@ -1,10 +1,7 @@
-import base64
 import logging
 import shutil
 import time
-from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -15,10 +12,12 @@ from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel, select
 
+from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, get_settings
 from app.db import engine, get_session
 from app.migrations import database_path_for_engine, run_migrations
 from app.models import Animal, Photo, Taxon, utc_now
+from app.routers.albums import create_albums_router
 from app.routers.catalog import create_catalog_router
 from app.routers.classification import create_classification_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
@@ -27,6 +26,10 @@ from app.schemas import (
     PhotoUpdate,
     ReconcileRequest,
     TaxonSelection,
+)
+from app.services.albums import (
+    list_legacy_reconciliation_groups,
+    update_reconciliation_group,
 )
 from app.services.classification import (
     apply_domestic_metadata_normalization,
@@ -40,13 +43,11 @@ from app.services.classification_jobs import (
     ClassificationWorker,
     recover_interrupted_jobs,
 )
-from app.services.photo_lifecycle import (
-    active_photo_or_404,
-    reconcile_purge_journal,
-)
+from app.services.photo_lifecycle import active_photo_or_404, reconcile_purge_journal
 from app.services.photo_lifecycle import (
     ensure_storage as ensure_lifecycle_storage,
 )
+from app.services.taxonomy import assign_taxon, taxon_to_candidate
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -158,6 +159,30 @@ def migrate_animals_and_taxonomy() -> None:
                     """
                 )
             )
+            animal_columns = {
+                row[1] for row in connection.execute(text("PRAGMA table_info(animal)"))
+            }
+            if "legacy_species_group" in animal_columns:
+                rows = connection.execute(
+                    text("SELECT id, legacy_species_name FROM animal")
+                ).all()
+                if rows:
+                    connection.execute(
+                        text(
+                            "UPDATE animal "
+                            "SET legacy_species_group = :legacy_species_group "
+                            "WHERE id = :animal_id"
+                        ),
+                        [
+                            {
+                                "animal_id": animal_id,
+                                "legacy_species_group": normalize_legacy_species_group(
+                                    legacy_name
+                                ),
+                            }
+                            for animal_id, legacy_name in rows
+                        ],
+                    )
             connection.execute(
                 text(
                     """
@@ -270,42 +295,6 @@ TAXONOMY_CACHE_TTL_SECONDS = 600
 _taxonomy_search_cache: dict[str, tuple[float, list[dict]]] = {}
 
 
-def normalized_species_group(value: str | None) -> str:
-    return " ".join((value or "Unidentified").strip().lower().split())
-
-
-def legacy_album_key(value: str | None) -> str:
-    encoded = (
-        base64.urlsafe_b64encode(normalized_species_group(value).encode("utf-8"))
-        .decode("ascii")
-        .rstrip("=")
-    )
-    return f"legacy:{encoded}"
-
-
-def taxon_album_key(taxon_id: int) -> str:
-    return f"taxon:{taxon_id}"
-
-
-def taxon_to_candidate(taxon: Taxon, cached: bool = True) -> dict:
-    return {
-        "provider": taxon.provider,
-        "external_taxon_id": int(taxon.external_taxon_id),
-        "scientific_name": taxon.scientific_name,
-        "canonical_name": taxon.canonical_name,
-        "common_name": taxon.common_name,
-        "rank": taxon.taxonomic_rank,
-        "kingdom": taxon.kingdom,
-        "phylum": taxon.phylum,
-        "class": taxon.taxonomic_class,
-        "order": taxon.taxonomic_order,
-        "family": taxon.family,
-        "genus": taxon.genus,
-        "species": taxon.species,
-        "cached": cached,
-    }
-
-
 def gbif_request(path: str, params: dict | None = None) -> dict:
     try:
         response = httpx.get(
@@ -410,6 +399,9 @@ def persist_gbif_taxon(session: Session, gbif_key: int) -> Taxon:
     return taxon
 
 
+app.include_router(create_albums_router(persist_gbif_taxon))
+
+
 @app.get("/taxonomy/search")
 def search_taxonomy(
     session: SessionDep,
@@ -477,13 +469,6 @@ def search_taxonomy(
         }
 
 
-def assign_taxon(animal: Animal, taxon: Taxon, status: str) -> None:
-    animal.taxon_id = taxon.id
-    animal.taxonomy_status = status
-    animal.taxonomy_note = None
-    animal.updated_at = utc_now()
-
-
 def animal_or_404(animal_id: int, session: Session) -> Animal:
     animal = session.get(Animal, animal_id)
     if animal is None:
@@ -529,266 +514,25 @@ def select_animal_taxon(
     return {"animal": animal, "taxon": taxon_to_candidate(taxon)}
 
 
-def album_records(
-    session: Session,
-) -> tuple[list[Animal], list[Photo], dict[int, Taxon]]:
-    animals = list(session.exec(select(Animal)).all())
-    photos = list(session.exec(select(Photo).where(Photo.deleted_at.is_(None))).all())
-    taxa = {taxon.id: taxon for taxon in session.exec(select(Taxon)).all() if taxon.id}
-    return animals, photos, taxa
-
-
-def build_album_groups(session: Session) -> list[dict]:
-    animals, photos, taxa = album_records(session)
-    photos_by_animal: dict[int, list[Photo]] = defaultdict(list)
-    for photo in photos:
-        if photo.animal_id is not None:
-            photos_by_animal[photo.animal_id].append(photo)
-    groups: dict[str, dict] = {}
-    for animal in animals:
-        taxon = taxa.get(animal.taxon_id) if animal.taxon_id else None
-        key = (
-            taxon_album_key(taxon.id)
-            if taxon and taxon.id is not None
-            else legacy_album_key(animal.legacy_species_name)
-        )
-        if key not in groups:
-            groups[key] = {
-                "album_key": key,
-                "verified": taxon is not None,
-                "taxon": taxon,
-                "legacy_name": animal.legacy_species_name or "Unidentified",
-                "animals": [],
-                "photos": [],
-            }
-        groups[key]["animals"].append(animal)
-        groups[key]["photos"].extend(photos_by_animal.get(animal.id or -1, []))
-    return list(groups.values())
-
-
-def album_summary(group: dict) -> dict:
-    taxon: Taxon | None = group["taxon"]
-    photos: list[Photo] = group["photos"]
-    newest = max(
-        [animal.created_at for animal in group["animals"]]
-        + [photo.created_at for photo in photos],
-        default=None,
-    )
-    cover = max(photos, key=lambda photo: photo.created_at, default=None)
-    return {
-        "album_key": group["album_key"],
-        "verified": group["verified"],
-        "common_name": taxon.common_name if taxon else None,
-        "scientific_name": (taxon.canonical_name if taxon else group["legacy_name"]),
-        "rank": taxon.taxonomic_rank if taxon else None,
-        "class": taxon.taxonomic_class if taxon else None,
-        "order": taxon.taxonomic_order if taxon else None,
-        "family": taxon.family if taxon else None,
-        "genus": taxon.genus if taxon else None,
-        "species": taxon.species if taxon else group["legacy_name"],
-        "animal_count": len(group["animals"]),
-        "photo_count": len(photos),
-        "newest_at": newest,
-        "cover_photo_id": cover.id if cover else None,
-        "cover_thumbnail_filename": cover.thumbnail_filename if cover else None,
-    }
-
-
-@app.get("/taxonomy/filters")
-def taxonomy_filters(session: SessionDep) -> dict:
-    groups = build_album_groups(session)
-    fields = {
-        "classes": "taxonomic_class",
-        "orders": "taxonomic_order",
-        "families": "family",
-        "genera": "genus",
-        "species": "species",
-    }
-    result: dict[str, list[dict]] = {}
-    for output_name, field_name in fields.items():
-        counts: dict[str, int] = defaultdict(int)
-        for group in groups:
-            taxon: Taxon | None = group["taxon"]
-            value = (
-                getattr(taxon, field_name)
-                if taxon
-                else (group["legacy_name"] if field_name == "species" else None)
-            )
-            if value:
-                counts[value] += len(group["animals"])
-        result[output_name] = [
-            {"value": value, "count": count}
-            for value, count in sorted(counts.items(), key=lambda item: item[0].lower())
-        ]
-    return result
-
-
-@app.get("/species-albums")
-def list_species_albums(
-    session: SessionDep,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=24, ge=1, le=100),
-    q: str = "",
-    taxonomic_class: str | None = Query(default=None, alias="class"),
-    order: str | None = None,
-    family: str | None = None,
-    genus: str | None = None,
-    species: str | None = None,
-    only_with_photos: bool = False,
-    sort: str = Query(
-        default="name", pattern="^(name|newest|animal_count|photo_count)$"
-    ),
-) -> dict:
-    summaries = [album_summary(group) for group in build_album_groups(session)]
-    query = q.strip().lower()
-    if query:
-        summaries = [
-            item
-            for item in summaries
-            if query
-            in " ".join(
-                str(item.get(field) or "").lower()
-                for field in (
-                    "common_name",
-                    "scientific_name",
-                    "class",
-                    "order",
-                    "family",
-                    "genus",
-                )
-            )
-        ]
-    filters = {
-        "class": taxonomic_class,
-        "order": order,
-        "family": family,
-        "genus": genus,
-        "species": species,
-    }
-    for field, value in filters.items():
-        if value:
-            summaries = [item for item in summaries if item.get(field) == value]
-    if only_with_photos:
-        summaries = [item for item in summaries if item["photo_count"] > 0]
-    if sort == "name":
-        summaries.sort(
-            key=lambda item: (
-                (item["common_name"] or item["scientific_name"]).lower(),
-                item["album_key"],
-            )
-        )
-    elif sort == "newest":
-        summaries.sort(key=lambda item: item["newest_at"] or datetime.min, reverse=True)
-    else:
-        summaries.sort(
-            key=lambda item: (item[sort], item["scientific_name"].lower()),
-            reverse=True,
-        )
-    total = len(summaries)
-    start = (page - 1) * page_size
-    return {
-        "items": summaries[start : start + page_size],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    }
-
-
-def find_album_group(session: Session, album_key: str) -> dict:
-    group = next(
-        (
-            group
-            for group in build_album_groups(session)
-            if group["album_key"] == album_key
-        ),
-        None,
-    )
-    if group is None:
-        raise HTTPException(status_code=404, detail="Species album not found")
-    return group
-
-
-@app.get("/species-albums/{album_key}")
-def get_species_album(
-    album_key: str,
-    session: SessionDep,
-    animal_page: int = Query(default=1, ge=1),
-    animal_page_size: int = Query(default=50, ge=1, le=100),
-    photo_page: int = Query(default=1, ge=1),
-    photo_page_size: int = Query(default=24, ge=1, le=100),
-) -> dict:
-    group = find_album_group(session, album_key)
-    summary = album_summary(group)
-    animals: list[Animal] = sorted(group["animals"], key=lambda item: item.identifier)
-    photos: list[Photo] = sorted(
-        group["photos"], key=lambda item: item.created_at, reverse=True
-    )
-    animal_start = (animal_page - 1) * animal_page_size
-    photo_start = (photo_page - 1) * photo_page_size
-    return {
-        **summary,
-        "taxonomy": taxon_to_candidate(group["taxon"]) if group["taxon"] else None,
-        "animals": {
-            "items": animals[animal_start : animal_start + animal_page_size],
-            "total": len(animals),
-            "page": animal_page,
-            "page_size": animal_page_size,
-        },
-        "photos": {
-            "items": photos[photo_start : photo_start + photo_page_size],
-            "total": len(photos),
-            "page": photo_page,
-            "page_size": photo_page_size,
-        },
-    }
-
-
-@app.put("/species-albums/{album_key}/taxon")
-def select_album_taxon(
-    album_key: str,
-    selection: TaxonSelection,
-    session: SessionDep,
-) -> dict:
-    group = find_album_group(session, album_key)
-    if group["verified"]:
-        raise HTTPException(
-            status_code=409, detail="Album already has verified taxonomy"
-        )
-    taxon = persist_gbif_taxon(session, selection.gbif_key)
-    for animal in group["animals"]:
-        assign_taxon(animal, taxon, "manually_linked")
-        session.add(animal)
-    session.commit()
-    return {
-        "album_key": taxon_album_key(taxon.id or 0),
-        "updated_animals": len(group["animals"]),
-        "taxon": taxon_to_candidate(taxon),
-    }
-
-
 @app.post("/taxonomy/reconcile")
 def reconcile_taxonomy(
     request: ReconcileRequest,
     session: SessionDep,
 ) -> dict:
-    groups = [
-        group
-        for group in build_album_groups(session)
-        if not group["verified"] and group["legacy_name"] != "Unidentified"
-    ][: request.limit]
+    groups = list_legacy_reconciliation_groups(session, request.limit)
     result = {"processed": 0, "linked": 0, "ambiguous": 0, "unmatched": 0, "failed": 0}
     for group in groups:
         try:
             match = gbif_request(
                 "/species/match",
                 {
-                    "name": group["legacy_name"],
+                    "name": group.legacy_name,
                     "kingdom": "Animalia",
                     "verbose": "true",
                 },
             )
         except HTTPException:
-            result["failed"] += len(group["animals"])
+            result["failed"] += group.animal_count
             continue
         note = str(match.get("note", "")).lower()
         accepted = (
@@ -804,25 +548,27 @@ def reconcile_taxonomy(
             try:
                 key = int(match.get("acceptedUsageKey") or match["usageKey"])
                 taxon = persist_gbif_taxon(session, key)
-                for animal in group["animals"]:
-                    assign_taxon(animal, taxon, "auto_linked")
-                    session.add(animal)
-                result["linked"] += len(group["animals"])
+                updated = update_reconciliation_group(
+                    session,
+                    group,
+                    taxon=taxon,
+                    status="auto_linked",
+                )
+                result["linked"] += updated
             except (HTTPException, KeyError, ValueError):
-                result["failed"] += len(group["animals"])
+                result["failed"] += group.animal_count
                 session.rollback()
                 continue
         else:
-            for animal in group["animals"]:
-                animal.taxonomy_status = status
-                animal.taxonomy_note = (
-                    match.get("note") or "No confident exact GBIF match"
-                )
-                animal.updated_at = utc_now()
-                session.add(animal)
-            result[status] += len(group["animals"])
+            updated = update_reconciliation_group(
+                session,
+                group,
+                status=status,
+                note=match.get("note") or "No confident exact GBIF match",
+            )
+            result[status] += updated
         session.commit()
-        result["processed"] += len(group["animals"])
+        result["processed"] += updated
     return result
 
 

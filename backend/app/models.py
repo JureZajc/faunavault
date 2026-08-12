@@ -2,8 +2,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Column, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    event,
+)
 from sqlmodel import Field, SQLModel
+
+from app.album_identity import normalize_legacy_species_group
 
 
 def utc_now() -> datetime:
@@ -39,10 +49,26 @@ class Animal(SQLModel, table=True):
     taxon_id: int | None = Field(default=None, foreign_key="taxon.id", index=True)
     legacy_common_name: str | None = None
     legacy_species_name: str | None = Field(default=None, index=True)
+    legacy_species_group: str = Field(
+        default_factory=lambda: normalize_legacy_species_group(None),
+        sa_column=Column(
+            String,
+            nullable=False,
+            server_default=normalize_legacy_species_group(None),
+        ),
+    )
     taxonomy_status: str = Field(default="unreviewed", index=True)
     taxonomy_note: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+@event.listens_for(Animal, "before_insert")
+@event.listens_for(Animal, "before_update")
+def synchronize_legacy_species_group(_mapper, _connection, animal: Animal) -> None:
+    animal.legacy_species_group = normalize_legacy_species_group(
+        animal.legacy_species_name
+    )
 
 
 class Photo(SQLModel, table=True):

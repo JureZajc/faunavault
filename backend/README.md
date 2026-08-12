@@ -33,3 +33,18 @@ archive query plans: active created-time order, active status plus created-time
 order, and active category plus created-time order. Existing relationship
 indexes serve verified-taxon filtering. Leading-wildcard substring search still
 examines active candidates; no speculative indexes are created for search text.
+
+Species album list, taxonomy-filter, detail, assignment, and reconciliation
+discovery paths are SQL-backed and no longer build the complete archive in
+Python. Album identity remains `taxon:{local_id}` for verified taxa and the
+existing normalized, unpadded URL-safe Base64 key for legacy names. SQLite album
+search uses a deterministic connection-local Python `lower()` function plus
+literal `instr()` matching so Unicode case behavior remains compatible with the
+former Python filtering.
+
+Schema migration 8 persists the exact Python-normalized legacy species group on
+each animal and indexes it for direct lookup. The original legacy name remains
+unchanged for display and URL compatibility. Generated isolated query plans use
+the existing photo relationship/active indexes and animal taxon index; a tested
+additional photo composite index did not improve those plans, so no speculative
+photo index was added.

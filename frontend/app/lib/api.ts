@@ -146,6 +146,12 @@ export type AlbumDetail = AlbumSummary & {
   photos: Paginated<Photo>;
 };
 
+export type AlbumTaxonSelectionResponse = {
+  album_key: string;
+  updated_animals: number;
+  taxon: TaxonCandidate;
+};
+
 export type PhotoUpdate = Partial<{
   display_title: string | null;
   common_name: string | null;
@@ -329,7 +335,7 @@ export function searchTaxonomy(query: string) {
 }
 
 export function selectAlbumTaxon(albumKey: string, gbifKey: number) {
-  return request<{ album_key: string; updated_animals: number }>(
+  return request<AlbumTaxonSelectionResponse>(
     `/species-albums/${encodeURIComponent(albumKey)}/taxon`,
     {
       method: "PUT",

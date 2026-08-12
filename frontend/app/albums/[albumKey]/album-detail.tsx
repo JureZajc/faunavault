@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AnimalNameEditor from "../../components/animal-name-editor";
 import ImageLightbox from "../../components/image-lightbox";
 import MoveToTrashButton from "../../components/move-to-trash-button";
@@ -31,6 +31,7 @@ function hierarchy(album: AlbumDetail) {
 }
 
 export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
+  const effectiveAlbumKey = useRef(albumKey);
   const [album, setAlbum] = useState<AlbumDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
     return params;
   }, [animalPage, photoPage]);
 
-  const load = useCallback(async (nextKey = albumKey) => {
+  const load = useCallback(async (nextKey = effectiveAlbumKey.current) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -62,11 +63,15 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
     } finally {
       setIsLoading(false);
     }
-  }, [albumKey, detailParams]);
+  }, [detailParams]);
+
+  useEffect(() => {
+    effectiveAlbumKey.current = albumKey;
+  }, [albumKey]);
 
   useEffect(() => {
     let mounted = true;
-    getSpeciesAlbum(albumKey, detailParams)
+    getSpeciesAlbum(effectiveAlbumKey.current, detailParams)
       .then((result) => {
         if (mounted) setAlbum(result);
       })
@@ -102,6 +107,7 @@ export default function AlbumDetailView({ albumKey }: { albumKey: string }) {
     setIsSelecting(true);
     try {
       const result = await selectAlbumTaxon(album.album_key, candidate.external_taxon_id);
+      effectiveAlbumKey.current = result.album_key;
       window.history.replaceState(null, "", `/albums/${encodeURIComponent(result.album_key)}`);
       await load(result.album_key);
       setCandidates([]);
