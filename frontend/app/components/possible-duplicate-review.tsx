@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useModalAccessibility } from "../hooks/use-modal-accessibility";
 import {
   photoThumbnailUrl,
   VisualDuplicateCandidate,
@@ -99,37 +100,17 @@ export default function PossibleDuplicateReview({
   const [previewUrl] = useState(() => URL.createObjectURL(file));
   const strongest = candidates[0];
 
+  const { handleKeyDown } = useModalAccessibility({
+    isOpen: Boolean(strongest),
+    dialogRef,
+    initialFocusRef: keepButtonRef,
+    onClose: onCancel,
+    isBusy: isSubmitting,
+  });
+
   useEffect(() => {
     return () => URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
-
-  useEffect(() => {
-    keepButtonRef.current?.focus();
-  }, [file]);
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape" && !isSubmitting) {
-      event.preventDefault();
-      onCancel();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      dialogRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
 
   if (!strongest) return null;
 
@@ -141,6 +122,7 @@ export default function PossibleDuplicateReview({
         aria-modal="true"
         aria-labelledby="possible-duplicate-title"
         aria-describedby="possible-duplicate-description"
+        tabIndex={-1}
         onKeyDown={handleKeyDown}
         className="w-full max-w-3xl rounded-xl bg-stone-50 p-5 shadow-2xl"
       >

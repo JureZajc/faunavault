@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import MoveToTrashButton from "../app/components/move-to-trash-button";
@@ -94,20 +94,83 @@ test("does not report a successful backend restore as failed when catalog sync f
 });
 
 test("requires the filename before permanent deletion", async () => {
+  const user = userEvent.setup();
   render(<TrashBrowser onNotice={vi.fn()} onRestored={vi.fn()} />);
-  await userEvent.click(
-    await screen.findByRole("button", { name: "Permanently delete" }),
-  );
-  const submit = within(screen.getByRole("dialog")).getByRole("button", {
+  const trigger = await screen.findByRole("button", { name: "Permanently delete" });
+  await user.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Permanently delete photo?" });
+  const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+  const input = within(dialog).getByRole("textbox", {
+    name: "Filename confirmation",
+  });
+  const submit = within(dialog).getByRole("button", {
     name: "Permanently delete",
   });
+
+  expect(dialog.getAttribute("aria-modal")).toBe("true");
+  expect(document.activeElement).toBe(cancel);
   expect((submit as HTMLButtonElement).disabled).toBe(true);
-  await userEvent.type(
-    screen.getByRole("textbox", { name: "Filename confirmation" }),
-    "fox.jpg",
-  );
-  await userEvent.click(submit);
+
+  await user.tab();
+  expect(document.activeElement).toBe(input);
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(cancel);
+
+  input.focus();
+  await user.keyboard("{Enter}");
+  expect(api.permanentlyDeleteTrashPhoto).not.toHaveBeenCalled();
+  await user.type(input, "fox.jpg");
+  await user.click(submit);
   await waitFor(() => expect(api.permanentlyDeleteTrashPhoto).toHaveBeenCalledWith(7));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Trash" })),
+  );
+});
+
+test("cancels permanent deletion with Escape and restores focus", async () => {
+  render(<TrashBrowser onNotice={vi.fn()} onRestored={vi.fn()} />);
+  const trigger = await screen.findByRole("button", { name: "Permanently delete" });
+  await userEvent.click(trigger);
+
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+test("keeps permanent deletion open and interactive when submission fails", async () => {
+  let rejectDelete: (error: Error) => void = () => undefined;
+  api.permanentlyDeleteTrashPhoto.mockImplementation(
+    () => new Promise((_, reject) => { rejectDelete = reject; }),
+  );
+  render(<TrashBrowser onNotice={vi.fn()} onRestored={vi.fn()} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Permanently delete" }));
+  const input = screen.getByRole("textbox", { name: "Filename confirmation" });
+  await userEvent.type(input, "fox.jpg");
+  await userEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Permanently delete",
+    }),
+  );
+
+  const dialog = screen.getByRole("dialog");
+  expect((input as HTMLInputElement).disabled).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" }).disabled).toBe(true);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.getByRole("dialog")).toBe(dialog);
+  expect(api.permanentlyDeleteTrashPhoto).toHaveBeenCalledOnce();
+
+  rejectDelete(new Error("Disk is read-only"));
+  expect((await screen.findByRole("alert")).textContent).toContain("Disk is read-only");
+  expect((input as HTMLInputElement).disabled).toBe(false);
+  const retry = within(dialog).getByRole<HTMLButtonElement>("button", {
+    name: "Permanently delete",
+  });
+  expect(
+    retry.disabled,
+  ).toBe(false);
+  expect(document.activeElement).toBe(input);
 });
 
 test("moves an active photo without navigating", async () => {
@@ -124,4 +187,63 @@ test("moves an active photo without navigating", async () => {
   );
   await waitFor(() => expect(api.deletePhoto).toHaveBeenCalledWith(7));
   expect(onMoved).toHaveBeenCalled();
+});
+
+test("traps focus in Move to Trash and restores it after Cancel or Escape", async () => {
+  const user = userEvent.setup();
+  render(
+    <MoveToTrashButton photo={photo({ deleted_at: null })} onMoved={vi.fn()} />,
+  );
+  const trigger = screen.getByRole("button", { name: "Move to Trash" });
+  await user.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Move photo to Trash?" });
+  const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+  const confirm = within(dialog).getByRole("button", { name: "Move to Trash" });
+
+  expect(document.activeElement).toBe(cancel);
+  await user.tab();
+  expect(document.activeElement).toBe(confirm);
+  await user.tab();
+  expect(document.activeElement).toBe(cancel);
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(confirm);
+  await user.click(cancel);
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+  await user.click(trigger);
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+test("prevents duplicate Move to Trash submission and blocks Escape while busy", async () => {
+  let rejectMove: (error: Error) => void = () => undefined;
+  api.deletePhoto.mockImplementation(
+    () => new Promise((_, reject) => { rejectMove = reject; }),
+  );
+  render(
+    <MoveToTrashButton
+      photo={photo({ deleted_at: null })}
+      onMoved={vi.fn()}
+      onError={vi.fn()}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+  const confirm = screen.getAllByRole("button", { name: "Move to Trash" })[1];
+  await userEvent.click(confirm);
+
+  const dialog = screen.getByRole("dialog");
+  expect((confirm as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" }).disabled).toBe(true);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.getByRole("dialog")).toBe(dialog);
+  await userEvent.click(confirm);
+  expect(api.deletePhoto).toHaveBeenCalledOnce();
+
+  rejectMove(new Error("Trash is unavailable"));
+  expect((await screen.findByRole("alert")).textContent).toContain("Trash is unavailable");
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" }).disabled).toBe(false);
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: "Cancel" }),
+  );
 });

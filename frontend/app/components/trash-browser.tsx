@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useModalAccessibility } from "../hooks/use-modal-accessibility";
 import {
   getTrashPhotos,
   imageUrl,
@@ -26,6 +27,32 @@ export default function TrashBrowser({
   const [deleteTarget, setDeleteTarget] = useState<Photo | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLFormElement>(null);
+  const confirmationInputRef = useRef<HTMLInputElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const trashHeadingRef = useRef<HTMLHeadingElement>(null);
+  const isDeleting = deleteTarget !== null && busyId === deleteTarget.id;
+
+  function closeDeleteDialog() {
+    if (isDeleting) return;
+    setDeleteTarget(null);
+    setConfirmation("");
+    setDeleteError(null);
+  }
+
+  const { handleKeyDown } = useModalAccessibility({
+    isOpen: deleteTarget !== null,
+    dialogRef,
+    initialFocusRef: cancelButtonRef,
+    fallbackFocusRef: trashHeadingRef,
+    onClose: closeDeleteDialog,
+    isBusy: isDeleting,
+  });
+
+  useEffect(() => {
+    if (deleteError && !isDeleting) confirmationInputRef.current?.focus();
+  }, [deleteError, isDeleting]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -79,7 +106,7 @@ export default function TrashBrowser({
     event.preventDefault();
     if (!deleteTarget || confirmation !== deleteTarget.original_filename) return;
     setBusyId(deleteTarget.id);
-    setError(null);
+    setDeleteError(null);
     try {
       const result = await permanentlyDeleteTrashPhoto(deleteTarget.id);
       const filename = deleteTarget.original_filename;
@@ -93,7 +120,7 @@ export default function TrashBrowser({
           : `Permanently deleted ${filename}.`,
       );
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Permanent deletion failed");
+      setDeleteError(nextError instanceof Error ? nextError.message : "Permanent deletion failed");
     } finally {
       setBusyId(null);
     }
@@ -107,7 +134,7 @@ export default function TrashBrowser({
   return (
     <div>
       <div className="mb-5">
-        <h2 className="text-2xl font-semibold">Trash</h2>
+        <h2 ref={trashHeadingRef} tabIndex={-1} className="text-2xl font-semibold">Trash</h2>
         <p className="mt-1 text-sm text-stone-500">
           Deleted photos stay local until you permanently remove them.
         </p>
@@ -149,7 +176,10 @@ export default function TrashBrowser({
                   <button
                     type="button"
                     disabled={busyId === photo.id}
-                    onClick={() => setDeleteTarget(photo)}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeleteTarget(photo);
+                    }}
                     className="min-h-10 rounded-md border border-red-200 bg-red-50 text-sm font-semibold text-red-700"
                   >
                     Permanently delete
@@ -169,13 +199,15 @@ export default function TrashBrowser({
       ) : null}
       {deleteTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4">
-          <form onSubmit={permanentlyDelete} role="dialog" aria-modal="true" aria-labelledby="permanent-delete-title" className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
+          <form ref={dialogRef} onSubmit={permanentlyDelete} onKeyDown={handleKeyDown} role="dialog" aria-modal="true" aria-labelledby="permanent-delete-title" aria-describedby="permanent-delete-description" tabIndex={-1} className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
             <h2 id="permanent-delete-title" className="text-xl font-semibold">Permanently delete photo?</h2>
-            <p className="mt-2 text-sm leading-6 text-stone-600">This removes the record and all local image variants. Type <strong>{deleteTarget.original_filename}</strong> to confirm.</p>
-            <input autoFocus value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-4 min-h-11 w-full rounded-md border px-3" aria-label="Filename confirmation" />
+            <p id="permanent-delete-description" className="mt-2 text-sm leading-6 text-stone-600">This removes the record and all local image variants. Type <strong>{deleteTarget.original_filename}</strong> to confirm.</p>
+            <label htmlFor="permanent-delete-confirmation" className="mt-4 block text-sm font-medium text-stone-700">Filename confirmation</label>
+            <input ref={confirmationInputRef} id="permanent-delete-confirmation" disabled={isDeleting} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-2 min-h-11 w-full rounded-md border px-3" />
+            {deleteError ? <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{deleteError}</p> : null}
             <div className="mt-5 grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => { setDeleteTarget(null); setConfirmation(""); }} className="min-h-11 rounded border">Cancel</button>
-              <button type="submit" disabled={confirmation !== deleteTarget.original_filename || busyId === deleteTarget.id} className="min-h-11 rounded border border-red-200 bg-red-50 font-semibold text-red-700 disabled:opacity-40">Permanently delete</button>
+              <button ref={cancelButtonRef} type="button" disabled={isDeleting} onClick={closeDeleteDialog} className="min-h-11 rounded border">Cancel</button>
+              <button type="submit" disabled={confirmation !== deleteTarget.original_filename || isDeleting} className="min-h-11 rounded border border-red-200 bg-red-50 font-semibold text-red-700 disabled:opacity-40">{isDeleting ? "Permanently deleting" : "Permanently delete"}</button>
             </div>
           </form>
         </div>

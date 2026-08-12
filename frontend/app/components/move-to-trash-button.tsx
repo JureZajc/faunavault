@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useModalAccessibility } from "../hooks/use-modal-accessibility";
 import { deletePhoto, Photo } from "../lib/api";
 
 type MoveToTrashButtonProps = {
@@ -18,15 +19,41 @@ export default function MoveToTrashButton({
 }: MoveToTrashButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  function closeDialog() {
+    if (isMoving) return;
+    setIsOpen(false);
+    setDialogError(null);
+  }
+
+  const { handleKeyDown } = useModalAccessibility({
+    isOpen,
+    dialogRef,
+    initialFocusRef: cancelButtonRef,
+    onClose: closeDialog,
+    isBusy: isMoving,
+  });
+
+  useEffect(() => {
+    if (dialogError && !isMoving) cancelButtonRef.current?.focus();
+  }, [dialogError, isMoving]);
 
   async function movePhoto() {
+    if (isMoving) return;
     setIsMoving(true);
+    setDialogError(null);
     try {
       await deletePhoto(photo.id);
       setIsOpen(false);
       await onMoved(photo);
     } catch (error) {
-      onError?.(error instanceof Error ? error.message : "Could not move photo to Trash");
+      const message =
+        error instanceof Error ? error.message : "Could not move photo to Trash";
+      setDialogError(message);
+      onError?.(message);
     } finally {
       setIsMoving(false);
     }
@@ -36,7 +63,10 @@ export default function MoveToTrashButton({
     <>
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setDialogError(null);
+          setIsOpen(true);
+        }}
         className={
           className ??
           "min-h-9 rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-600 hover:border-red-200 hover:text-red-700"
@@ -47,23 +77,33 @@ export default function MoveToTrashButton({
       {isOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4">
           <div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={`trash-title-${photo.id}`}
+            aria-describedby={`trash-description-${photo.id}`}
+            tabIndex={-1}
+            onKeyDown={handleKeyDown}
             className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
           >
             <h2 id={`trash-title-${photo.id}`} className="text-xl font-semibold">
               Move photo to Trash?
             </h2>
-            <p className="mt-2 text-sm leading-6 text-stone-600">
+            <p id={`trash-description-${photo.id}`} className="mt-2 text-sm leading-6 text-stone-600">
               {photo.original_filename} will be hidden from the active collection.
               You can restore it later.
             </p>
+            {dialogError ? (
+              <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+                {dialogError}
+              </p>
+            ) : null}
             <div className="mt-5 grid grid-cols-2 gap-3">
               <button
+                ref={cancelButtonRef}
                 type="button"
                 disabled={isMoving}
-                onClick={() => setIsOpen(false)}
+                onClick={closeDialog}
                 className="min-h-11 rounded-md border border-stone-300 font-semibold"
               >
                 Cancel
