@@ -40,9 +40,9 @@ Audit date: 2026-08-11
 
 ## P3 — Polish
 
-- Frontend component-boundary decomposition is implemented: the catalog and photo-detail clients now retain route-level orchestration while focused local hooks/components own URL query state, uploads and duplicate review, catalog rendering, photo loading, metadata editing, linked-animal/taxonomy presentation, classification controls, lightbox state, and the detail Trash confirmation. No global state or data-fetching library was added, and behavior is covered by 51 frontend interaction tests.
+- Frontend component-boundary decomposition is implemented: the catalog and photo-detail clients now retain route-level orchestration while focused local hooks/components own URL query state, uploads and duplicate review, catalog rendering, photo loading, metadata editing, linked-animal/taxonomy presentation, classification controls, lightbox state, and the detail Trash confirmation. No global state or data-fetching library was added, and behavior is covered by 59 frontend interaction tests.
 - Dialog/lightbox accessibility hardening is implemented across duplicate review, Move to Trash, permanent delete, photo-detail confirmation, and the photo lightbox, including modal semantics, safe initial focus, dynamic focus traps, Escape/busy-state handling, focus restoration, reference-counted scroll locking, and interaction tests.
-- Add richer per-file batch upload progress; persistent classification progress is implemented.
+- Richer per-file batch upload progress is implemented with a sequential frontend queue, truthful Waiting/Uploading/outcome states, independent mixed results, exact/perceptual duplicate handling, per-file transient retries, and batched catalog refreshes. The compatibility batch API remains available; byte-level percentages are not claimed.
 - Replace remaining dense one-line JSX and review responsive controls on small screens.
 - Add optional root developer commands after Windows and cross-platform behavior is agreed.
 

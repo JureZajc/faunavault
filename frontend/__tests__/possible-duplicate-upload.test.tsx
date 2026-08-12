@@ -77,7 +77,7 @@ function catalogPage(query: CatalogQuery) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   window.history.replaceState(null, "", "/");
   api.getCatalogPhotos.mockImplementation(async (query: CatalogQuery) =>
     catalogPage(query),
@@ -136,7 +136,8 @@ test("reviews a possible duplicate and keeps both with explicit override", async
   await userEvent.click(screen.getByRole("button", { name: "Keep both" }));
   await waitFor(() => expect(api.uploadPhoto).toHaveBeenLastCalledWith(file, true));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(screen.getByText(/kept both photos/i)).toBeTruthy();
+  expect(screen.getByText("Uploaded")).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toMatch(/1 file: 1 uploaded/i);
 });
 
 test("keeps duplicate-review focus trapped and restores the upload trigger on Escape", async () => {
@@ -167,34 +168,24 @@ test("keeps duplicate-review focus trapped and restores the upload trigger on Es
   expect(screen.queryByRole("dialog")).toBeNull();
   await waitFor(() =>
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "list" }),
+      document.querySelector<HTMLInputElement>('input[type="file"]'),
     ),
   );
   expect(document.body.style.overflow).toBe("");
 });
 
 test("cancels one flagged batch item without blocking successful files", async () => {
-  api.uploadPhotoBatch.mockResolvedValue({
-    uploaded: [photo(2)],
-    possible_duplicates: [
-      {
-        file_index: 0,
-        filename: "near.jpg",
-        message: "Looks similar",
+  api.uploadPhoto
+    .mockRejectedValueOnce(
+      new ApiError("Looks similar", 409, {
+        code: "possible_visual_duplicate",
         candidates: [candidate("trash")],
-      },
-    ],
-    failed: [
-      {
-        file_index: 2,
-        filename: "broken.jpg",
-        error: "Uploaded file is not a valid image",
-        code: null,
-        photo_id: null,
-        location: null,
-      },
-    ],
-  });
+      }),
+    )
+    .mockResolvedValueOnce(photo(2))
+    .mockRejectedValueOnce(
+      new ApiError("Uploaded file is not a valid image", 400),
+    );
 
   render(<Home />);
   const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
@@ -206,10 +197,13 @@ test("cancels one flagged batch item without blocking successful files", async (
   await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
 
   expect(await screen.findByText("Trash")).toBeTruthy();
-  expect(screen.getByText(/1 uploaded\. 1 photo needs review/i)).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toMatch(/1 file needs review/i);
+  expect(screen.getByText("Uploaded")).toBeTruthy();
+  expect(screen.getByText("Failed")).toBeTruthy();
   await userEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
-  expect(await screen.findByText("Cancelled upload of near.jpg.")).toBeTruthy();
-  expect(api.uploadPhoto).not.toHaveBeenCalled();
+  expect(await screen.findByText("Cancelled")).toBeTruthy();
+  expect(api.uploadPhoto).toHaveBeenCalledTimes(3);
+  expect(api.uploadPhotoBatch).not.toHaveBeenCalled();
 });
 
 test("keeps the review open when confirmation fails", async () => {
@@ -303,14 +297,19 @@ test("revokes the uploaded preview URL when duplicate review closes", async () =
 });
 
 test("keeps retained files matched to multiple review queue entries", async () => {
-  api.uploadPhotoBatch.mockResolvedValue({
-    uploaded: [],
-    possible_duplicates: [
-      { file_index: 1, filename: "second.jpg", message: "Looks similar", candidates: [candidate()] },
-      { file_index: 0, filename: "first.jpg", message: "Looks similar", candidates: [candidate()] },
-    ],
-    failed: [],
-  });
+  api.uploadPhoto
+    .mockRejectedValueOnce(
+      new ApiError("Looks similar", 409, {
+        code: "possible_visual_duplicate",
+        candidates: [candidate()],
+      }),
+    )
+    .mockRejectedValueOnce(
+      new ApiError("Looks similar", 409, {
+        code: "possible_visual_duplicate",
+        candidates: [candidate()],
+      }),
+    );
   render(<Home />);
   const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
   await userEvent.upload(input, [
@@ -319,8 +318,8 @@ test("keeps retained files matched to multiple review queue entries", async () =
   ]);
   await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
 
-  expect(await screen.findByAltText("Uploaded photo: second.jpg")).toBeTruthy();
-  await userEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
   expect(await screen.findByAltText("Uploaded photo: first.jpg")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
+  expect(await screen.findByAltText("Uploaded photo: second.jpg")).toBeTruthy();
   expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
 });
