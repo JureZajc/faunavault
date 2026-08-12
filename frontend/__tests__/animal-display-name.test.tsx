@@ -368,12 +368,18 @@ test("keeps the photo-detail delete confirmation focus-safe through errors", asy
   await user.tab();
   expect(document.activeElement).toBe(input);
 
+  await user.type(input, "partial confirmation");
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(trigger));
 
   await user.click(trigger);
   dialog = screen.getByRole("dialog");
+  expect(
+    screen.getByRole<HTMLInputElement>("textbox", {
+      name: "Type the filename to confirm",
+    }).value,
+  ).toBe("");
   await user.type(
     screen.getByRole("textbox", { name: "Type the filename to confirm" }),
     "lion.jpg",
