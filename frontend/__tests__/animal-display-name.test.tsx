@@ -342,6 +342,7 @@ test("shows and edits the linked animal from photo detail", async () => {
 
 test("keeps the photo-detail delete confirmation focus-safe through errors", async () => {
   let rejectDelete: (error: Error) => void = () => undefined;
+  const addEventListenerSpy = vi.spyOn(window, "addEventListener");
   api.getPhoto.mockResolvedValue(makePhoto());
   api.getAnimal.mockResolvedValue(makeAnimal());
   api.deletePhoto.mockImplementation(
@@ -349,6 +350,10 @@ test("keeps the photo-detail delete confirmation focus-safe through errors", asy
   );
   const user = userEvent.setup();
   render(<PhotoDetail id="44" />);
+
+  expect(
+    addEventListenerSpy.mock.calls.filter(([eventName]) => eventName === "keydown"),
+  ).toHaveLength(0);
 
   const trigger = await screen.findByRole("button", { name: "Move to Trash" });
   await user.click(trigger);
@@ -388,4 +393,5 @@ test("keeps the photo-detail delete confirmation focus-safe through errors", asy
     screen.getByRole("textbox", { name: "Type the filename to confirm" }),
   );
   expect(screen.getByRole("dialog")).toBe(dialog);
+  addEventListenerSpy.mockRestore();
 });
