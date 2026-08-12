@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import AnimalNameEditor from "../../components/animal-name-editor";
 import ClassificationJobsPanel from "../../components/classification-jobs-panel";
 import ImageLightbox from "../../components/image-lightbox";
 import TaxonomyPicker from "../../components/taxonomy-picker";
 import { useClassificationJobs } from "../../hooks/use-classification-jobs";
+import { useModalAccessibility } from "../../hooks/use-modal-accessibility";
 import {
   Animal,
   classifyPhoto,
@@ -199,11 +200,15 @@ export default function PhotoDetail({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [metadataForm, setMetadataForm] =
     useState<MetadataFormState>(emptyMetadataForm);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [animalLoadError, setAnimalLoadError] = useState<string | null>(null);
+  const deleteDialogRef = useRef<HTMLDivElement>(null);
+  const deleteCancelButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteConfirmationInputRef = useRef<HTMLInputElement>(null);
   const refreshClassifiedPhoto = useCallback(async () => {
     const updatedPhoto = await getPhoto(id);
     setPhoto(updatedPhoto);
@@ -236,6 +241,17 @@ export default function PhotoDetail({
   const closeLightbox = useCallback(() => {
     setIsLightboxOpen(false);
   }, []);
+  const { handleKeyDown: handleDeleteDialogKeyDown } = useModalAccessibility({
+    isOpen: isDeleteDialogOpen,
+    dialogRef: deleteDialogRef,
+    initialFocusRef: deleteCancelButtonRef,
+    onClose: handleCloseDeleteDialog,
+    isBusy: isDeleting,
+  });
+
+  useEffect(() => {
+    if (deleteError && !isDeleting) deleteConfirmationInputRef.current?.focus();
+  }, [deleteError, isDeleting]);
 
   useEffect(() => {
     let mounted = true;
@@ -423,6 +439,7 @@ export default function PhotoDetail({
 
   function handleOpenDeleteDialog() {
     setError(null);
+    setDeleteError(null);
     setDeleteConfirmationText("");
     setIsDeleteDialogOpen(true);
   }
@@ -434,6 +451,7 @@ export default function PhotoDetail({
 
     setIsDeleteDialogOpen(false);
     setDeleteConfirmationText("");
+    setDeleteError(null);
   }
 
   async function handleConfirmDelete(event: FormEvent<HTMLFormElement>) {
@@ -448,7 +466,7 @@ export default function PhotoDetail({
     }
 
     setIsDeleting(true);
-    setError(null);
+    setDeleteError(null);
     try {
       await deletePhoto(photo.id);
       window.sessionStorage.setItem(
@@ -457,9 +475,7 @@ export default function PhotoDetail({
       );
       router.push(safeReturnLocation(returnTo));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Delete failed");
-      setIsDeleteDialogOpen(false);
-      setDeleteConfirmationText("");
+      setDeleteError(nextError instanceof Error ? nextError.message : "Delete failed");
       setIsDeleting(false);
     }
   }
@@ -885,10 +901,13 @@ export default function PhotoDetail({
         {photo && isDeleteDialogOpen ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4 py-6">
             <div
+              ref={deleteDialogRef}
               role="dialog"
               aria-modal="true"
               aria-labelledby="delete-photo-title"
               aria-describedby="delete-photo-description"
+              tabIndex={-1}
+              onKeyDown={handleDeleteDialogKeyDown}
               className="w-full max-w-md rounded-lg border border-stone-200 bg-white p-5 shadow-xl"
             >
               <div className="border-b border-red-100 pb-4">
@@ -914,24 +933,32 @@ export default function PhotoDetail({
               </div>
 
               <form onSubmit={handleConfirmDelete} className="mt-4">
-                <label className="block">
+                <label htmlFor="delete-photo-confirmation" className="block">
                   <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
                     Type the filename to confirm
                   </span>
                   <input
+                    ref={deleteConfirmationInputRef}
+                    id="delete-photo-confirmation"
                     type="text"
                     value={deleteConfirmationText}
                     onChange={(event) =>
                       setDeleteConfirmationText(event.target.value)
                     }
                     disabled={isDeleting}
-                    autoFocus
                     className="mt-2 min-h-11 w-full rounded-md border border-stone-300 bg-white px-3 text-sm text-stone-950 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
                   />
                 </label>
 
+                {deleteError ? (
+                  <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+                    {deleteError}
+                  </p>
+                ) : null}
+
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <button
+                    ref={deleteCancelButtonRef}
                     type="button"
                     onClick={handleCloseDeleteDialog}
                     disabled={isDeleting}

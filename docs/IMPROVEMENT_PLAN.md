@@ -41,7 +41,7 @@ Audit date: 2026-08-11
 ## P3 — Polish
 
 - Split the large catalog and photo-detail client components into focused hooks/components without adding a global state library.
-- Improve focus trapping/restoration for all dialogs and the lightbox.
+- Dialog/lightbox accessibility hardening is implemented across duplicate review, Move to Trash, permanent delete, photo-detail confirmation, and the photo lightbox, including modal semantics, safe initial focus, dynamic focus traps, Escape/busy-state handling, focus restoration, reference-counted scroll locking, and interaction tests.
 - Add richer per-file batch upload progress; persistent classification progress is implemented.
 - Replace remaining dense one-line JSX and review responsive controls on small screens.
 - Add optional root developer commands after Windows and cross-platform behavior is agreed.
@@ -51,4 +51,5 @@ Audit date: 2026-08-11
 - Cloud services, authentication, telemetry, external queues, Redis, Celery, or deployment workflows.
 - Automatic Trash expiration, destructive restore automation, scheduled/remote/incremental backup management, perceptual clustering/search, or legacy-record deduplication.
 - A breaking change to `GET /photos`, a full catalog rewrite, or a framework/global-state migration.
+- A broad WCAG audit, application-wide keyboard navigation, color-contrast redesign, and screen-reader optimization outside modal interaction surfaces.
 

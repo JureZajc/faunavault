@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -8,6 +8,7 @@ import { Animal, Photo } from "../app/lib/api";
 import PhotoDetail from "../app/photos/[id]/photo-detail";
 
 const api = vi.hoisted(() => ({
+  deletePhoto: vi.fn(),
   getAnimal: vi.fn(),
   getPhoto: vi.fn(),
   getSpeciesAlbum: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("../app/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("../app/lib/api")>();
   return {
     ...original,
+    deletePhoto: api.deletePhoto,
     getAnimal: api.getAnimal,
     getPhoto: api.getPhoto,
     getSpeciesAlbum: api.getSpeciesAlbum,
@@ -83,6 +85,7 @@ function makePhoto(overrides: Partial<Photo> = {}): Photo {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.deletePhoto.mockResolvedValue({ status: "trashed", photo_id: 44 });
 });
 
 test("presents a named animal with its stable identifier as secondary metadata", () => {
@@ -335,4 +338,54 @@ test("shows and edits the linked animal from photo detail", async () => {
     ).value,
   ).toBe("Bella");
   expect(api.getAnimal).toHaveBeenCalledWith(12);
+});
+
+test("keeps the photo-detail delete confirmation focus-safe through errors", async () => {
+  let rejectDelete: (error: Error) => void = () => undefined;
+  api.getPhoto.mockResolvedValue(makePhoto());
+  api.getAnimal.mockResolvedValue(makeAnimal());
+  api.deletePhoto.mockImplementation(
+    () => new Promise((_, reject) => { rejectDelete = reject; }),
+  );
+  const user = userEvent.setup();
+  render(<PhotoDetail id="44" />);
+
+  const trigger = await screen.findByRole("button", { name: "Move to Trash" });
+  await user.click(trigger);
+  let dialog = screen.getByRole("dialog", { name: "Move photo to Trash" });
+  const cancel = screen.getByRole("button", { name: "Cancel" });
+  const input = screen.getByRole("textbox", { name: "Type the filename to confirm" });
+  const submit = screen.getAllByRole("button", { name: "Move to Trash" })[1];
+
+  expect(dialog.getAttribute("aria-describedby")).toBe("delete-photo-description");
+  expect(document.activeElement).toBe(cancel);
+  expect((submit as HTMLButtonElement).disabled).toBe(true);
+  await user.tab();
+  expect(document.activeElement).toBe(input);
+
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+  await user.click(trigger);
+  dialog = screen.getByRole("dialog");
+  await user.type(
+    screen.getByRole("textbox", { name: "Type the filename to confirm" }),
+    "lion.jpg",
+  );
+  const pendingSubmit = screen.getAllByRole("button", { name: "Move to Trash" })[1];
+  await user.click(pendingSubmit);
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" }).disabled).toBe(true);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.getByRole("dialog")).toBe(dialog);
+
+  rejectDelete(new Error("Delete service unavailable"));
+  expect((await within(dialog).findByRole("alert")).textContent).toContain(
+    "Delete service unavailable",
+  );
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" }).disabled).toBe(false);
+  expect(document.activeElement).toBe(
+    screen.getByRole("textbox", { name: "Type the filename to confirm" }),
+  );
+  expect(screen.getByRole("dialog")).toBe(dialog);
 });

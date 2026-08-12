@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import Home from "../app/page";
@@ -139,6 +139,40 @@ test("reviews a possible duplicate and keeps both with explicit override", async
   expect(screen.getByText(/kept both photos/i)).toBeTruthy();
 });
 
+test("keeps duplicate-review focus trapped and restores the upload trigger on Escape", async () => {
+  api.uploadPhoto.mockRejectedValue(
+    new ApiError("Looks similar", 409, {
+      code: "possible_visual_duplicate",
+      candidates: [candidate()],
+    }),
+  );
+
+  const user = userEvent.setup();
+  render(<Home />);
+  await selectFile();
+  const trigger = screen.getByRole("button", { name: "Upload photo" });
+  await user.click(trigger);
+  const dialog = await screen.findByRole("dialog", { name: "Possible duplicate" });
+  const keep = screen.getByRole("button", { name: "Keep both" });
+  const existingLink = screen.getByRole("link", { name: "View existing photo" });
+
+  expect(document.activeElement).toBe(keep);
+  expect(document.body.style.overflow).toBe("hidden");
+  await user.tab();
+  expect(document.activeElement).toBe(existingLink);
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(keep);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "list" }),
+    ),
+  );
+  expect(document.body.style.overflow).toBe("");
+});
+
 test("cancels one flagged batch item without blocking successful files", async () => {
   api.uploadPhotoBatch.mockResolvedValue({
     uploaded: [photo(2)],
@@ -200,6 +234,35 @@ test("keeps the review open when confirmation fails", async () => {
   expect(
     screen.getByRole<HTMLButtonElement>("button", { name: "Keep both" }).disabled,
   ).toBe(false);
+});
+
+test("does not dismiss or resubmit duplicate review while Keep both is pending", async () => {
+  let resolveKeep: (value: Photo) => void = () => undefined;
+  api.uploadPhoto
+    .mockRejectedValueOnce(
+      new ApiError("Looks similar", 409, {
+        code: "possible_visual_duplicate",
+        candidates: [candidate()],
+      }),
+    )
+    .mockImplementationOnce(
+      () => new Promise<Photo>((resolve) => { resolveKeep = resolve; }),
+    );
+
+  render(<Home />);
+  await selectFile();
+  await userEvent.click(screen.getByRole("button", { name: "Upload photo" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Keep both" }));
+
+  const dialog = screen.getByRole("dialog");
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Keeping both photos" }).disabled).toBe(true);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.getByRole("dialog")).toBe(dialog);
+  await userEvent.click(screen.getByRole("button", { name: "Keeping both photos" }));
+  expect(api.uploadPhoto).toHaveBeenCalledTimes(2);
+
+  resolveKeep(photo(2));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 
 test("keeps exact duplicate handling separate from visual review", async () => {

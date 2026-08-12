@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import Home from "../app/page";
 import ImageLightbox from "../app/components/image-lightbox";
@@ -133,14 +134,71 @@ describe("image lightbox", () => {
         onClose={onClose}
       />,
     );
+    const dialog = screen.getByRole("dialog", { name: "Fullscreen image viewer" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(document.activeElement).toBe(dialog);
     expect(screen.getByText("Loading image…")).toBeTruthy();
     fireEvent.error(screen.getByAltText("One"));
     expect(screen.getByText("Image unavailable")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Next image" }));
     expect(screen.getByAltText("Two")).toBeTruthy();
-    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: "ArrowLeft" });
     expect(screen.getByText("Animal one")).toBeTruthy();
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  test("traps focus without taking arrow keys from focused controls", async () => {
+    const user = userEvent.setup();
+    render(
+      <ImageLightbox
+        images={[
+          { imageUrl: "/one.jpg", alt: "One", caption: "Animal one" },
+          { imageUrl: "/two.jpg", alt: "Two", caption: "Animal two" },
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    const close = screen.getByRole("button", { name: "Close fullscreen image" });
+    const next = screen.getByRole("button", { name: "Next image" });
+
+    await user.tab();
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: "ArrowRight" });
+    expect(screen.getByText("Animal one")).toBeTruthy();
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(next);
+    await user.tab();
+    expect(document.activeElement).toBe(close);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  test("restores focus and body overflow when the lightbox closes", async () => {
+    function LightboxHarness() {
+      const [isOpen, setIsOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setIsOpen(true)}>
+            Open fox photo
+          </button>
+          {isOpen ? (
+            <ImageLightbox imageUrl="/fox.jpg" alt="Fox" onClose={() => setIsOpen(false)} />
+          ) : null}
+        </>
+      );
+    }
+
+    document.body.style.overflow = "clip";
+    render(<LightboxHarness />);
+    const trigger = screen.getByRole("button", { name: "Open fox photo" });
+    await userEvent.click(trigger);
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(document.body.style.overflow).toBe("clip");
+    document.body.style.overflow = "";
   });
 });
