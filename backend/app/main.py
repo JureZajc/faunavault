@@ -19,6 +19,7 @@ from app.config import BACKEND_DIR, get_settings
 from app.db import engine, get_session
 from app.migrations import database_path_for_engine, run_migrations
 from app.models import Animal, Photo, Taxon, utc_now
+from app.routers.catalog import create_catalog_router
 from app.routers.classification import create_classification_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
 from app.schemas import (
@@ -191,6 +192,7 @@ def on_startup() -> None:
 
 SessionDep = Annotated[Session, Depends(get_session)]
 app.include_router(create_photo_lifecycle_router(lambda: settings))
+app.include_router(create_catalog_router())
 app.include_router(create_classification_router(lambda: settings))
 
 

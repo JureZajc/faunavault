@@ -81,6 +81,52 @@ export type Paginated<T> = {
   page_size: number;
 };
 
+export type CatalogSort =
+  | "created_at"
+  | "name"
+  | "species"
+  | "confidence"
+  | "needs_review"
+  | "pending";
+
+export type CatalogOrder = "asc" | "desc";
+
+export type CatalogQuery = {
+  page: number;
+  page_size: number;
+  search?: string;
+  status?: PhotoStatus;
+  category?: string;
+  uncategorized?: boolean;
+  taxon_id?: number;
+  sort: CatalogSort;
+  order: CatalogOrder;
+};
+
+export type CatalogFacets = {
+  active_total: number;
+  status_counts: Record<PhotoStatus, number>;
+  categories: { value: string; count: number }[];
+  uncategorized_count: number;
+};
+
+export type CatalogPhotoPage = Paginated<Photo> & {
+  total_pages: number;
+  facets: CatalogFacets;
+};
+
+export type CatalogTaxonOption = {
+  taxon_id: number;
+  label: string;
+  scientific_name: string;
+  count: number;
+};
+
+export type CatalogTaxonPage = Paginated<CatalogTaxonOption> & {
+  total_pages: number;
+  selected: CatalogTaxonOption | null;
+};
+
 export type Animal = {
   id: number;
   identifier: string;
@@ -151,6 +197,7 @@ export type ClassificationJob = {
   failure_code: string | null;
   failure_message: string | null;
   classification_status: "classified" | "needs_review" | null;
+  photo_original_filename: string | null;
   retryable: boolean;
 };
 
@@ -331,6 +378,34 @@ export function reconcileTaxonomy() {
 
 export function getPhotos() {
   return request<Photo[]>("/photos");
+}
+
+export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
+  const params = new URLSearchParams();
+  params.set("page", String(query.page));
+  params.set("page_size", String(query.page_size));
+  if (query.search) params.set("search", query.search);
+  if (query.status) params.set("status", query.status);
+  if (query.category) params.set("category", query.category);
+  if (query.uncategorized) params.set("uncategorized", "true");
+  if (query.taxon_id) params.set("taxon_id", String(query.taxon_id));
+  params.set("sort", query.sort);
+  params.set("order", query.order);
+  return request<CatalogPhotoPage>(`/catalog/photos?${params}`, { signal });
+}
+
+export function getCatalogTaxa(
+  page = 1,
+  pageSize = 50,
+  includeId?: number,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  if (includeId) params.set("include_id", String(includeId));
+  return request<CatalogTaxonPage>(`/catalog/taxa?${params}`, { signal });
 }
 
 export function getPhoto(id: string) {

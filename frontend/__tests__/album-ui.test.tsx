@@ -5,7 +5,7 @@ import Home from "../app/page";
 import ImageLightbox from "../app/components/image-lightbox";
 
 const api = vi.hoisted(() => ({
-  getPhotos: vi.fn(),
+  getCatalogPhotos: vi.fn(),
   getSpeciesAlbums: vi.fn(),
   getTaxonomyFilters: vi.fn(),
   reconcileTaxonomy: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock("../app/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("../app/lib/api")>();
   return {
     ...original,
-    getPhotos: api.getPhotos,
+    getCatalogPhotos: api.getCatalogPhotos,
     getSpeciesAlbums: api.getSpeciesAlbums,
     getTaxonomyFilters: api.getTaxonomyFilters,
     reconcileTaxonomy: api.reconcileTaxonomy,
@@ -24,7 +24,19 @@ vi.mock("../app/lib/api", async (importOriginal) => {
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
-  api.getPhotos.mockResolvedValue([]);
+  api.getCatalogPhotos.mockImplementation(async (query) => ({
+    items: [],
+    total: 0,
+    page: query.page,
+    page_size: query.page_size,
+    total_pages: 0,
+    facets: {
+      active_total: 0,
+      status_counts: { pending: 0, classified: 0, needs_review: 0 },
+      categories: [],
+      uncategorized_count: 0,
+    },
+  }));
   api.getTaxonomyFilters.mockResolvedValue({
     classes: [], orders: [], families: [], genera: [], species: [],
   });

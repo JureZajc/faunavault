@@ -42,7 +42,9 @@ export default function ClassificationJobsPanel({ jobs, photos = [], onRetry }: 
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-stone-900">
-                    {photo?.original_filename ?? `Photo ${job.photo_id}`}
+                    {job.photo_original_filename ??
+                      photo?.original_filename ??
+                      `Photo ${job.photo_id}`}
                   </p>
                   <p className="text-xs text-stone-500">
                     {job.failure_message ??
