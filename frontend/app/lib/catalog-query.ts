@@ -6,6 +6,7 @@ import {
 } from "./api";
 
 export type CatalogLayout = "flat" | "grouped";
+export type CollectionView = "list" | "album" | "trash";
 export type CatalogSortOption =
   | "newest"
   | "oldest"
@@ -112,6 +113,21 @@ export function writeCatalogState(
     state.order !== "desc" ? state.order : undefined,
   );
   setOrDelete("catalog_layout", state.layout === "grouped" ? "grouped" : undefined);
+  return params;
+}
+
+export function parseCollectionView(params: URLSearchParams): CollectionView {
+  const view = params.get("view");
+  return view === "album" || view === "trash" ? view : "list";
+}
+
+export function writeCollectionView(
+  current: URLSearchParams,
+  view: CollectionView,
+) {
+  const params = new URLSearchParams(current.toString());
+  if (view === "list") params.delete("view");
+  else params.set("view", view);
   return params;
 }
 

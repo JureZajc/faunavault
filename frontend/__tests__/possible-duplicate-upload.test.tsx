@@ -282,3 +282,45 @@ test("keeps exact duplicate handling separate from visual review", async () => {
   expect(screen.getByRole("link", { name: "View existing photo" })).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
 });
+
+test("revokes the uploaded preview URL when duplicate review closes", async () => {
+  api.uploadPhoto.mockRejectedValue(
+    new ApiError("Looks similar", 409, {
+      code: "possible_visual_duplicate",
+      candidates: [candidate()],
+    }),
+  );
+  render(<Home />);
+  await selectFile();
+  await userEvent.click(screen.getByRole("button", { name: "Upload photo" }));
+  await screen.findByRole("dialog", { name: "Possible duplicate" });
+
+  expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
+  await waitFor(() =>
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:uploaded-preview"),
+  );
+});
+
+test("keeps retained files matched to multiple review queue entries", async () => {
+  api.uploadPhotoBatch.mockResolvedValue({
+    uploaded: [],
+    possible_duplicates: [
+      { file_index: 1, filename: "second.jpg", message: "Looks similar", candidates: [candidate()] },
+      { file_index: 0, filename: "first.jpg", message: "Looks similar", candidates: [candidate()] },
+    ],
+    failed: [],
+  });
+  render(<Home />);
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+  await userEvent.upload(input, [
+    new File(["first"], "first.jpg", { type: "image/jpeg" }),
+    new File(["second"], "second.jpg", { type: "image/jpeg" }),
+  ]);
+  await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
+
+  expect(await screen.findByAltText("Uploaded photo: second.jpg")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
+  expect(await screen.findByAltText("Uploaded photo: first.jpg")).toBeTruthy();
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
+});
