@@ -18,6 +18,7 @@ from sqlmodel import Session, func, select
 from app.config import Settings
 from app.models import Animal, Photo, utc_now
 from app.schemas import TrashMutationResponse, TrashPage
+from app.services.classification_jobs import fail_active_jobs_for_photo
 
 logger = logging.getLogger(__name__)
 UPLOAD_LOCK = asyncio.Lock()
@@ -297,6 +298,7 @@ def move_to_trash(photo_id: int, session: Session) -> TrashMutationResponse:
     photo = active_photo_or_404(photo_id, session)
     photo.deleted_at = utc_now()
     photo.updated_at = utc_now()
+    fail_active_jobs_for_photo(session, photo_id)
     session.add(photo)
     session.commit()
     return TrashMutationResponse(status="trashed", photo_id=photo_id)

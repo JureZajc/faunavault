@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import AnimalNameEditor from "../../components/animal-name-editor";
+import ClassificationJobsPanel from "../../components/classification-jobs-panel";
 import ImageLightbox from "../../components/image-lightbox";
 import TaxonomyPicker from "../../components/taxonomy-picker";
+import { useClassificationJobs } from "../../hooks/use-classification-jobs";
 import {
   Animal,
   classifyPhoto,
@@ -177,7 +179,6 @@ export default function PhotoDetail({
   const [isLoading, setIsLoading] = useState(true);
   const [isAnimalLoading, setIsAnimalLoading] = useState(false);
   const [isMockClassifying, setIsMockClassifying] = useState(false);
-  const [isAiClassifying, setIsAiClassifying] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditingMetadata, setIsEditingMetadata] = useState(false);
   const [isSavingMetadata, setIsSavingMetadata] = useState(false);
@@ -189,8 +190,23 @@ export default function PhotoDetail({
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [animalLoadError, setAnimalLoadError] = useState<string | null>(null);
+  const refreshClassifiedPhoto = useCallback(async () => {
+    const updatedPhoto = await getPhoto(id);
+    setPhoto(updatedPhoto);
+    setMetadataForm(formStateFromPhoto(updatedPhoto));
+  }, [id]);
+  const {
+    jobs: classificationJobs,
+    hasActiveJobs: isAiClassifying,
+    error: classificationError,
+    acceptEnqueue,
+    retry: retryClassification,
+  } = useClassificationJobs({
+    photoId: Number(id),
+    onSucceeded: refreshClassifiedPhoto,
+  });
   const isBusy =
-    isMockClassifying || isAiClassifying || isDeleting || isSavingMetadata;
+    isMockClassifying || isDeleting || isSavingMetadata;
   const detailImageUrl = photo
     ? photo.resized_filename
       ? imageUrl("resized", photo.resized_filename)
@@ -379,20 +395,15 @@ export default function PhotoDetail({
     }
 
     setIsEditingMetadata(false);
-    setIsAiClassifying(true);
     setError(null);
     try {
-      const updatedPhoto = await classifyPhoto(photo.id);
-      setPhoto(updatedPhoto);
-      setMetadataForm(formStateFromPhoto(updatedPhoto));
+      acceptEnqueue(await classifyPhoto(photo.id));
     } catch (nextError) {
       setError(
         nextError instanceof Error
           ? nextError.message
           : "Local AI classification failed",
       );
-    } finally {
-      setIsAiClassifying(false);
     }
   }
 
@@ -531,13 +542,26 @@ export default function PhotoDetail({
                 <button
                   type="button"
                   onClick={handleAiClassify}
-                  disabled={isBusy || isEditingMetadata}
+                  disabled={isBusy || isEditingMetadata || isAiClassifying}
                   className="min-h-11 w-full rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:bg-stone-300"
                 >
                   {isAiClassifying
-                    ? "Running local AI classification"
-                    : "Run local AI classification"}
+                    ? "Local AI classification queued"
+                    : photo.status === "pending"
+                      ? "Run local AI classification"
+                      : "Reclassify with local AI"}
                 </button>
+
+                {classificationError ? (
+                  <p role="alert" className="text-sm text-red-700">
+                    {classificationError}
+                  </p>
+                ) : null}
+                <ClassificationJobsPanel
+                  jobs={classificationJobs}
+                  photos={photo ? [photo] : []}
+                  onRetry={retryClassification}
+                />
 
                 <button
                   type="button"

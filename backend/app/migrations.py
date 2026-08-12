@@ -13,7 +13,7 @@ from sqlalchemy.engine import make_url
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 5
+LATEST_SCHEMA_VERSION = 6
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -139,6 +139,66 @@ def _migration_5(normalize_metadata: Callable[[], None] | None) -> None:
     normalize_metadata()
 
 
+def _migration_6(connection) -> None:
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS classification_job (
+                id INTEGER PRIMARY KEY,
+                photo_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queued'
+                    CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+                batch_id TEXT NOT NULL,
+                batch_kind TEXT NOT NULL
+                    CHECK (batch_kind IN ('single', 'pending_batch', 'reclassification')),
+                requested_model TEXT NOT NULL,
+                fallback_model TEXT,
+                actual_model TEXT,
+                fallback_attempted BOOLEAN NOT NULL DEFAULT 0,
+                prompt_version TEXT NOT NULL,
+                attempt_count INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count >= 1),
+                created_at DATETIME NOT NULL,
+                queued_at DATETIME NOT NULL,
+                started_at DATETIME,
+                finished_at DATETIME,
+                duration_ms INTEGER,
+                failure_code TEXT,
+                failure_message TEXT,
+                classification_status TEXT
+                    CHECK (classification_status IS NULL OR classification_status IN ('classified', 'needs_review')),
+                source_photo_updated_at DATETIME NOT NULL,
+                FOREIGN KEY(photo_id) REFERENCES photo(id) ON DELETE CASCADE
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_classification_job_status_queued "
+            "ON classification_job (status, queued_at, id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_classification_job_photo_created "
+            "ON classification_job (photo_id, created_at, id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_classification_job_batch_id "
+            "ON classification_job (batch_id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_classification_job_active_photo "
+            "ON classification_job (photo_id) "
+            "WHERE status IN ('queued', 'running')"
+        )
+    )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -184,6 +244,8 @@ def run_migrations(
                 _migration_4(connection)
             elif version == 5:
                 _migration_5(normalize_metadata)
+            elif version == 6:
+                _migration_6(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

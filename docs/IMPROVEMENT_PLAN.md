@@ -24,7 +24,7 @@ Audit date: 2026-08-11
 | --- | --- | --- | --- | --- |
 | Backend application is a 1,400+ line module | Models, config, migrations, images, AI, taxonomy, albums, and routes shared `app/main.py` | High coupling and difficult isolated testing | Extract settings, models, schemas, migrations, and photo lifecycle services first | First slice implemented; taxonomy/GBIF/router extraction remains |
 | Configuration was scattered | Custom `.env` parsing and direct `os.getenv()` calls existed in multiple modules | Inconsistent defaults and hard-to-test configuration | Centralize settings with `pydantic-settings` | Implemented |
-| Classification state is not durable | Only `pending`, `classified`, and `needs_review` are stored; running/failure progress lives in browser memory | Interrupted jobs and failures are difficult to understand or retry | Add persistent local classification jobs and provenance | Deferred; requires a coherent follow-up slice |
+| Classification state is not durable | Only `pending`, `classified`, and `needs_review` were stored; running/failure progress lived in browser memory | Interrupted jobs and failures were difficult to understand or retry | Add persistent local classification jobs and provenance | Implemented with migration 6, a serial in-process worker, polling, safe retry, restart recovery, and model provenance |
 | Lifecycle behavior lacked tests | Existing backend tests covered taxonomy/albums and animal naming only | Regressions could cause data loss | Add isolated upload, duplicate, Trash, purge, and migration coverage | First lifecycle suite implemented; more fault-injection coverage remains useful |
 | Dependency advisories need review | `npm ci` reported eight advisories | Potential development/build-chain exposure | Review each advisory and upgrade deliberately | Deferred; do not use forced upgrades without compatibility validation |
 
@@ -34,7 +34,7 @@ Audit date: 2026-08-11
 | --- | --- | --- | --- | --- |
 | Main catalog loads every photo | `GET /photos` returns a complete list and `page.tsx` filters it locally | Increasing latency and memory use for thousands of photos | Add a separate paginated catalog endpoint with backend search/status/category/taxonomy filters; retain `GET /photos` compatibility | Requires catalog/frontend slice and URL-state design |
 | Album pagination happens after loading all records | Album grouping loads all animals, photos, and taxa before slicing | Album requests scale poorly | Replace in-memory aggregation with query-level counts and pagination | Must preserve legacy/verified grouping semantics |
-| AI calls are long synchronous requests | Each UI classification waits for an Ollama HTTP request | Refreshes lose progress; batch runs are fragile | Add a lightweight SQLite-backed job queue and polling | No Redis/Celery; single local worker only |
+| AI calls are long synchronous requests | Each UI classification waited for an Ollama HTTP request | Refreshes lost progress; batch runs were fragile | Add a lightweight SQLite-backed job queue and polling | Implemented; retained classification URLs now return asynchronous HTTP 202 job resources |
 | Only exact duplicates are detected | SHA-256 catches identical bytes, not resized/re-encoded copies | Visually identical files may accumulate | Add optional perceptual hashes with explicit user confirmation | Must not silently merge records |
 | Backup is manual | Data spans SQLite plus an external image root | Recovery requires careful coordination | Add verified archive manifests and non-destructive backup tooling | Automated restore remains high risk and should require explicit confirmation |
 
@@ -42,7 +42,7 @@ Audit date: 2026-08-11
 
 - Split the large catalog and photo-detail client components into focused hooks/components without adding a global state library.
 - Improve focus trapping/restoration for all dialogs and the lightbox.
-- Add richer per-file batch upload progress and persistent classification progress.
+- Add richer per-file batch upload progress; persistent classification progress is implemented.
 - Replace remaining dense one-line JSX and review responsive controls on small screens.
 - Add optional root developer commands after Windows and cross-platform behavior is agreed.
 

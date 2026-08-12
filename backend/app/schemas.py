@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Literal
+
 from pydantic import ConfigDict, field_validator, model_validator
 from sqlmodel import Field, SQLModel
 
@@ -82,22 +85,73 @@ class ClassifyPendingRequest(SQLModel):
         return self
 
 
-class ClassifyPendingPhotoResult(SQLModel):
+class ClassificationEnqueueRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    photo_ids: list[int]
+    intent: Literal["classify_pending", "reclassify"] = "classify_pending"
+
+    @field_validator("photo_ids")
+    @classmethod
+    def validate_photo_ids(cls, value: list[int]) -> list[int]:
+        if not value:
+            raise ValueError("photo_ids must not be empty")
+        if any(photo_id < 1 for photo_id in value):
+            raise ValueError("photo_ids must contain positive IDs")
+        return list(dict.fromkeys(value))
+
+
+class ClassificationJobRead(SQLModel):
     id: int
+    photo_id: int
     status: str
-    display_title: str | None = None
-    common_name: str | None = None
-    breed_guess: str | None = None
-    species_guess: str | None = None
-    error: str | None = None
+    batch_id: str
+    batch_kind: str
+    requested_model: str
+    fallback_model: str | None
+    actual_model: str | None
+    fallback_attempted: bool
+    prompt_version: str
+    attempt_count: int
+    created_at: datetime
+    queued_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    duration_ms: int | None
+    failure_code: str | None
+    failure_message: str | None
+    classification_status: str | None
+    retryable: bool
 
 
-class ClassifyPendingResponse(SQLModel):
-    total_found: int
-    classified: int
-    needs_review: int
+class ClassificationEnqueuedItem(SQLModel):
+    job: ClassificationJobRead
+    created: bool
+
+
+class ClassificationEnqueueRejection(SQLModel):
+    photo_id: int
+    code: str
+    message: str
+
+
+class ClassificationJobSummary(SQLModel):
+    total: int
+    queued: int
+    running: int
+    succeeded: int
     failed: int
-    results: list[ClassifyPendingPhotoResult]
+
+
+class ClassificationEnqueueResponse(SQLModel):
+    jobs: list[ClassificationEnqueuedItem]
+    rejected: list[ClassificationEnqueueRejection]
+    summary: ClassificationJobSummary
+
+
+class ClassificationJobCollection(SQLModel):
+    jobs: list[ClassificationJobRead]
+    summary: ClassificationJobSummary
 
 
 class TrashPage(SQLModel):

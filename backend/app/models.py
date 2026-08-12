@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy import JSON, Column, ForeignKey, Integer, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -67,3 +67,34 @@ class Photo(SQLModel, table=True):
     deleted_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ClassificationJob(SQLModel, table=True):
+    __tablename__ = "classification_job"
+
+    id: int | None = Field(default=None, primary_key=True)
+    photo_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("photo.id", ondelete="CASCADE"),
+            nullable=False,
+        )
+    )
+    status: str = Field(default="queued")
+    batch_id: str
+    batch_kind: str
+    requested_model: str
+    fallback_model: str | None = None
+    actual_model: str | None = None
+    fallback_attempted: bool = False
+    prompt_version: str
+    attempt_count: int = 1
+    created_at: datetime = Field(default_factory=utc_now)
+    queued_at: datetime = Field(default_factory=utc_now)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    duration_ms: int | None = None
+    failure_code: str | None = None
+    failure_message: str | None = None
+    classification_status: str | None = None
+    source_photo_updated_at: datetime
