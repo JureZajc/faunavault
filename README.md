@@ -6,7 +6,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 
 ## Features
 
-- Single and batch image upload with JPEG, PNG, and WebP content validation
+- Interactive single- and multi-file upload with JPEG, PNG, and WebP content validation and a frontend-controlled sequential queue
 - Exact duplicate detection using SHA-256, including duplicates currently in Trash
 - Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
@@ -14,6 +14,30 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
 - Recoverable Trash with restore and explicitly confirmed permanent deletion
 - Versioned, backed-up SQLite migrations and local-only storage
+
+## Interactive uploads
+
+The catalog uploads a multi-file selection one file at a time and shows each
+file's real state: `Waiting`, `Uploading`, `Uploaded`, `Exact duplicate`,
+`Possible duplicate`, or `Failed` (`Cancelled` is shown after the user cancels
+a possible-duplicate review). The display reports the active file's ordinal,
+such as `Uploading 2 of 5`; it does not invent byte-level percentages because
+the current request layer does not receive byte progress.
+
+One file's validation, duplicate, network, or server outcome does not roll back
+completed siblings or stop later queued files. A failed item can be retried in
+place when the failure is transient (a network error or HTTP 5xx response),
+without re-uploading completed files. Possible visual duplicates remain pending
+for independent review after the initial queue has finished, so each can be
+kept or cancelled without changing the other file outcomes.
+
+Catalog refreshes are batched around those phases instead of running after every
+successful file: once after the initial pass when it saved photos, and once
+after the duplicate-review queue drains when `Keep both` saved additional
+photos. A refresh failure is reported separately and does not relabel an
+already accepted upload as failed. The backend's compatibility batch-upload API
+remains available, but the interactive catalog uses the single-photo endpoint
+to provide these per-file states and retries.
 
 ## Catalog API and navigation
 
