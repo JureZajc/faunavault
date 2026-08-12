@@ -1,6 +1,6 @@
 # FaunaVault frontend
 
-The Next.js 16 frontend provides the photo catalog, species albums, metadata review, local-AI controls, and Trash workflows.
+The Next.js 16 frontend provides the photo catalog, species albums, metadata review, persistent local-AI job controls, and Trash workflows. Classification state is restored from the backend after refresh and polled only while queued/running work exists.
 
 ```powershell
 npm ci

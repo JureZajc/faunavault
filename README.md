@@ -10,7 +10,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Exact duplicate detection using SHA-256, including duplicates currently in Trash
 - Original, resized, and thumbnail variants with EXIF orientation handling
 - Searchable/filterable photo catalog, species albums, animals, and GBIF taxonomy linking
-- Local Ollama classification with confidence-based review state and manual metadata editing
+- Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
 - Recoverable Trash with restore and explicitly confirmed permanent deletion
 - Versioned, backed-up SQLite migrations and local-only storage
 
@@ -23,6 +23,20 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 The default Windows configuration stores image files under `E:/FaunaVault/data/images` and SQLite metadata under `backend/data/faunavault.db`. Existing `.env` values take precedence; upgrades do not relocate data. Originals are preserved byte-for-byte. Resized and thumbnail files are reproducible derivatives.
 
 Normal deletion only sets a deleted timestamp. Trash continues to reference the same local files. A photo must be moved to Trash before it can be permanently deleted. Permanent deletion stages variants in a private journal, commits the row deletion, and cleans the staged files; interrupted work is reconciled on the next backend startup.
+
+## Local AI classification jobs
+
+Classification requests are persisted in SQLite and processed serially by a lightweight worker inside the single FastAPI process. The browser does not need to stay open: queued and running state survives navigation and refresh, while completed and failed jobs remain visible with their model, duration, attempt count, and prompt version.
+
+Jobs use `queued`, `running`, `succeeded`, and `failed` execution states. A succeeded result may still set the photo to `needs_review` when confidence is low or the model requests review; that is not an execution failure. Failed jobs require an explicit retry. Retry reuses the job, increments its attempt count, and refreshes `queued_at`, which is the FIFO queue-order timestamp.
+
+The primary model runs first. The configured fallback runs once when the primary fails or produces low confidence; provenance identifies the actual accepted model. Connections time out after 10 seconds and classification requests after 120 seconds. Malformed model output and Ollama failures become safe failed jobs without overwriting photo metadata.
+
+An unexpected backend stop marks any interrupted running job failed on restart with an explicit retry action; work is never silently repeated. Moving a photo to Trash fails queued/running work, and a delayed Ollama response cannot write metadata after Trash or a manual edit. Restoring the photo permits explicit retry but does not restart work automatically.
+
+FaunaVault supports one local backend process and one classification worker. Do not run multiple Uvicorn workers; distributed worker coordination is deliberately out of scope.
+
+The existing `POST /photos/{id}/classify` and `POST /photos/classify-pending` URLs are retained, but both now return asynchronous HTTP 202 job resources instead of synchronous Photo or batch-result bodies. There is no legacy synchronous Ollama classification route. The canonical resource API is `POST/GET /classification-jobs` plus `POST /classification-jobs/{id}/retry`.
 
 ## Windows setup
 
@@ -99,7 +113,7 @@ Before schema upgrades, FaunaVault creates timestamped SQLite backups next to th
 
 ## Troubleshooting
 
-- Ollama unavailable: verify `ollama list` and `curl http://localhost:11434/api/tags`.
+- Ollama unavailable: verify `ollama list` and `curl http://localhost:11434/api/tags`, then retry the failed job.
 - Duplicate response: open the referenced catalog photo or use “View Trash” and restore the deleted copy.
 - Image rejected: confirm extension, MIME type, actual format, file size, and pixel dimensions agree with configured limits.
 - Migration failure: keep the backend stopped and inspect the newest `*.pre-migrate-*.db` backup before retrying.

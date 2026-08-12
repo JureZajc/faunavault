@@ -125,22 +125,52 @@ export type BatchUploadResponse = {
   failed: BatchUploadFailure[];
 };
 
-export type ClassifyPendingPhotoResult = {
+export type ClassificationJobStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed";
+
+export type ClassificationJob = {
   id: number;
-  status: PhotoStatus | "failed";
-  display_title: string | null;
-  common_name: string | null;
-  breed_guess: string | null;
-  species_guess: string | null;
-  error: string | null;
+  photo_id: number;
+  status: ClassificationJobStatus;
+  batch_id: string;
+  batch_kind: "single" | "pending_batch" | "reclassification";
+  requested_model: string;
+  fallback_model: string | null;
+  actual_model: string | null;
+  fallback_attempted: boolean;
+  prompt_version: string;
+  attempt_count: number;
+  created_at: string;
+  queued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  failure_code: string | null;
+  failure_message: string | null;
+  classification_status: "classified" | "needs_review" | null;
+  retryable: boolean;
 };
 
-export type ClassifyPendingResponse = {
-  total_found: number;
-  classified: number;
-  needs_review: number;
+export type ClassificationJobSummary = {
+  total: number;
+  queued: number;
+  running: number;
+  succeeded: number;
   failed: number;
-  results: ClassifyPendingPhotoResult[];
+};
+
+export type ClassificationEnqueueResponse = {
+  jobs: { job: ClassificationJob; created: boolean }[];
+  rejected: { photo_id: number; code: string; message: string }[];
+  summary: ClassificationJobSummary;
+};
+
+export type ClassificationJobCollection = {
+  jobs: ClassificationJob[];
+  summary: ClassificationJobSummary;
 };
 
 export const API_BASE_URL =
@@ -371,17 +401,38 @@ export function mockClassifyPhoto(id: number) {
 }
 
 export function classifyPhoto(id: number) {
-  return request<Photo>(`/photos/${id}/classify`, {
+  return request<ClassificationEnqueueResponse>(`/photos/${id}/classify`, {
     method: "POST",
   });
 }
 
-export function classifyPendingPhotos() {
-  return request<ClassifyPendingResponse>("/photos/classify-pending", {
+export function classifyPendingPhotos(photoIds?: number[]) {
+  return request<ClassificationEnqueueResponse>("/photos/classify-pending", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify(photoIds ? { photo_ids: photoIds } : {}),
+  });
+}
+
+export function getClassificationJobs(options: {
+  photoId?: number;
+  batchId?: string;
+  latestPerPhoto?: boolean;
+} = {}) {
+  const params = new URLSearchParams();
+  if (options.photoId) params.set("photo_id", String(options.photoId));
+  if (options.batchId) params.set("batch_id", options.batchId);
+  if (options.latestPerPhoto) params.set("latest_per_photo", "true");
+  const query = params.toString();
+  return request<ClassificationJobCollection>(
+    `/classification-jobs${query ? `?${query}` : ""}`,
+  );
+}
+
+export function retryClassificationJob(id: number) {
+  return request<ClassificationJob>(`/classification-jobs/${id}/retry`, {
+    method: "POST",
   });
 }

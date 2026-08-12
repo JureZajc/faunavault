@@ -13,7 +13,7 @@ import {
 import {
   ApiError,
   BatchUploadFailure,
-  classifyPhoto,
+  classifyPendingPhotos,
   getPhotos,
   imageUrl,
   Photo,
@@ -22,9 +22,11 @@ import {
   uploadPhoto,
 } from "./lib/api";
 import AlbumBrowser from "./components/album-browser";
+import ClassificationJobsPanel from "./components/classification-jobs-panel";
 import MoveToTrashButton from "./components/move-to-trash-button";
 import SuccessNotice from "./components/success-notice";
 import TrashBrowser from "./components/trash-browser";
+import { useClassificationJobs } from "./hooks/use-classification-jobs";
 
 type StatusFilter = "all" | PhotoStatus;
 type SortOption =
@@ -45,29 +47,6 @@ type UploadNotice = {
   message: string;
   duplicatePhotoId?: number;
   duplicateLocation?: "catalog" | "trash";
-};
-type ClassificationProgressStatus =
-  | "queued"
-  | "running"
-  | "classified"
-  | "needs_review"
-  | "failed";
-type ClassificationProgressItem = {
-  id: number;
-  filename: string;
-  status: ClassificationProgressStatus;
-  display_title?: string | null;
-  common_name?: string | null;
-  breed_guess?: string | null;
-  species_guess?: string | null;
-  error?: string;
-};
-type ClassificationRunSummary = {
-  total_found: number;
-  classified: number;
-  needs_review: number;
-  failed: number;
-  results: ClassificationProgressItem[];
 };
 
 const statusFilters: StatusFilter[] = [
@@ -138,68 +117,6 @@ function formatBatchFailureMessage(failed: BatchUploadFailure[]) {
   return remainingCount > 0
     ? `${visibleFailures}; ${remainingCount} more failed`
     : visibleFailures;
-}
-
-function formatClassifyFailures(result: ClassificationRunSummary) {
-  const failedResults = result.results.filter(
-    (photoResult) => photoResult.status === "failed",
-  );
-  const visibleFailures = failedResults
-    .slice(0, 3)
-    .map(
-      (photoResult) =>
-        `Photo ${photoResult.id}: ${photoResult.error ?? "Classification failed"}`,
-    )
-    .join("; ");
-  const remainingCount = failedResults.length - Math.min(failedResults.length, 3);
-
-  return remainingCount > 0
-    ? `${visibleFailures}; ${remainingCount} more failed`
-    : visibleFailures;
-}
-
-function formatClassifySummary(result: ClassificationRunSummary) {
-  if (result.total_found === 0) {
-    return "No pending photos found.";
-  }
-
-  const summary = `${result.total_found} pending ${result.total_found === 1 ? "photo" : "photos"} found. ${result.classified} classified, ${result.needs_review} marked needs review, ${result.failed} failed.`;
-
-  return result.failed > 0
-    ? `${summary} ${formatClassifyFailures(result)}.`
-    : summary;
-}
-
-function classificationProgressLabel(status: ClassificationProgressStatus) {
-  if (status === "running") {
-    return "Classifying";
-  }
-
-  if (status === "classified") {
-    return "Classified";
-  }
-
-  if (status === "needs_review") {
-    return "Needs review";
-  }
-
-  if (status === "failed") {
-    return "Failed";
-  }
-
-  return "Queued";
-}
-
-function classificationProgressPercent(status: ClassificationProgressStatus) {
-  if (status === "queued") {
-    return 0;
-  }
-
-  if (status === "running") {
-    return 55;
-  }
-
-  return 100;
 }
 
 function normalizeSearchText(value: string | null | undefined) {
@@ -831,12 +748,6 @@ export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [isClassifyingPending, setIsClassifyingPending] = useState(false);
-  const [classificationProgress, setClassificationProgress] = useState<
-    ClassificationProgressItem[]
-  >([]);
-  const [classificationRunSummary, setClassificationRunSummary] =
-    useState<ClassificationRunSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState<UploadNotice | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
@@ -858,6 +769,14 @@ export default function Home() {
       setIsLoading(false);
     }
   }, []);
+
+  const {
+    jobs: classificationJobs,
+    hasActiveJobs: isClassifyingPending,
+    error: classificationError,
+    acceptEnqueue,
+    retry: retryClassification,
+  } = useClassificationJobs({ onSucceeded: loadPhotos });
 
   useEffect(() => {
     let isMounted = true;
@@ -914,25 +833,8 @@ export default function Home() {
     () => photos.filter((photo) => photo.status === "pending").length,
     [photos],
   );
-  const completedClassificationCount = useMemo(
-    () =>
-      classificationProgress.filter(
-        (photoResult) =>
-          photoResult.status === "classified" ||
-          photoResult.status === "needs_review" ||
-          photoResult.status === "failed",
-      ).length,
-    [classificationProgress],
-  );
-  const totalClassificationCount = classificationProgress.length;
-  const overallClassificationPercent =
-    totalClassificationCount === 0
-      ? 0
-      : Math.round(
-          (completedClassificationCount / totalClassificationCount) * 100,
-        );
   const showClassificationPanel =
-    pendingPhotoCount > 0 || isClassifyingPending || classificationRunSummary;
+    pendingPhotoCount > 0 || classificationJobs.length > 0;
 
   const activeCategoryFilter =
     categoryFilter === unknownCategoryValue && !hasUnknownCategory
@@ -1026,140 +928,13 @@ export default function Home() {
   }
 
   async function handleClassifyPending() {
-    const pendingPhotos = [...photos]
-      .filter((photo) => photo.status === "pending")
-      .sort(
-        (firstPhoto, secondPhoto) =>
-          new Date(firstPhoto.created_at).getTime() -
-          new Date(secondPhoto.created_at).getTime(),
-      );
-
-    if (pendingPhotos.length === 0) {
-      setClassificationProgress([]);
-      setClassificationRunSummary({
-        total_found: 0,
-        classified: 0,
-        needs_review: 0,
-        failed: 0,
-        results: [],
-      });
-      return;
-    }
-
-    const initialProgress = pendingPhotos.map((photo) => ({
-      id: photo.id,
-      filename: photo.original_filename,
-      status: "queued" as const,
-    }));
-    const results: ClassificationProgressItem[] = [...initialProgress];
-    let classified = 0;
-    let needsReview = 0;
-    let failed = 0;
-
-    setIsClassifyingPending(true);
     setError(null);
-    setClassificationRunSummary(null);
-    setClassificationProgress(initialProgress);
-
     try {
-      for (const pendingPhoto of pendingPhotos) {
-        setClassificationProgress((currentProgress) =>
-          currentProgress.map((photoResult) =>
-            photoResult.id === pendingPhoto.id
-              ? { ...photoResult, status: "running" }
-              : photoResult,
-          ),
-        );
-
-        try {
-          const updatedPhoto = await classifyPhoto(pendingPhoto.id);
-          const updatedStatus: ClassificationProgressStatus =
-            updatedPhoto.status === "pending" ? "failed" : updatedPhoto.status;
-          const progressResult: ClassificationProgressItem = {
-            id: updatedPhoto.id,
-            filename: updatedPhoto.original_filename,
-            status: updatedStatus,
-            display_title: updatedPhoto.display_title,
-            common_name: updatedPhoto.common_name,
-            breed_guess: updatedPhoto.breed_guess,
-            species_guess: updatedPhoto.species_guess,
-            error:
-              updatedStatus === "failed"
-                ? "Classification finished without updating the photo status"
-                : undefined,
-          };
-
-          if (updatedStatus === "classified") {
-            classified += 1;
-          } else if (updatedStatus === "needs_review") {
-            needsReview += 1;
-          } else {
-            failed += 1;
-          }
-
-          const resultIndex = results.findIndex(
-            (photoResult) => photoResult.id === updatedPhoto.id,
-          );
-          if (resultIndex >= 0) {
-            results[resultIndex] = progressResult;
-          }
-
-          setPhotos((currentPhotos) =>
-            currentPhotos.map((photo) =>
-              photo.id === updatedPhoto.id ? updatedPhoto : photo,
-            ),
-          );
-          setClassificationProgress((currentProgress) =>
-            currentProgress.map((photoResult) =>
-              photoResult.id === updatedPhoto.id ? progressResult : photoResult,
-            ),
-          );
-        } catch (nextError) {
-          failed += 1;
-          const progressResult: ClassificationProgressItem = {
-            id: pendingPhoto.id,
-            filename: pendingPhoto.original_filename,
-            status: "failed",
-            error:
-              nextError instanceof Error
-                ? nextError.message
-                : "Classification failed",
-          };
-          const resultIndex = results.findIndex(
-            (photoResult) => photoResult.id === pendingPhoto.id,
-          );
-          if (resultIndex >= 0) {
-            results[resultIndex] = progressResult;
-          }
-
-          setClassificationProgress((currentProgress) =>
-            currentProgress.map((photoResult) =>
-              photoResult.id === pendingPhoto.id ? progressResult : photoResult,
-            ),
-          );
-        }
-      }
-
-      setClassificationRunSummary({
-        total_found: pendingPhotos.length,
-        classified,
-        needs_review: needsReview,
-        failed,
-        results,
-      });
-
-      try {
-        const refreshedPhotos = await getPhotos();
-        setPhotos(refreshedPhotos);
-      } catch (nextError) {
-        setError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Could not refresh the catalog",
-        );
-      }
-    } finally {
-      setIsClassifyingPending(false);
+      acceptEnqueue(await classifyPendingPhotos());
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error ? nextError.message : "Could not queue classification",
+      );
     }
   }
 
@@ -1390,118 +1165,16 @@ export default function Home() {
             </button>
           </div>
 
-          {isClassifyingPending ? (
-            <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
-              <div className="flex items-center justify-between gap-3">
-                <p>
-                  Classifying {completedClassificationCount} of{" "}
-                  {totalClassificationCount} pending photos.
-                </p>
-                <span className="font-semibold">
-                  {overallClassificationPercent}%
-                </span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-sky-100">
-                <div
-                  className="h-full rounded-full bg-sky-600 transition-all duration-300"
-                  style={{ width: `${overallClassificationPercent}%` }}
-                />
-              </div>
-            </div>
+          {classificationError ? (
+            <p role="alert" className="mt-3 text-sm text-red-700">
+              {classificationError}
+            </p>
           ) : null}
-
-          {classificationProgress.length > 0 ? (
-            <div className="mt-3 space-y-2">
-              {classificationProgress.map((photoResult) => {
-                const progressPercent = classificationProgressPercent(
-                  photoResult.status,
-                );
-                const isRunning = photoResult.status === "running";
-                const isFailed = photoResult.status === "failed";
-                const isReview = photoResult.status === "needs_review";
-                const barColor = isFailed
-                  ? "bg-red-500"
-                  : isReview
-                    ? "bg-amber-500"
-                    : "bg-emerald-600";
-
-                return (
-                  <div
-                    key={photoResult.id}
-                    className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2"
-                  >
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-stone-900">
-                          Photo {photoResult.id}: {photoResult.filename}
-                        </p>
-                        {photoResult.display_title ||
-                        photoResult.common_name ||
-                        photoResult.breed_guess ||
-                        photoResult.species_guess ||
-                        photoResult.error ? (
-                          <p className="mt-0.5 truncate text-xs text-stone-500">
-                            {photoResult.error ??
-                              [
-                                photoResult.display_title,
-                                photoResult.common_name,
-                                photoResult.breed_guess,
-                                photoResult.species_guess,
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
-                          </p>
-                        ) : null}
-                      </div>
-                      <span
-                        className={`text-xs font-semibold ${
-                          isFailed
-                            ? "text-red-700"
-                            : isReview
-                              ? "text-amber-700"
-                              : "text-stone-600"
-                        }`}
-                      >
-                        {classificationProgressLabel(photoResult.status)}
-                      </span>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${barColor} ${
-                          isRunning ? "animate-pulse" : ""
-                        }`}
-                        style={{ width: `${progressPercent}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {classificationRunSummary ? (
-            <div
-              className={`mt-3 rounded-md border px-3 py-2 text-sm ${
-                classificationRunSummary.failed > 0
-                  ? "border-amber-200 bg-amber-50 text-amber-800"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-800"
-              }`}
-            >
-              <p>{formatClassifySummary(classificationRunSummary)}</p>
-              {classificationRunSummary.failed > 0 ? (
-                <ul className="mt-2 list-disc space-y-1 pl-5">
-                  {classificationRunSummary.results
-                    .filter((photoResult) => photoResult.status === "failed")
-                    .map((photoResult) => (
-                      <li key={photoResult.id}>
-                        Photo {photoResult.id}:{" "}
-                        {photoResult.error ?? "Classification failed"}
-                      </li>
-                    ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
+          <ClassificationJobsPanel
+            jobs={classificationJobs}
+            photos={photos}
+            onRetry={retryClassification}
+          />
         </div>
         ) : null}
 

@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 from dataclasses import dataclass
 from json import JSONDecodeError
 from pathlib import Path
@@ -10,6 +11,7 @@ import httpx
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 OLLAMA_BASE_URL = settings.ollama_base_url.rstrip("/")
 AI_PRIMARY_MODEL = settings.ai_primary_model
 AI_FALLBACK_MODEL = settings.ai_fallback_model
@@ -52,10 +54,15 @@ Do not put dog breeds into species_guess. For dogs use species_guess "Canis lupu
 Horse breeds, coat colors, riding context, or stable context belong in breed_guess, display_title, tags, or description, not species_guess.
 Do not include markdown, code fences, or explanatory text.
 """.strip()
+CLASSIFICATION_PROMPT_VERSION = "animal-photo-v1"
+OLLAMA_CONNECT_TIMEOUT_SECONDS = 10.0
+OLLAMA_REQUEST_TIMEOUT_SECONDS = 120.0
 
 
 class OllamaClassificationError(RuntimeError):
-    pass
+    def __init__(self, message: str, code: str = "invalid_model_response"):
+        super().__init__(message)
+        self.code = code
 
 
 def response_error_detail(response: httpx.Response) -> str:
@@ -87,7 +94,12 @@ class ClassificationResult:
 
 
 def classify_image(image_path: Path, model: str) -> ClassificationResult:
-    image_base64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    try:
+        image_base64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    except OSError as exc:
+        raise OllamaClassificationError(
+            "The image could not be read for classification.", "image_unavailable"
+        ) from exc
     payload = {
         "model": model,
         "prompt": CLASSIFICATION_PROMPT,
@@ -102,27 +114,47 @@ def classify_image(image_path: Path, model: str) -> ClassificationResult:
         response = httpx.post(
             f"{OLLAMA_BASE_URL}/api/generate",
             json=payload,
-            timeout=httpx.Timeout(120.0, connect=10.0),
+            timeout=httpx.Timeout(
+                OLLAMA_REQUEST_TIMEOUT_SECONDS,
+                connect=OLLAMA_CONNECT_TIMEOUT_SECONDS,
+            ),
         )
         response.raise_for_status()
     except httpx.ConnectError as exc:
+        logger.warning(
+            "Could not connect to Ollama at %s for %s", OLLAMA_BASE_URL, model
+        )
         raise OllamaClassificationError(
-            f"Ollama request failed for {model}: could not connect to {OLLAMA_BASE_URL}. "
-            "If the backend runs in WSL and Ollama runs on Windows, configure Ollama to listen "
-            "on an address WSL can reach and set OLLAMA_BASE_URL accordingly."
+            "Could not connect to Ollama. Check that it is running.",
+            "ollama_unavailable",
         ) from exc
     except httpx.TimeoutException as exc:
         raise OllamaClassificationError(
-            f"Ollama request timed out for {model} after 120 seconds"
+            "Ollama did not respond before the classification timeout.",
+            "ollama_timeout",
         ) from exc
     except httpx.HTTPStatusError as exc:
         detail = response_error_detail(exc.response)
+        logger.warning(
+            "Ollama returned %s for %s: %s",
+            exc.response.status_code,
+            model,
+            detail,
+        )
+        if exc.response.status_code == 404:
+            raise OllamaClassificationError(
+                "The configured Ollama model is unavailable.",
+                "ollama_model_unavailable",
+            ) from exc
         raise OllamaClassificationError(
-            f"Ollama returned {exc.response.status_code} for {model}: {detail}"
+            "Ollama rejected the classification request.",
+            "ollama_request_failed",
         ) from exc
     except httpx.HTTPError as exc:
+        logger.warning("Ollama request failed at %s for %s", OLLAMA_BASE_URL, model)
         raise OllamaClassificationError(
-            f"Ollama request failed for {model} at {OLLAMA_BASE_URL}"
+            "The Ollama classification request failed.",
+            "ollama_request_failed",
         ) from exc
 
     try:

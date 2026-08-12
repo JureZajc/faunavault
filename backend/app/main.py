@@ -19,22 +19,25 @@ from app.config import BACKEND_DIR, get_settings
 from app.db import engine, get_session
 from app.migrations import database_path_for_engine, run_migrations
 from app.models import Animal, Photo, Taxon, utc_now
-from app.ollama_client import (
-    AI_FALLBACK_MODEL,
-    AI_PRIMARY_MODEL,
-    ClassificationResult,
-    OllamaClassificationError,
-    classify_image,
-)
+from app.routers.classification import create_classification_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
 from app.schemas import (
     AnimalUpdate,
-    ClassifyPendingPhotoResult,
-    ClassifyPendingRequest,
-    ClassifyPendingResponse,
     PhotoUpdate,
     ReconcileRequest,
     TaxonSelection,
+)
+from app.services.classification import (
+    apply_domestic_metadata_normalization,
+    normalize_metadata_text,
+    normalize_tags,
+)
+from app.services.classification import (
+    normalize_existing_domestic_metadata as normalize_domestic_metadata,
+)
+from app.services.classification_jobs import (
+    ClassificationWorker,
+    recover_interrupted_jobs,
 )
 from app.services.photo_lifecycle import (
     active_photo_or_404,
@@ -55,45 +58,24 @@ ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_IMAGE_TYPES = set(IMAGE_DIRS)
 RESIZED_MAX_SIZE = (1600, 1600)
 THUMBNAIL_MAX_SIZE = (480, 480)
-DOMESTIC_SPECIES_BY_COMMON_NAME = {
-    "dog": "Canis lupus familiaris",
-    "cat": "Felis catus",
-    "horse": "Equus ferus caballus",
-    "cow": "Bos taurus",
-    "cattle": "Bos taurus",
-}
-DOG_BREED_GUESSES = {
-    "beagle",
-    "bernese mountain dog",
-    "border collie",
-    "boxer",
-    "bulldog",
-    "chihuahua",
-    "cocker spaniel",
-    "dachshund",
-    "doberman pinscher",
-    "french bulldog",
-    "german shepherd",
-    "golden retriever",
-    "great dane",
-    "labrador retriever",
-    "poodle",
-    "pug",
-    "rottweiler",
-    "shiba inu",
-    "siberian husky",
-    "yorkshire terrier",
-}
-
-
-def confidence_threshold() -> float:
-    return settings.ai_confidence_threshold
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(application: FastAPI):
     on_startup()
-    yield
+    recover_interrupted_jobs(engine)
+    worker = getattr(application.state, "classification_worker", None)
+    managed_worker = worker is None
+    if worker is None:
+        worker = ClassificationWorker(engine, settings)
+        application.state.classification_worker = worker
+    await worker.start()
+    try:
+        yield
+    finally:
+        await worker.stop()
+        if managed_worker:
+            del application.state.classification_worker
 
 
 app = FastAPI(title="FaunaVault API", lifespan=lifespan)
@@ -198,7 +180,9 @@ def migrate_animals_and_taxonomy() -> None:
 def on_startup() -> None:
     ensure_storage()
     backup_database_before_taxonomy_migration()
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.create_all(
+        engine, tables=[Taxon.__table__, Animal.__table__, Photo.__table__]
+    )
     migrate_animals_and_taxonomy()
     run_migrations(engine, settings, normalize_existing_domestic_metadata)
     with Session(engine) as session:
@@ -207,281 +191,20 @@ def on_startup() -> None:
 
 SessionDep = Annotated[Session, Depends(get_session)]
 app.include_router(create_photo_lifecycle_router(lambda: settings))
+app.include_router(create_classification_router(lambda: settings))
 
 
 def photo_or_404(photo_id: int, session: Session) -> Photo:
     return active_photo_or_404(photo_id, session)
 
 
-def normalize_tags(tags: list[str] | None) -> list[str]:
-    if tags is None:
-        return []
-
-    return [tag.strip() for tag in tags if tag.strip()]
-
-
-def normalize_metadata_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-
-    stripped_value = value.strip()
-    return stripped_value or None
-
-
-def normalized_lookup(value: str | None) -> str:
-    normalized_value = normalize_metadata_text(value)
-    return normalized_value.lower() if normalized_value is not None else ""
-
-
-def canonical_common_name(value: str | None) -> str | None:
-    lookup_value = normalized_lookup(value)
-    if lookup_value in {"dog", "domestic dog", "canine"}:
-        return "dog"
-    if lookup_value in {"cat", "domestic cat", "feline"}:
-        return "cat"
-    if lookup_value in {"horse", "domestic horse"}:
-        return "horse"
-    if lookup_value in {"cow", "cattle", "domestic cow", "domestic cattle"}:
-        return "cow"
-    return normalize_metadata_text(value)
-
-
-def is_dog_breed_guess(value: str | None) -> bool:
-    return normalized_lookup(value) in DOG_BREED_GUESSES
-
-
-def is_expected_species(value: str | None, expected_species: str) -> bool:
-    return normalized_lookup(value) == expected_species.lower()
-
-
-def apply_domestic_metadata_normalization(photo: Photo) -> None:
-    common_name = canonical_common_name(photo.common_name)
-    species_guess = normalize_metadata_text(photo.species_guess)
-    breed_guess = normalize_metadata_text(photo.breed_guess)
-    display_title = normalize_metadata_text(photo.display_title)
-
-    photo.common_name = common_name
-    photo.species_guess = species_guess
-    photo.breed_guess = breed_guess
-    photo.display_title = display_title
-
-    if common_name is None:
-        return
-
-    common_lookup = normalized_lookup(common_name)
-    expected_species = DOMESTIC_SPECIES_BY_COMMON_NAME.get(common_lookup)
-    if expected_species is None:
-        return
-
-    if (
-        common_lookup == "dog"
-        and species_guess
-        and not is_expected_species(
-            species_guess,
-            expected_species,
-        )
-    ):
-        if is_dog_breed_guess(species_guess):
-            photo.breed_guess = breed_guess or species_guess
-            photo.display_title = display_title or species_guess
-
-    if (
-        common_lookup == "horse"
-        and species_guess
-        and not is_expected_species(
-            species_guess,
-            expected_species,
-        )
-    ):
-        photo.breed_guess = breed_guess or species_guess
-        photo.display_title = display_title or species_guess
-
-    photo.species_guess = expected_species
-    photo.category = "mammal"
-
-
 def normalize_existing_domestic_metadata() -> None:
-    with Session(engine) as session:
-        photos = list(session.exec(select(Photo)).all())
-        has_changes = False
-
-        for photo in photos:
-            original_metadata = (
-                photo.display_title,
-                photo.common_name,
-                photo.breed_guess,
-                photo.species_guess,
-                photo.category,
-            )
-            apply_domestic_metadata_normalization(photo)
-            next_metadata = (
-                photo.display_title,
-                photo.common_name,
-                photo.breed_guess,
-                photo.species_guess,
-                photo.category,
-            )
-
-            if next_metadata != original_metadata:
-                photo.updated_at = utc_now()
-                session.add(photo)
-                has_changes = True
-
-        if has_changes:
-            session.commit()
-
-
-def classification_image_path(photo: Photo) -> Path:
-    resized_path = IMAGE_DIRS["resized"] / Path(photo.resized_filename).name
-    if resized_path.exists() and resized_path.is_file():
-        return resized_path
-
-    original_path = IMAGE_DIRS["original"] / Path(photo.stored_filename).name
-    if original_path.exists() and original_path.is_file():
-        return original_path
-
-    raise HTTPException(
-        status_code=404, detail="No image file found for classification"
-    )
-
-
-def classify_with_fallback(image_path: Path, threshold: float) -> ClassificationResult:
-    primary_result: ClassificationResult | None = None
-    errors: list[str] = []
-
-    try:
-        primary_result = classify_image(image_path, AI_PRIMARY_MODEL)
-    except OllamaClassificationError as exc:
-        errors.append(str(exc))
-
-    should_try_fallback = (
-        primary_result is None or primary_result.confidence < threshold
-    )
-    if should_try_fallback and AI_FALLBACK_MODEL != AI_PRIMARY_MODEL:
-        try:
-            return classify_image(image_path, AI_FALLBACK_MODEL)
-        except OllamaClassificationError as exc:
-            errors.append(str(exc))
-
-    if primary_result is not None:
-        return primary_result
-
-    detail = "; ".join(errors) if errors else "Local AI classification failed"
-    raise HTTPException(status_code=502, detail=detail)
-
-
-def apply_classification(
-    photo: Photo, result: ClassificationResult, threshold: float
-) -> None:
-    photo.display_title = result.display_title
-    photo.common_name = result.common_name
-    photo.breed_guess = result.breed_guess
-    photo.species_guess = result.species_guess
-    photo.category = result.category
-    photo.confidence = result.confidence
-    photo.description = result.description
-    photo.tags = result.tags
-    apply_domestic_metadata_normalization(photo)
-    photo.status = (
-        "classified"
-        if result.is_animal
-        and not result.needs_review
-        and result.confidence >= threshold
-        else "needs_review"
-    )
-    photo.updated_at = utc_now()
+    normalize_domestic_metadata(engine)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.post("/photos/classify-pending", response_model=ClassifyPendingResponse)
-def classify_pending_photos(
-    session: SessionDep,
-    request: ClassifyPendingRequest | None = None,
-) -> ClassifyPendingResponse:
-    request = request or ClassifyPendingRequest()
-    statement = (
-        select(Photo)
-        .where(Photo.status == "pending", Photo.deleted_at.is_(None))
-        .order_by(Photo.created_at.asc())
-    )
-
-    if request.photo_ids is not None:
-        statement = statement.where(Photo.id.in_(request.photo_ids))
-
-    if request.limit is not None:
-        statement = statement.limit(request.limit)
-
-    pending_photos = list(session.exec(statement).all())
-    threshold = confidence_threshold()
-    results: list[ClassifyPendingPhotoResult] = []
-    classified = 0
-    needs_review = 0
-    failed = 0
-
-    for photo in pending_photos:
-        photo_id = photo.id
-        if photo_id is None:
-            continue
-
-        try:
-            image_path = classification_image_path(photo)
-            classification = classify_with_fallback(image_path, threshold)
-            apply_classification(photo, classification, threshold)
-            session.add(photo)
-            session.commit()
-            session.refresh(photo)
-
-            if photo.status == "classified":
-                classified += 1
-            elif photo.status == "needs_review":
-                needs_review += 1
-
-            results.append(
-                ClassifyPendingPhotoResult(
-                    id=photo_id,
-                    status=photo.status,
-                    display_title=photo.display_title,
-                    common_name=photo.common_name,
-                    breed_guess=photo.breed_guess,
-                    species_guess=photo.species_guess,
-                )
-            )
-        except HTTPException as exc:
-            session.rollback()
-            failed += 1
-            results.append(
-                ClassifyPendingPhotoResult(
-                    id=photo_id,
-                    status="failed",
-                    error=str(exc.detail) if exc.detail else "Classification failed",
-                )
-            )
-        except Exception:
-            session.rollback()
-            logger.exception(
-                "Unexpected failure during pending classification for photo %s",
-                photo_id,
-            )
-            failed += 1
-            results.append(
-                ClassifyPendingPhotoResult(
-                    id=photo_id,
-                    status="failed",
-                    error="Classification failed",
-                )
-            )
-
-    return ClassifyPendingResponse(
-        total_found=len(pending_photos),
-        classified=classified,
-        needs_review=needs_review,
-        failed=failed,
-        results=results,
-    )
 
 
 @app.get("/photos/{photo_id}", response_model=Photo)
@@ -533,20 +256,6 @@ def mock_classify_photo(photo_id: int, session: SessionDep) -> Photo:
     apply_domestic_metadata_normalization(photo)
     photo.status = "classified"
     photo.updated_at = utc_now()
-    session.add(photo)
-    session.commit()
-    session.refresh(photo)
-    return photo
-
-
-@app.post("/photos/{photo_id}/classify", response_model=Photo)
-def classify_photo(photo_id: int, session: SessionDep) -> Photo:
-    photo = photo_or_404(photo_id, session)
-    threshold = confidence_threshold()
-    image_path = classification_image_path(photo)
-    result = classify_with_fallback(image_path, threshold)
-
-    apply_classification(photo, result, threshold)
     session.add(photo)
     session.commit()
     session.refresh(photo)
