@@ -156,7 +156,16 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
                 "SELECT version FROM schema_migration ORDER BY version"
             )
         ]
-    assert versions == [1, 2, 3, 4, 5, 6]
+    assert versions == [1, 2, 3, 4, 5, 6, 7]
+    with engine.connect() as connection:
+        indexes = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA index_list(photo)")
+        }
+    assert {
+        "ix_photo_catalog_active_created",
+        "ix_photo_catalog_active_status_created",
+        "ix_photo_catalog_active_category_created",
+    } <= indexes
     assert settings.database_path is not None
     backups = list(
         settings.database_path.parent.glob(
@@ -193,8 +202,8 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         calls += 1
         main.normalize_existing_domestic_metadata()
 
-    assert run_migrations(engine, settings, normalize) == [5, 6]
-    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6]
+    assert run_migrations(engine, settings, normalize) == [5, 6, 7]
+    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
         assert photo is not None
@@ -231,8 +240,8 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
 
     assert run_migrations(
         engine, settings, main.normalize_existing_domestic_metadata
-    ) == [5, 6]
-    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6]
+    ) == [5, 6, 7]
+    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
         assert photo is not None

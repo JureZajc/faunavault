@@ -1,46 +1,49 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ChangeEvent,
   FormEvent,
   ReactNode,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
   ApiError,
   BatchUploadFailure,
+  CatalogTaxonOption,
   classifyPendingPhotos,
-  getPhotos,
   imageUrl,
   Photo,
   PhotoStatus,
   uploadPhotoBatch,
   uploadPhoto,
 } from "./lib/api";
+import {
+  applyCatalogSortOption,
+  catalogSortOption,
+  CatalogLayout,
+  CatalogSortOption,
+  parseCatalogState,
+  writeCatalogState,
+} from "./lib/catalog-query";
 import AlbumBrowser from "./components/album-browser";
 import ClassificationJobsPanel from "./components/classification-jobs-panel";
 import MoveToTrashButton from "./components/move-to-trash-button";
 import SuccessNotice from "./components/success-notice";
 import TrashBrowser from "./components/trash-browser";
 import { useClassificationJobs } from "./hooks/use-classification-jobs";
+import { useCatalogTaxa } from "./hooks/use-catalog-taxa";
+import { usePhotoCatalog } from "./hooks/use-photo-catalog";
 
 type StatusFilter = "all" | PhotoStatus;
-type SortOption =
-  | "newest"
-  | "oldest"
-  | "confidence_desc"
-  | "confidence_asc"
-  | "name_asc"
-  | "name_desc"
-  | "species_asc"
-  | "species_desc"
-  | "needs_review_first"
-  | "pending_first";
-type ViewMode = "flat" | "grouped";
+type SortOption = CatalogSortOption;
+type ViewMode = CatalogLayout;
 type CollectionView = "list" | "album" | "trash";
 type UploadNotice = {
   kind: "success" | "warning";
@@ -63,7 +66,7 @@ const statusLabels: Record<StatusFilter, string> = {
   needs_review: "Needs review",
 };
 
-const sortLabels: Record<SortOption, string> = {
+const sortLabels: Record<CatalogSortOption, string> = {
   newest: "Newest",
   oldest: "Oldest",
   confidence_desc: "Confidence high to low",
@@ -127,19 +130,6 @@ function normalizeSortText(value: string | null | undefined) {
   return value?.trim() ?? "";
 }
 
-function getNameSortValue(photo: Photo) {
-  return (
-    normalizeSortText(photo.display_title) ||
-    normalizeSortText(photo.breed_guess) ||
-    normalizeSortText(photo.common_name) ||
-    photo.original_filename
-  );
-}
-
-function getSpeciesSortValue(photo: Photo) {
-  return normalizeSortText(photo.species_guess) || photo.original_filename;
-}
-
 function getPhotoDisplayTitle(photo: Photo) {
   return (
     normalizeSortText(photo.display_title) ||
@@ -180,233 +170,11 @@ function getPhotoCardSubtitle(photo: Photo, title: string) {
   return `${formatCommonNameForSubtitle(commonName)} · ${speciesGuess}`;
 }
 
-function photoMatchesSearch(photo: Photo, searchQuery: string) {
-  const query = normalizeSearchText(searchQuery);
-
-  if (!query) {
-    return true;
-  }
-
-  const searchableText = [
-    photo.display_title,
-    photo.common_name,
-    photo.breed_guess,
-    photo.species_guess,
-    photo.category,
-    photo.description,
-    photo.tags.join(" "),
-  ]
-    .map(normalizeSearchText)
-    .join(" ");
-
-  return searchableText.includes(query);
-}
-
-function photoMatchesFilters(
-  photo: Photo,
-  statusFilter: StatusFilter,
-  categoryFilter: string,
-) {
-  const matchesStatus =
-    statusFilter === "all" ? true : photo.status === statusFilter;
-  const matchesCategory =
-    categoryFilter === "all"
-      ? true
-      : categoryFilter === unknownCategoryValue
-        ? !photo.category
-        : photo.category === categoryFilter;
-
-  return matchesStatus && matchesCategory;
-}
-
-function compareConfidence(
-  firstPhoto: Photo,
-  secondPhoto: Photo,
-  direction: "asc" | "desc",
-) {
-  const firstConfidence = firstPhoto.confidence;
-  const secondConfidence = secondPhoto.confidence;
-
-  if (firstConfidence === null && secondConfidence === null) {
-    return 0;
-  }
-
-  if (firstConfidence === null) {
-    return 1;
-  }
-
-  if (secondConfidence === null) {
-    return -1;
-  }
-
-  return direction === "asc"
-    ? firstConfidence - secondConfidence
-    : secondConfidence - firstConfidence;
-}
-
-function compareText(
-  firstValue: string | null | undefined,
-  secondValue: string | null | undefined,
-  direction: "asc" | "desc",
-) {
-  const normalizedFirstValue = normalizeSortText(firstValue);
-  const normalizedSecondValue = normalizeSortText(secondValue);
-
-  if (!normalizedFirstValue && !normalizedSecondValue) {
-    return 0;
-  }
-
-  if (!normalizedFirstValue) {
-    return 1;
-  }
-
-  if (!normalizedSecondValue) {
-    return -1;
-  }
-
-  const comparison = normalizedFirstValue.localeCompare(
-    normalizedSecondValue,
-    "en",
-    localeCompareOptions,
-  );
-
-  return direction === "asc" ? comparison : -comparison;
-}
-
-function compareOriginalFilename(firstPhoto: Photo, secondPhoto: Photo) {
-  return compareText(
-    firstPhoto.original_filename,
-    secondPhoto.original_filename,
-    "asc",
-  );
-}
-
-function compareCreatedAt(
-  firstPhoto: Photo,
-  secondPhoto: Photo,
-  direction: "asc" | "desc",
-) {
-  const firstCreatedAt = new Date(firstPhoto.created_at).getTime();
-  const secondCreatedAt = new Date(secondPhoto.created_at).getTime();
-
-  return direction === "asc"
-    ? firstCreatedAt - secondCreatedAt
-    : secondCreatedAt - firstCreatedAt;
-}
-
-function compareDefaultTieBreaker(firstPhoto: Photo, secondPhoto: Photo) {
-  return (
-    compareCreatedAt(firstPhoto, secondPhoto, "desc") ||
-    compareOriginalFilename(firstPhoto, secondPhoto)
-  );
-}
-
-function compareStatusFirst(
-  firstPhoto: Photo,
-  secondPhoto: Photo,
-  priorityStatus: PhotoStatus,
-) {
-  const firstPriority = firstPhoto.status === priorityStatus ? 0 : 1;
-  const secondPriority = secondPhoto.status === priorityStatus ? 0 : 1;
-
-  return firstPriority - secondPriority;
-}
-
-function sortPhotos(photos: Photo[], sortOption: SortOption) {
-  return [...photos].sort((firstPhoto, secondPhoto) => {
-    if (sortOption === "newest") {
-      return (
-        compareCreatedAt(firstPhoto, secondPhoto, "desc") ||
-        compareOriginalFilename(firstPhoto, secondPhoto)
-      );
-    }
-
-    if (sortOption === "oldest") {
-      return (
-        compareCreatedAt(firstPhoto, secondPhoto, "asc") ||
-        compareOriginalFilename(firstPhoto, secondPhoto)
-      );
-    }
-
-    if (sortOption === "name_asc" || sortOption === "name_desc") {
-      const nameComparison = compareText(
-        getNameSortValue(firstPhoto),
-        getNameSortValue(secondPhoto),
-        sortOption === "name_asc" ? "asc" : "desc",
-      );
-
-      return nameComparison || compareDefaultTieBreaker(firstPhoto, secondPhoto);
-    }
-
-    if (sortOption === "species_asc" || sortOption === "species_desc") {
-      const speciesComparison = compareText(
-        getSpeciesSortValue(firstPhoto),
-        getSpeciesSortValue(secondPhoto),
-        sortOption === "species_asc" ? "asc" : "desc",
-      );
-
-      return (
-        speciesComparison || compareDefaultTieBreaker(firstPhoto, secondPhoto)
-      );
-    }
-
-    if (sortOption === "needs_review_first") {
-      return (
-        compareStatusFirst(firstPhoto, secondPhoto, "needs_review") ||
-        compareDefaultTieBreaker(firstPhoto, secondPhoto)
-      );
-    }
-
-    if (sortOption === "pending_first") {
-      return (
-        compareStatusFirst(firstPhoto, secondPhoto, "pending") ||
-        compareDefaultTieBreaker(firstPhoto, secondPhoto)
-      );
-    }
-
-    const confidenceComparison = compareConfidence(
-      firstPhoto,
-      secondPhoto,
-      sortOption === "confidence_asc" ? "asc" : "desc",
-    );
-
-    return (
-      confidenceComparison || compareDefaultTieBreaker(firstPhoto, secondPhoto)
-    );
-  });
-}
-
-function getCategoryOptions(photos: Photo[]) {
-  return Array.from(
-    new Set(
-      photos
-        .map((photo) => photo.category?.trim())
-        .filter((category): category is string => Boolean(category)),
-    ),
-  ).sort((firstCategory, secondCategory) =>
-    firstCategory.localeCompare(secondCategory),
-  );
-}
-
-function getCatalogStats(photos: Photo[]) {
-  return photos.reduce(
-    (stats, photo) => ({
-      ...stats,
-      [photo.status]: stats[photo.status] + 1,
-    }),
-    {
-      pending: 0,
-      classified: 0,
-      needs_review: 0,
-    } satisfies Record<PhotoStatus, number>,
-  );
-}
-
 function getCategoryLabel(category: string | null) {
   return category?.trim() || unknownCategoryLabel;
 }
 
-function groupPhotosByCategory(photos: Photo[], sortOption: SortOption) {
+function groupPhotosByCategory(photos: Photo[]) {
   const groupedPhotos = photos.reduce<Map<string, Photo[]>>((groups, photo) => {
     const categoryLabel = getCategoryLabel(photo.category);
     const categoryPhotos = groups.get(categoryLabel) ?? [];
@@ -421,10 +189,7 @@ function groupPhotosByCategory(photos: Photo[], sortOption: SortOption) {
     .sort(([firstCategory], [secondCategory]) =>
       firstCategory.localeCompare(secondCategory, "en", localeCompareOptions),
     )
-    .map(([category, categoryPhotos]) => ({
-      category,
-      photos: sortPhotos(categoryPhotos, sortOption),
-    }));
+    .map(([category, categoryPhotos]) => ({ category, photos: categoryPhotos }));
 }
 
 function StatusBadge({ status }: { status: PhotoStatus }) {
@@ -580,6 +345,11 @@ function CatalogToolbar({
   viewMode,
   categoryOptions,
   hasUnknownCategory,
+  taxonId,
+  taxonOptions,
+  taxaLoading,
+  taxaError,
+  hasMoreTaxa,
   resultCount,
   totalCount,
   onSearchChange,
@@ -587,6 +357,9 @@ function CatalogToolbar({
   onCategoryChange,
   onSortChange,
   onViewModeChange,
+  onTaxonFocus,
+  onTaxonChange,
+  onLoadMoreTaxa,
 }: {
   searchQuery: string;
   statusFilter: StatusFilter;
@@ -595,6 +368,11 @@ function CatalogToolbar({
   viewMode: ViewMode;
   categoryOptions: string[];
   hasUnknownCategory: boolean;
+  taxonId?: number;
+  taxonOptions: CatalogTaxonOption[];
+  taxaLoading: boolean;
+  taxaError: string | null;
+  hasMoreTaxa: boolean;
   resultCount: number;
   totalCount: number;
   onSearchChange: (value: string) => void;
@@ -602,10 +380,13 @@ function CatalogToolbar({
   onCategoryChange: (value: string) => void;
   onSortChange: (value: SortOption) => void;
   onViewModeChange: (value: ViewMode) => void;
+  onTaxonFocus: () => void;
+  onTaxonChange: (value?: number) => void;
+  onLoadMoreTaxa: () => void;
 }) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
         <label className="block">
           <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
             Search
@@ -618,6 +399,49 @@ function CatalogToolbar({
             className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
           />
         </label>
+
+        <div>
+          <label className="block">
+            <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+              Verified taxon
+            </span>
+            <select
+              value={taxonId ? String(taxonId) : ""}
+              onFocus={onTaxonFocus}
+              onChange={(event) =>
+                onTaxonChange(
+                  event.target.value ? Number(event.target.value) : undefined,
+                )
+              }
+              className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
+            >
+              <option value="">All verified taxa</option>
+              {taxonOptions.map((taxon) => (
+                <option key={taxon.taxon_id} value={taxon.taxon_id}>
+                  {taxon.label} ({taxon.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          {hasMoreTaxa ? (
+            <button
+              type="button"
+              disabled={taxaLoading}
+              onClick={onLoadMoreTaxa}
+              className="mt-1 text-xs font-semibold text-emerald-800 underline disabled:opacity-50"
+            >
+              {taxaLoading ? "Loading taxa…" : "Load more taxa"}
+            </button>
+          ) : taxaError ? (
+            <button
+              type="button"
+              onClick={onTaxonFocus}
+              className="mt-1 text-xs font-semibold text-red-700 underline"
+            >
+              Retry taxa
+            </button>
+          ) : null}
+        </div>
 
         <label className="block">
           <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
@@ -648,8 +472,13 @@ function CatalogToolbar({
             className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
           >
             <option value="all">All categories</option>
-            {hasUnknownCategory ? (
+            {hasUnknownCategory || categoryFilter === unknownCategoryValue ? (
               <option value={unknownCategoryValue}>Unknown</option>
+            ) : null}
+            {categoryFilter !== "all" &&
+            categoryFilter !== unknownCategoryValue &&
+            !categoryOptions.includes(categoryFilter) ? (
+              <option value={categoryFilter}>{categoryFilter}</option>
             ) : null}
             {categoryOptions.map((category) => (
               <option key={category} value={category}>
@@ -685,7 +514,7 @@ function CatalogToolbar({
           {totalCount === 1 ? "record" : "records"}
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
-          <p>Local collection, filtered in your browser.</p>
+          <p>Backend-filtered local collection.</p>
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
               View
@@ -736,39 +565,66 @@ function CatalogStateMessage({
   );
 }
 
-export default function Home() {
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [sortOption, setSortOption] = useState<SortOption>("newest");
-  const [viewMode, setViewMode] = useState<ViewMode>("flat");
-  const [collectionView, setCollectionView] =
-    useState<CollectionView>("list");
-  const [searchQuery, setSearchQuery] = useState("");
+function HomeContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const paramsString = searchParams.toString();
+  const catalogState = useMemo(
+    () => parseCatalogState(new URLSearchParams(paramsString)),
+    [paramsString],
+  );
+  const collectionView: CollectionView =
+    searchParams.get("view") === "album"
+      ? "album"
+      : searchParams.get("view") === "trash"
+        ? "trash"
+        : "list";
+  const updateCatalog = useCallback(
+    (nextState: typeof catalogState, replace = false) => {
+      const params = writeCatalogState(
+        new URLSearchParams(paramsString),
+        nextState,
+      );
+      const query = params.toString();
+      const href = query ? `${pathname}?${query}` : pathname;
+      if (replace) router.replace(href, { scroll: false });
+      else router.push(href, { scroll: false });
+    },
+    [paramsString, pathname, router],
+  );
+  const correctPage = useCallback(
+    (page: number) => updateCatalog({ ...catalogState, page }, true),
+    [catalogState, updateCatalog],
+  );
+  const {
+    data: catalog,
+    isLoading,
+    error: catalogError,
+    refresh: loadPhotos,
+  } = usePhotoCatalog(catalogState, correctPage);
+  const taxa = useCatalogTaxa(catalogState.taxon_id);
+  const taxonOptions = useMemo(() => {
+    const options = taxa.selected ? [taxa.selected, ...taxa.items] : taxa.items;
+    return Array.from(
+      new Map(options.map((option) => [option.taxon_id, option])).values(),
+    );
+  }, [taxa.items, taxa.selected]);
+  const [searchQuery, setSearchQuery] = useState(catalogState.search ?? "");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState<UploadNotice | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
-  const [returnTo, setReturnTo] = useState("/");
-
-  const loadPhotos = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const nextPhotos = await getPhotos();
-      setPhotos(nextPhotos);
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Could not load the catalog",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const refreshTimer = useRef<number | null>(null);
+  const searchTimer = useRef<number | null>(null);
+  const scheduleCatalogRefresh = useCallback(() => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      void loadPhotos().catch(() => undefined);
+    }, 200);
+  }, [loadPhotos]);
 
   const {
     jobs: classificationJobs,
@@ -776,36 +632,25 @@ export default function Home() {
     error: classificationError,
     acceptEnqueue,
     retry: retryClassification,
-  } = useClassificationJobs({ onSucceeded: loadPhotos });
+  } = useClassificationJobs({ onSucceeded: scheduleCatalogRefresh });
 
   useEffect(() => {
-    let isMounted = true;
-
-    getPhotos()
-      .then((nextPhotos) => {
-        if (isMounted) {
-          setPhotos(nextPhotos);
-        }
-      })
-      .catch((nextError: Error) => {
-        if (isMounted) {
-          setError(nextError.message);
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      });
-
     return () => {
-      isMounted = false;
+      if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+      if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
     };
   }, []);
 
   useEffect(() => {
+    const timer = window.setTimeout(
+      () => setSearchQuery(catalogState.search ?? ""),
+      0,
+    );
+    return () => window.clearTimeout(timer);
+  }, [catalogState.search]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
-      setReturnTo(`${window.location.pathname}${window.location.search}`);
       const storedNotice = window.sessionStorage.getItem("faunavault.success");
       if (storedNotice) {
         setSuccessNotice(storedNotice);
@@ -813,53 +658,51 @@ export default function Home() {
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [collectionView, searchQuery, statusFilter, categoryFilter, sortOption]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const view = new URLSearchParams(window.location.search).get("view");
-      if (view === "album" || view === "trash") setCollectionView(view);
-    }, 0);
-    return () => window.clearTimeout(timer);
   }, []);
 
-  const categoryOptions = useMemo(() => getCategoryOptions(photos), [photos]);
-  const catalogStats = useMemo(() => getCatalogStats(photos), [photos]);
-  const hasUnknownCategory = useMemo(
-    () => photos.some((photo) => !photo.category?.trim()),
-    [photos],
-  );
-  const pendingPhotoCount = useMemo(
-    () => photos.filter((photo) => photo.status === "pending").length,
-    [photos],
-  );
+  const photos = catalog?.items ?? [];
+  const categoryOptions = catalog?.facets.categories.map((item) => item.value) ?? [];
+  const catalogStats = catalog?.facets.status_counts ?? {
+    pending: 0,
+    classified: 0,
+    needs_review: 0,
+  };
+  const hasUnknownCategory = (catalog?.facets.uncategorized_count ?? 0) > 0;
+  const pendingPhotoCount = catalogStats.pending;
   const showClassificationPanel =
     pendingPhotoCount > 0 || classificationJobs.length > 0;
-
-  const activeCategoryFilter =
-    categoryFilter === unknownCategoryValue && !hasUnknownCategory
-      ? "all"
-      : categoryFilter;
-
-  const visiblePhotos = useMemo(() => {
-    const matchingPhotos = photos.filter(
-      (photo) =>
-        photoMatchesSearch(photo, searchQuery) &&
-        photoMatchesFilters(photo, statusFilter, activeCategoryFilter),
-    );
-
-    return sortPhotos(matchingPhotos, sortOption);
-  }, [activeCategoryFilter, photos, searchQuery, sortOption, statusFilter]);
+  const statusFilter: StatusFilter = catalogState.status ?? "all";
+  const categoryFilter = catalogState.uncategorized
+    ? unknownCategoryValue
+    : catalogState.category ?? "all";
+  const sortOption = catalogSortOption(catalogState);
+  const viewMode = catalogState.layout;
+  const visiblePhotos = photos;
   const groupedVisiblePhotos = useMemo(
-    () => groupPhotosByCategory(visiblePhotos, sortOption),
-    [sortOption, visiblePhotos],
+    () => groupPhotosByCategory(visiblePhotos),
+    [visiblePhotos],
   );
 
   const hasActiveViewFilters =
     normalizeSearchText(searchQuery) !== "" ||
     statusFilter !== "all" ||
-    activeCategoryFilter !== "all";
+    categoryFilter !== "all" ||
+    catalogState.taxon_id !== undefined;
+  const error = actionError ?? catalogError;
+  const returnTo = paramsString ? `${pathname}?${paramsString}` : pathname;
   const selectedFileLabel = formatSelectedFiles(selectedFiles);
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
+    searchTimer.current = window.setTimeout(() => {
+      searchTimer.current = null;
+      updateCatalog(
+        { ...catalogState, search: value.trim() || undefined, page: 1 },
+        true,
+      );
+    }, 300);
+  }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     setSelectedFiles(Array.from(event.target.files ?? []));
@@ -939,35 +782,40 @@ export default function Home() {
   }
 
   function clearViewFilters() {
+    if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
     setSearchQuery("");
-    setStatusFilter("all");
-    setCategoryFilter("all");
+    updateCatalog(
+      {
+        ...catalogState,
+        page: 1,
+        search: undefined,
+        status: undefined,
+        category: undefined,
+        uncategorized: undefined,
+        taxon_id: undefined,
+      },
+      true,
+    );
   }
 
   function changeCollectionView(view: CollectionView) {
-    setCollectionView(view);
-    const url = new URL(window.location.href);
+    const params = new URLSearchParams(paramsString);
     if (view !== "list") {
-      url.searchParams.set("view", view);
+      params.set("view", view);
     } else {
-      url.searchParams.delete("view");
+      params.delete("view");
     }
-    window.history.replaceState(null, "", url);
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }
 
-  function handlePhotoMoved(photo: Photo) {
-    setPhotos((currentPhotos) =>
-      currentPhotos.filter((item) => item.id !== photo.id),
-    );
+  async function handlePhotoMoved(photo: Photo) {
+    await loadPhotos();
     setSuccessNotice(`Moved ${photo.original_filename} to Trash.`);
   }
 
-  function handlePhotoRestored(photo: Photo) {
-    const restoredPhoto = { ...photo, deleted_at: null };
-    setPhotos((currentPhotos) => [
-      ...currentPhotos.filter((item) => item.id !== restoredPhoto.id),
-      restoredPhoto,
-    ]);
+  async function handlePhotoRestored() {
+    await loadPhotos();
   }
 
   return (
@@ -987,11 +835,14 @@ export default function Home() {
             </p>
             <div className="mt-5 flex flex-wrap gap-3 text-sm text-stone-600">
               <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5">
-                {photos.length} {photos.length === 1 ? "photo" : "photos"}
+                {catalog?.facets.active_total ?? 0}{" "}
+                {(catalog?.facets.active_total ?? 0) === 1 ? "photo" : "photos"}
               </span>
               <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5">
-                {categoryOptions.length}{" "}
-                {categoryOptions.length === 1 ? "category" : "categories"}
+                {categoryOptions.length + (hasUnknownCategory ? 1 : 0)}{" "}
+                {categoryOptions.length + (hasUnknownCategory ? 1 : 0) === 1
+                  ? "category"
+                  : "categories"}
               </span>
               <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-stone-500">
                 {catalogStats.pending} pending
@@ -1125,18 +976,51 @@ export default function Home() {
         <CatalogToolbar
           searchQuery={searchQuery}
           statusFilter={statusFilter}
-          categoryFilter={activeCategoryFilter}
+          categoryFilter={categoryFilter}
           sortOption={sortOption}
           viewMode={viewMode}
           categoryOptions={categoryOptions}
           hasUnknownCategory={hasUnknownCategory}
+          taxonId={catalogState.taxon_id}
+          taxonOptions={taxonOptions}
+          taxaLoading={taxa.isLoading}
+          taxaError={taxa.error}
+          hasMoreTaxa={taxa.hasMore}
           resultCount={visiblePhotos.length}
-          totalCount={photos.length}
-          onSearchChange={setSearchQuery}
-          onStatusChange={setStatusFilter}
-          onCategoryChange={setCategoryFilter}
-          onSortChange={setSortOption}
-          onViewModeChange={setViewMode}
+          totalCount={catalog?.total ?? 0}
+          onSearchChange={handleSearchChange}
+          onStatusChange={(value) =>
+            updateCatalog({
+              ...catalogState,
+              status: value === "all" ? undefined : value,
+              page: 1,
+            })
+          }
+          onCategoryChange={(value) =>
+            updateCatalog({
+              ...catalogState,
+              category:
+                value === "all" || value === unknownCategoryValue
+                  ? undefined
+                  : value,
+              uncategorized:
+                value === unknownCategoryValue ? true : undefined,
+              page: 1,
+            })
+          }
+          onSortChange={(value) =>
+            updateCatalog(applyCatalogSortOption(catalogState, value))
+          }
+          onViewModeChange={(value) =>
+            updateCatalog({ ...catalogState, layout: value })
+          }
+          onTaxonFocus={() => {
+            if (!taxa.isLoaded && !taxa.isLoading) void taxa.load();
+          }}
+          onTaxonChange={(value) =>
+            updateCatalog({ ...catalogState, taxon_id: value, page: 1 })
+          }
+          onLoadMoreTaxa={() => void taxa.loadMore()}
         />
 
         {showClassificationPanel ? (
@@ -1172,7 +1056,6 @@ export default function Home() {
           ) : null}
           <ClassificationJobsPanel
             jobs={classificationJobs}
-            photos={photos}
             onRetry={retryClassification}
           />
         </div>
@@ -1194,7 +1077,7 @@ export default function Home() {
           </div>
         ) : null}
 
-        {isLoading ? (
+        {error ? null : isLoading ? (
           <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, index) => (
               <div
@@ -1203,7 +1086,7 @@ export default function Home() {
               />
             ))}
           </div>
-        ) : photos.length === 0 ? (
+        ) : (catalog?.facets.active_total ?? 0) === 0 ? (
           <div className="py-8">
             <CatalogStateMessage
               title="Start your animal archive"
@@ -1268,9 +1151,53 @@ export default function Home() {
             />
           </div>
         )}
+        {!error && catalog && catalog.total_pages > 1 ? (
+          <nav
+            aria-label="Catalog pagination"
+            className="flex items-center justify-center gap-3 pb-10"
+          >
+            <button
+              type="button"
+              disabled={catalog.page === 1 || isLoading}
+              onClick={() =>
+                updateCatalog({ ...catalogState, page: catalog.page - 1 })
+              }
+              className="min-h-10 rounded-md border border-stone-200 bg-white px-4 text-sm font-semibold disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-stone-600" aria-live="polite">
+              Page {catalog.page} of {catalog.total_pages}
+            </span>
+            <button
+              type="button"
+              disabled={catalog.page >= catalog.total_pages || isLoading}
+              onClick={() =>
+                updateCatalog({ ...catalogState, page: catalog.page + 1 })
+              }
+              className="min-h-10 rounded-md border border-stone-200 bg-white px-4 text-sm font-semibold disabled:opacity-40"
+            >
+              Next
+            </button>
+          </nav>
+        ) : null}
           </>
         )}
       </section>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#f7f8f4] p-8">
+          <div className="mx-auto h-[32rem] max-w-7xl animate-pulse rounded-lg bg-white" />
+        </main>
+      }
+    >
+      <HomeContent />
+    </Suspense>
   );
 }

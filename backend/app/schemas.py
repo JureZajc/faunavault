@@ -121,6 +121,7 @@ class ClassificationJobRead(SQLModel):
     failure_code: str | None
     failure_message: str | None
     classification_status: str | None
+    photo_original_filename: str | None
     retryable: bool
 
 
@@ -165,6 +166,49 @@ class TrashMutationResponse(SQLModel):
     status: str
     photo_id: int
     missing_files: int = 0
+
+
+class CatalogStatusCounts(SQLModel):
+    pending: int = 0
+    classified: int = 0
+    needs_review: int = 0
+
+
+class CatalogCategoryFacet(SQLModel):
+    value: str
+    count: int
+
+
+class CatalogFacets(SQLModel):
+    active_total: int
+    status_counts: CatalogStatusCounts
+    categories: list[CatalogCategoryFacet]
+    uncategorized_count: int
+
+
+class CatalogPhotoPage(SQLModel):
+    items: list[Photo]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    facets: CatalogFacets
+
+
+class CatalogTaxonOption(SQLModel):
+    taxon_id: int
+    label: str
+    scientific_name: str
+    count: int
+
+
+class CatalogTaxonPage(SQLModel):
+    items: list[CatalogTaxonOption]
+    selected: CatalogTaxonOption | None
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
 
 
 class AnimalTaxonResponse(SQLModel):

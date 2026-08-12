@@ -14,6 +14,27 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Recoverable Trash with restore and explicitly confirmed permanent deletion
 - Versioned, backed-up SQLite migrations and local-only storage
 
+## Catalog API and navigation
+
+The main List view uses `GET /catalog/photos`, a backend-filtered page API with
+48 items by default and a maximum page size of 100. It supports `page`,
+`page_size`, `search`, `status`, `category`, `uncategorized`, `taxon_id`,
+`sort`, and `order`. Responses include the filtered `total`, `total_pages`, and
+small global status/category facets. Search is a case-insensitive SQLite
+substring search across photo metadata, tags, animal names, and locally stored
+taxonomy; whitespace-separated terms must all match somewhere in the record.
+
+Verified taxon choices are loaded separately and in bounded pages from
+`GET /catalog/taxa`. Each option uses the stable local `Taxon.id` and includes
+its display label, scientific name, and active-photo count. The legacy
+`GET /photos` endpoint remains unchanged and still returns the complete active
+Photo array for compatible consumers.
+
+List page, search, filters, sorting, verified taxon, and flat/grouped layout are
+stored in URL search parameters. Refresh, copied URLs, browser Back/Forward,
+and photo detail return navigation restore the same catalog context. Grouping
+is intentionally page-local once pagination is active.
+
 ## Architecture and storage
 
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS

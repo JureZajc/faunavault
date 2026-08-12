@@ -58,6 +58,7 @@ def job_read(job: ClassificationJob, session: Session) -> ClassificationJobRead:
         failure_code=job.failure_code,
         failure_message=job.failure_message,
         classification_status=job.classification_status,
+        photo_original_filename=photo.original_filename if photo else None,
         retryable=retryable,
     )
 

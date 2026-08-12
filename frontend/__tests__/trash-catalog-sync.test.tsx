@@ -6,7 +6,7 @@ import { Photo } from "../app/lib/api";
 
 const api = vi.hoisted(() => ({
   deletePhoto: vi.fn(),
-  getPhotos: vi.fn(),
+  getCatalogPhotos: vi.fn(),
   getTrashPhotos: vi.fn(),
   restoreTrashPhoto: vi.fn(),
 }));
@@ -53,7 +53,43 @@ beforeEach(() => {
   activePhotos = [photo()];
   trashPhotos = [];
 
-  api.getPhotos.mockImplementation(async () => [...activePhotos]);
+  api.getCatalogPhotos.mockImplementation(async (query) => {
+    const items = activePhotos.filter(
+      (item) =>
+        (!query.status || item.status === query.status) &&
+        (!query.category || item.category === query.category) &&
+        (!query.uncategorized || !item.category?.trim()) &&
+        (!query.search ||
+          [item.display_title, item.common_name, item.species_guess, item.category]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(query.search.toLowerCase())),
+    );
+    const categories = Array.from(
+      new Set(activePhotos.map((item) => item.category).filter(Boolean)),
+    ).map((value) => ({
+      value: value as string,
+      count: activePhotos.filter((item) => item.category === value).length,
+    }));
+    return {
+      items,
+      total: items.length,
+      page: query.page,
+      page_size: query.page_size,
+      total_pages: items.length ? 1 : 0,
+      facets: {
+        active_total: activePhotos.length,
+        status_counts: {
+          pending: activePhotos.filter((item) => item.status === "pending").length,
+          classified: activePhotos.filter((item) => item.status === "classified").length,
+          needs_review: activePhotos.filter((item) => item.status === "needs_review").length,
+        },
+        categories,
+        uncategorized_count: activePhotos.filter((item) => !item.category?.trim()).length,
+      },
+    };
+  });
   api.getTrashPhotos.mockImplementation(async () => ({
     items: [...trashPhotos],
     total: trashPhotos.length,
@@ -122,7 +158,7 @@ function expectCatalogCount(visible: number, total: number) {
     screen.getByText(
       (_, element) =>
         element?.textContent?.replace(/\s+/g, " ").trim() ===
-        `Showing ${visible} of ${total} records`,
+        `Showing ${visible} of ${total} ${total === 1 ? "record" : "records"}`,
     ),
   ).toBeTruthy();
 }
@@ -210,7 +246,7 @@ test("an active filter may keep a nonmatching restored photo hidden", async () =
   expect(
     await screen.findByRole("heading", { name: "House sparrow" }),
   ).toBeTruthy();
-  expectCatalogCount(1, 2);
+  expectCatalogCount(1, 1);
 
   await userEvent.selectOptions(screen.getByLabelText("Category"), "all");
   expect(

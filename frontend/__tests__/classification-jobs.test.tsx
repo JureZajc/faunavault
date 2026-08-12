@@ -11,7 +11,7 @@ import {
 const api = vi.hoisted(() => ({
   classifyPendingPhotos: vi.fn(),
   getClassificationJobs: vi.fn(),
-  getPhotos: vi.fn(),
+  getCatalogPhotos: vi.fn(),
   retryClassificationJob: vi.fn(),
 }));
 
@@ -68,6 +68,7 @@ function job(overrides: Partial<ClassificationJob> = {}): ClassificationJob {
     failure_code: null,
     failure_message: null,
     classification_status: null,
+    photo_original_filename: "fox.jpg",
     retryable: false,
     ...overrides,
   };
@@ -89,7 +90,19 @@ function collection(jobs: ClassificationJob[]) {
 beforeEach(() => {
   vi.clearAllMocks();
   window.history.replaceState(null, "", "/");
-  api.getPhotos.mockResolvedValue([photo()]);
+  api.getCatalogPhotos.mockImplementation(async (query) => ({
+    items: [photo()],
+    total: 1,
+    page: query.page,
+    page_size: query.page_size,
+    total_pages: 1,
+    facets: {
+      active_total: 1,
+      status_counts: { pending: 1, classified: 0, needs_review: 0 },
+      categories: [],
+      uncategorized_count: 1,
+    },
+  }));
   api.getClassificationJobs.mockResolvedValue(collection([]));
 });
 

@@ -13,7 +13,7 @@ from sqlalchemy.engine import make_url
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 6
+LATEST_SCHEMA_VERSION = 7
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -199,6 +199,27 @@ def _migration_6(connection) -> None:
     )
 
 
+def _migration_7(connection) -> None:
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_photo_catalog_active_created "
+            "ON photo (deleted_at, created_at DESC, id DESC)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_photo_catalog_active_status_created "
+            "ON photo (deleted_at, status, created_at DESC, id DESC)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_photo_catalog_active_category_created "
+            "ON photo (deleted_at, category, created_at DESC, id DESC)"
+        )
+    )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -246,6 +267,8 @@ def run_migrations(
                 _migration_5(normalize_metadata)
             elif version == 6:
                 _migration_6(connection)
+            elif version == 7:
+                _migration_7(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

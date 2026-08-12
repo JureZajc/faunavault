@@ -160,10 +160,24 @@ function MetadataRow({
 }
 
 function safeReturnLocation(returnTo: string | undefined) {
-  if (!returnTo || !returnTo.startsWith("/") || returnTo.startsWith("//")) {
+  if (
+    !returnTo ||
+    !returnTo.startsWith("/") ||
+    returnTo.startsWith("//") ||
+    returnTo.includes("\\") ||
+    /[\u0000-\u001f]/.test(returnTo)
+  ) {
     return "/";
   }
-  return returnTo;
+  try {
+    const origin =
+      typeof window === "undefined" ? "http://localhost" : window.location.origin;
+    const resolved = new URL(returnTo, origin);
+    if (resolved.origin !== origin) return "/";
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  } catch {
+    return "/";
+  }
 }
 
 export default function PhotoDetail({
