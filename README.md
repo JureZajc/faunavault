@@ -16,9 +16,9 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 
 ## Catalog API and navigation
 
-The main List view uses `GET /catalog/photos`, a backend-filtered page API with
-48 items by default and a maximum page size of 100. It supports `page`,
-`page_size`, `search`, `status`, `category`, `uncategorized`, `taxon_id`,
+The main List view uses `GET /catalog/photos`, a backend-paginated and
+backend-filtered API with 48 items by default and a maximum page size of 100. It
+supports `page`, `page_size`, `search`, `status`, `category`, `uncategorized`, `taxon_id`,
 `sort`, and `order`. Responses include the filtered `total`, `total_pages`, and
 small global status/category facets. Search is a case-insensitive SQLite
 substring search across photo metadata, tags, animal names, and locally stored

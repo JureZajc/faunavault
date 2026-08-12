@@ -164,10 +164,18 @@ def list_catalog_photos(
     sort: str,
     order: str,
 ) -> CatalogPhotoPage:
-    joins_required = bool(search and search.strip()) or taxon_id is not None
     items_query = select(Photo).select_from(Photo)
     count_query = select(func.count(Photo.id)).select_from(Photo)
-    if joins_required:
+    if taxon_id is not None:
+        items_query = items_query.join(Animal, Photo.animal_id == Animal.id).join(
+            Taxon,
+            Animal.taxon_id == Taxon.id,
+        )
+        count_query = count_query.join(
+            Animal,
+            Photo.animal_id == Animal.id,
+        ).join(Taxon, Animal.taxon_id == Taxon.id)
+    elif search and search.strip():
         items_query = items_query.outerjoin(
             Animal, Photo.animal_id == Animal.id
         ).outerjoin(

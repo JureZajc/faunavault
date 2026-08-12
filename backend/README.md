@@ -27,3 +27,9 @@ counting, and small status/category facets in SQLite. Page size defaults to 48
 and is capped at 100. `GET /catalog/taxa` provides bounded pages of stable local
 taxon IDs with labels and active-photo counts for the List selector. The legacy
 `GET /photos` response and semantics remain unchanged.
+
+Schema migration 7 supplies the three catalog indexes justified by generated
+archive query plans: active created-time order, active status plus created-time
+order, and active category plus created-time order. Existing relationship
+indexes serve verified-taxon filtering. Leading-wildcard substring search still
+examines active candidates; no speculative indexes are created for search text.
