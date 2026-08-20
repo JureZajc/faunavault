@@ -4,8 +4,10 @@ The FastAPI backend owns local SQLite metadata, image lifecycle operations, migr
 
 ```powershell
 uv sync
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+As an optional repository-root shortcut, run `python scripts/dev.py backend`.
 
 Validation:
 

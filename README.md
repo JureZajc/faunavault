@@ -107,14 +107,39 @@ FaunaVault supports one local backend process and one classification worker. Do 
 
 The existing `POST /photos/{id}/classify` and `POST /photos/classify-pending` URLs are retained, but both now return asynchronous HTTP 202 job resources instead of synchronous Photo or batch-result bodies. There is no legacy synchronous Ollama classification route. The canonical resource API is `POST/GET /classification-jobs` plus `POST /classification-jobs/{id}/retry`.
 
-## Windows setup
+## Developer commands
 
-Install Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 24+, npm, and [Ollama](https://ollama.com/). From the repository root:
+Install Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 24+, and npm.
+[Ollama](https://ollama.com/) is needed only for local AI classification. From
+the repository root, the optional convenience commands are:
+
+```powershell
+python scripts/dev.py setup
+python scripts/dev.py check
+python scripts/dev.py backend
+python scripts/dev.py frontend
+```
+
+`setup` runs `uv sync` for the backend and `npm ci` for the frontend. It does
+not create environment files, install or start Ollama, or pull models. `check`
+runs the same backend and frontend validation commands as CI, sequentially and
+with fail-fast behavior. Run `backend` and `frontend` in separate terminals;
+combined process orchestration is deliberately omitted so Ctrl+C behavior stays
+predictable on Windows and POSIX systems.
+
+The commands resolve paths from the script location, so they can also be
+invoked by absolute or relative script path from another working directory.
+On macOS or Linux, use `python3` instead of `python` if that is how Python 3.12+
+is exposed on `PATH`.
+
+## Manual setup and development
+
+The underlying uv and npm commands remain authoritative and can be run
+directly. For the backend:
 
 ```powershell
 cd backend
 uv sync
-ollama pull qwen3-vl:8b
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -124,6 +149,13 @@ In a second terminal:
 cd frontend
 npm ci
 npm run dev
+```
+
+For local AI classification, install Ollama separately and pull the primary
+model when needed:
+
+```powershell
+ollama pull qwen3-vl:8b
 ```
 
 Open [http://localhost:3000](http://localhost:3000). Backend health is available at [http://localhost:8000/health](http://localhost:8000/health).
@@ -151,6 +183,9 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
 ## Validation
+
+From the repository root, `python scripts/dev.py check` runs the complete
+sequence below. The manual subsystem commands remain useful for troubleshooting:
 
 ```powershell
 cd backend

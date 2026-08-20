@@ -44,7 +44,15 @@ Audit date: 2026-08-11
 - Dialog/lightbox accessibility hardening is implemented across duplicate review, Move to Trash, permanent delete, photo-detail confirmation, and the photo lightbox, including modal semantics, safe initial focus, dynamic focus traps, Escape/busy-state handling, focus restoration, reference-counted scroll locking, and interaction tests.
 - Richer per-file batch upload progress is implemented with a sequential frontend queue, truthful Waiting/Uploading/Uploaded/Exact duplicate/Possible duplicate/Failed states, independent mixed results, and per-file transient retries. The initial queue continues past failures and possible duplicates, then perceptual reviews proceed independently; catalog refreshes are batched after the initial pass and after review completion. The compatibility batch API remains available, and byte-level percentages are not claimed.
 - Responsive UI polish and focused JSX cleanup are implemented across the catalog, albums, Trash, upload and duplicate-review states, photo detail, dialogs, and lightbox. Representative browser verification at 320, 360, 375, 768, 1024, and 1440 pixels found no unintended document overflow on the inspected catalog, album, taxonomy, Trash, or photo-detail surfaces; an isolated temporary backend also covered upload progress, exact and possible duplicates, Trash, and destructive-dialog fixtures without touching the primary catalog. Component tests cover long-content, queue, duplicate, destructive-dialog, and lightbox states. This is representative viewport coverage rather than a claim of universal browser or device compatibility.
-- Add optional root developer commands after Windows and cross-platform behavior is agreed.
+- Optional root developer commands are implemented through the dependency-free
+  `scripts/dev.py` CLI. From any working directory it resolves the repository
+  path explicitly and provides `setup`, CI-equivalent sequential `check`,
+  `backend`, and `frontend` commands while leaving uv, npm, and the independent
+  CI jobs authoritative. Windows `PATH`/`PATHEXT` resolution, including
+  `npm.CMD`, is handled without shell command strings. A combined `dev` command
+  remains deliberately deferred because reliably stopping the complete
+  Uvicorn-reload and npm/Next.js process trees on both Windows and POSIX would
+  be disproportionate to this small convenience layer.
 
 ## Deliberately not implemented in this slice
 

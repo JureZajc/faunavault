@@ -72,6 +72,8 @@ npm ci
 npm run dev
 ```
 
+As an optional repository-root shortcut, run `python scripts/dev.py frontend`.
+
 Run the complete frontend validation sequence from this directory:
 
 ```powershell
