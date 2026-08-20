@@ -181,6 +181,34 @@ def _inspect_schema_9(
 SCHEMA_INVENTORY_READERS = {9: _inspect_schema_9}
 
 
+def validate_database_connection(
+    connection: sqlite3.Connection, expected_schema_version: int
+) -> list[int]:
+    integrity = [row[0] for row in connection.execute("PRAGMA integrity_check")]
+    if integrity != ["ok"]:
+        raise ArchiveIntegrityError(
+            "SQLite integrity_check failed: " + "; ".join(integrity)
+        )
+    violations = list(connection.execute("PRAGMA foreign_key_check"))
+    if violations:
+        raise ArchiveIntegrityError(
+            f"SQLite foreign_key_check found {len(violations)} violation(s)"
+        )
+    migrations = [
+        int(row[0])
+        for row in connection.execute(
+            "SELECT version FROM schema_migration ORDER BY version"
+        )
+    ]
+    expected = list(range(1, expected_schema_version + 1))
+    if migrations != expected:
+        raise ArchiveIntegrityError(
+            "Unsupported schema migration state: "
+            f"expected {expected}, found {migrations}"
+        )
+    return migrations
+
+
 def inspect_database(path: Path, expected_schema_version: int) -> DatabaseInventory:
     reader = SCHEMA_INVENTORY_READERS.get(expected_schema_version)
     if reader is None:
@@ -192,28 +220,7 @@ def inspect_database(path: Path, expected_schema_version: int) -> DatabaseInvent
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(f"Could not open SQLite database: {exc}") from exc
     try:
-        integrity = [row[0] for row in connection.execute("PRAGMA integrity_check")]
-        if integrity != ["ok"]:
-            raise ArchiveIntegrityError(
-                "SQLite integrity_check failed: " + "; ".join(integrity)
-            )
-        violations = list(connection.execute("PRAGMA foreign_key_check"))
-        if violations:
-            raise ArchiveIntegrityError(
-                f"SQLite foreign_key_check found {len(violations)} violation(s)"
-            )
-        migrations = [
-            int(row[0])
-            for row in connection.execute(
-                "SELECT version FROM schema_migration ORDER BY version"
-            )
-        ]
-        expected = list(range(1, expected_schema_version + 1))
-        if migrations != expected:
-            raise ArchiveIntegrityError(
-                "Unsupported schema migration state: "
-                f"expected {expected}, found {migrations}"
-            )
+        migrations = validate_database_connection(connection, expected_schema_version)
         return reader(connection, migrations)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(

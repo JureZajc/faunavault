@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 faunavault-backup = "app.cli.backup:main"
+faunavault-export = "app.cli.export:main"
 faunavault-maintenance = "app.cli.maintenance:main"
 
 [build-system]
