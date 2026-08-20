@@ -39,12 +39,19 @@ def test_help_exposes_only_the_supported_commands(dev):
         if isinstance(action, dev.argparse._SubParsersAction)
     )
 
-    assert tuple(subparser_action.choices) == ("setup", "check", "backend", "frontend")
+    assert tuple(subparser_action.choices) == (
+        "setup",
+        "check",
+        "check-clean",
+        "backend",
+        "frontend",
+    )
     help_text = parser.format_help()
-    assert "setup" in help_text
-    assert "check" in help_text
-    assert "backend" in help_text
-    assert "frontend" in help_text
+    assert "Install/synchronize development dependencies." in help_text
+    assert "Run local validation using installed dependencies." in help_text
+    assert "Run clean CI-equivalent validation" in help_text
+    assert "Start the FastAPI development server." in help_text
+    assert "Start the Next.js development server." in help_text
 
 
 def test_command_steps_match_the_documented_workflows(dev):
@@ -53,15 +60,49 @@ def test_command_steps_match_the_documented_workflows(dev):
         ("[frontend] install", "npm", ("ci",), dev.FRONTEND_DIR),
     ]
     assert step_values(dev.CHECK_STEPS) == [
-        ("[backend] sync", "uv", ("sync", "--frozen"), dev.BACKEND_DIR),
-        ("[backend] ruff check", "uv", ("run", "ruff", "check", "."), dev.BACKEND_DIR),
+        (
+            "[backend] ruff check",
+            "uv",
+            ("run", "--no-sync", "ruff", "check", "."),
+            dev.BACKEND_DIR,
+        ),
         (
             "[backend] ruff format",
             "uv",
-            ("run", "ruff", "format", "--check", "."),
+            ("run", "--no-sync", "ruff", "format", "--check", "."),
             dev.BACKEND_DIR,
         ),
-        ("[backend] pytest", "uv", ("run", "pytest"), dev.BACKEND_DIR),
+        (
+            "[backend] pytest",
+            "uv",
+            ("run", "--no-sync", "pytest"),
+            dev.BACKEND_DIR,
+        ),
+        ("[frontend] lint", "npm", ("run", "lint"), dev.FRONTEND_DIR),
+        ("[frontend] typecheck", "npm", ("run", "typecheck"), dev.FRONTEND_DIR),
+        ("[frontend] test", "npm", ("test",), dev.FRONTEND_DIR),
+        ("[frontend] build", "npm", ("run", "build"), dev.FRONTEND_DIR),
+    ]
+    assert step_values(dev.CHECK_CLEAN_STEPS) == [
+        ("[backend] sync", "uv", ("sync", "--frozen"), dev.BACKEND_DIR),
+        (
+            "[backend] ruff check",
+            "uv",
+            ("run", "--no-sync", "ruff", "check", "."),
+            dev.BACKEND_DIR,
+        ),
+        (
+            "[backend] ruff format",
+            "uv",
+            ("run", "--no-sync", "ruff", "format", "--check", "."),
+            dev.BACKEND_DIR,
+        ),
+        (
+            "[backend] pytest",
+            "uv",
+            ("run", "--no-sync", "pytest"),
+            dev.BACKEND_DIR,
+        ),
         ("[frontend] install", "npm", ("ci",), dev.FRONTEND_DIR),
         ("[frontend] lint", "npm", ("run", "lint"), dev.FRONTEND_DIR),
         ("[frontend] typecheck", "npm", ("run", "typecheck"), dev.FRONTEND_DIR),
@@ -105,11 +146,114 @@ def test_failure_propagates_and_stops_later_steps(dev, capsys):
 
     assert result == 23
     assert [call[0] for call in calls] == [
-        ["resolved-uv", "sync", "--frozen"],
-        ["resolved-uv", "run", "ruff", "check", "."],
+        ["resolved-uv", "run", "--no-sync", "ruff", "check", "."],
+        ["resolved-uv", "run", "--no-sync", "ruff", "format", "--check", "."],
     ]
     assert calls[0][1] == {"cwd": dev.BACKEND_DIR, "shell": False}
-    assert "[backend] ruff check failed with exit code 23." in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert "[backend] ruff format failed with exit code 23." in captured.err
+    assert "Frontend dependency installation failed." not in captured.err
+
+
+@pytest.mark.parametrize(
+    ("missing_directory", "component"),
+    [
+        ("BACKEND_ENV_DIR", "Backend"),
+        ("FRONTEND_DEPENDENCIES_DIR", "Frontend"),
+    ],
+)
+def test_check_requires_installed_dependencies(
+    dev, capsys, missing_directory, component
+):
+    calls = []
+    missing_path = getattr(dev, missing_directory)
+
+    result = dev.run_command(
+        "check",
+        which=lambda tool: f"resolved-{tool}",
+        runner=lambda *args, **kwargs: calls.append((args, kwargs)),
+        directory_exists=lambda path: path != missing_path,
+    )
+
+    assert result == 1
+    assert calls == []
+    captured = capsys.readouterr()
+    assert f"{component} dependencies are not installed." in captured.err
+    assert "python scripts/dev.py setup" in captured.err
+    assert "npm ci" not in captured.err
+
+
+def test_check_runs_only_validation_steps_in_order(dev):
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    result = dev.run_command(
+        "check",
+        which=lambda tool: f"resolved-{tool}",
+        runner=runner,
+        directory_exists=lambda _path: True,
+    )
+
+    assert result == 0
+    assert calls == [
+        (
+            [f"resolved-{step.tool}", *step.arguments],
+            {"cwd": step.cwd, "shell": False},
+        )
+        for step in dev.CHECK_STEPS
+    ]
+    assert not any(command[1:3] == ["sync", "--frozen"] for command, _ in calls)
+    assert not any(command[1:] == ["ci"] for command, _ in calls)
+
+
+def test_check_clean_runs_ci_equivalent_steps_in_order(dev):
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    result = dev.run_command(
+        "check-clean", which=lambda tool: f"resolved-{tool}", runner=runner
+    )
+
+    assert result == 0
+    assert calls == [
+        (
+            [f"resolved-{step.tool}", *step.arguments],
+            {"cwd": step.cwd, "shell": False},
+        )
+        for step in dev.CHECK_CLEAN_STEPS
+    ]
+    assert calls[0][0][1:] == ["sync", "--frozen"]
+    assert calls[4][0][1:] == ["ci"]
+
+
+@pytest.mark.parametrize("command", ["setup", "check-clean"])
+def test_frontend_install_failure_is_actionable(dev, command, capsys):
+    calls = []
+
+    def runner(arguments, **kwargs):
+        calls.append((arguments, kwargs))
+        return SimpleNamespace(returncode=29 if arguments[1:] == ["ci"] else 0)
+
+    result = dev.run_command(
+        command,
+        which=lambda tool: f"resolved-{tool}",
+        runner=runner,
+    )
+
+    assert result == 29
+    assert calls[-1][0][1:] == ["ci"]
+    captured = capsys.readouterr()
+    assert "[frontend] install failed with exit code 29." in captured.err
+    assert "Frontend dependency installation failed." in captured.err
+    assert "On Windows" in captured.err
+    assert "stop it with Ctrl+C" in captured.err
+    assert "python scripts/dev.py setup" in captured.err
 
 
 def test_missing_tool_is_reported_before_any_step_runs(dev, capsys):
@@ -209,4 +353,4 @@ def test_help_runs_by_absolute_path_from_another_directory(tmp_path):
     )
 
     assert result.returncode == 0
-    assert "{setup,check,backend,frontend}" in result.stdout
+    assert "{setup,check,check-clean,backend,frontend}" in result.stdout
