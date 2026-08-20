@@ -146,9 +146,16 @@ the application.
 - the README explains how to inspect the export with ordinary JSON/CSV tools and
   why verified backups remain the recovery mechanism.
 
-## Later
+### R3 - Minimal cross-layer browser smoke coverage — Complete
 
-### R3 - Minimal cross-layer browser smoke coverage
+**Status:** Completed on 2026-08-20. A Chromium-only Playwright smoke journey
+now runs the production Next.js build and normal FastAPI application against a
+new disposable SQLite database and image root. It covers successful upload,
+exact-duplicate refusal, possible-duplicate cancellation, catalog/detail routing,
+real backend image loading, metadata persistence, Trash restore, confirmed
+permanent deletion, and physical variant cleanup. Dedicated ports are never
+reused, Ollama and GBIF are not contacted, and a dependent CI job retains
+debugging artifacts only on failure.
 
 **Problem:** Backend API tests and Vitest/JSDOM interaction tests are strong but
 separate. CI does not currently prove that a real browser, built frontend, and

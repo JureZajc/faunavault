@@ -222,6 +222,36 @@ subsequent backend commands use `--no-sync` so only the explicit frozen sync can
 mutate dependencies. Stop the frontend development server first on Windows.
 The manual subsystem commands remain useful for troubleshooting.
 
+### Browser smoke coverage
+
+The focused Playwright smoke suite is separate from routine pytest and
+Vitest/JSDOM validation. It builds the production frontend with the test API URL,
+starts that build with `next start`, launches the real FastAPI application, and
+uses Chromium to exercise upload and duplicate refusal, catalog/detail metadata
+editing, real backend image loading, and Trash restore/permanent deletion.
+
+Install the Chromium runtime once after installing frontend dependencies:
+
+```powershell
+cd frontend
+npx playwright install chromium
+```
+
+Then run the complete isolated workflow from `frontend`:
+
+```powershell
+npm run test:e2e
+```
+
+Each run creates a uniquely named `faunavault-e2e-*` directory under the OS
+temporary directory and explicitly points SQLite and every image directory at
+that location. It never copies or opens the configured archive, refuses to reuse
+processes already listening on its dedicated ports (`3001` and `8001`), and
+removes the temporary archive after success or failure. The selected workflow
+does not classify photos or search taxonomy, so Ollama, GBIF, and network access
+are not required. Browser installation and smoke coverage are deliberately not
+part of `setup`, `check`, `check-clean`, or ordinary `npm test`.
+
 ## Portable metadata export
 
 FaunaVault can export a deterministic, schema-versioned inventory of all Photo,
