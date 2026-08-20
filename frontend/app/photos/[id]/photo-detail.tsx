@@ -58,7 +58,7 @@ export default function PhotoDetail({
 
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl px-3 py-8 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <Link
             href={safeReturnLocation(returnTo)}
@@ -66,24 +66,24 @@ export default function PhotoDetail({
           >
             Back to catalog
           </Link>
-          <p className="text-sm text-stone-500">
+          <p className="break-words text-sm text-stone-500 sm:text-right">
             Field record stored in your local animal archive
           </p>
         </div>
 
         {error ? (
-          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mt-6 break-words rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         ) : null}
 
         {detail.isLoading ? (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+          <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
             <div className="aspect-[4/3] animate-pulse rounded-lg bg-stone-200" />
             <div className="h-96 animate-pulse rounded-lg bg-white" />
           </div>
         ) : detail.photo ? (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+          <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
             <PhotoMedia photo={detail.photo} />
             <PhotoSidebar
               photo={detail.photo}

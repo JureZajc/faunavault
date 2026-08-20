@@ -128,7 +128,11 @@ describe("image lightbox", () => {
     render(
       <ImageLightbox
         images={[
-          { imageUrl: "/one.jpg", alt: "One", caption: "Animal one" },
+          {
+            imageUrl: "/one.jpg",
+            alt: "One",
+            caption: `Animal one ${"long-caption-".repeat(12)}`,
+          },
           { imageUrl: "/two.jpg", alt: "Two", caption: "Animal two" },
         ]}
         onClose={onClose}
@@ -138,13 +142,16 @@ describe("image lightbox", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(document.activeElement).toBe(dialog);
     expect(screen.getByText("Loading image…")).toBeTruthy();
+    const caption = screen.getByText(/Animal one long-caption/);
+    expect(caption.className).toContain("break-words");
+    expect(caption.className).not.toContain("truncate");
     fireEvent.error(screen.getByAltText("One"));
     expect(screen.getByText("Image unavailable")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Next image" }));
     expect(screen.getByAltText("Two")).toBeTruthy();
     dialog.focus();
     fireEvent.keyDown(dialog, { key: "ArrowLeft" });
-    expect(screen.getByText("Animal one")).toBeTruthy();
+    expect(screen.getByText(/Animal one long-caption/)).toBeTruthy();
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
   });

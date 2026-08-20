@@ -50,6 +50,15 @@ test("renders one shared card path grouped by sorted category", async () => {
     .filter((text) => ["bird", "mammal", "Unknown"].includes(text ?? ""));
   expect(groupHeadings).toEqual(["bird", "mammal", "Unknown"]);
   expect(screen.getAllByRole("button", { name: "Move to Trash" })).toHaveLength(3);
+  expect(screen.getByTitle("1.jpg").textContent).toBe("1.jpg");
+
+  const listSwitch = screen.getByRole("button", { name: "list" });
+  const layoutSwitch = screen.getByRole("button", { name: "Flat grid" });
+  expect(listSwitch.className).toContain("min-w-0");
+  expect(listSwitch.parentElement?.className).toContain("w-full");
+  expect(layoutSwitch.className).toContain("min-w-0");
+  expect(layoutSwitch.className).toContain("whitespace-normal");
+  expect(layoutSwitch.parentElement?.className).toContain("w-full");
 });
 
 test("corrects an out-of-range page once without a fetch loop", async () => {

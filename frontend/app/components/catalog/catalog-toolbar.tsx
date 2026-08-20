@@ -85,8 +85,8 @@ export default function CatalogToolbar({
 }: CatalogToolbarProps) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
-        <label className="block">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
+        <label className="block sm:col-span-2 lg:col-span-1">
           <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
             Search
           </span>
@@ -213,13 +213,13 @@ export default function CatalogToolbar({
           of <span className="font-semibold text-stone-800">{totalCount}</span>{" "}
           {totalCount === 1 ? "record" : "records"}
         </p>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
           <p>Backend-filtered local collection.</p>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <span className="shrink-0 text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
               View
             </span>
-            <div className="grid min-h-9 grid-cols-2 overflow-hidden rounded-md border border-stone-200 bg-stone-50 p-1">
+            <div className="grid w-full min-w-0 grid-cols-2 overflow-hidden rounded-md border border-stone-200 bg-stone-50 p-1 sm:w-auto">
               {[
                 ["flat", "Flat grid"],
                 ["grouped", "Group by category"],
@@ -228,7 +228,7 @@ export default function CatalogToolbar({
                   key={value}
                   type="button"
                   onClick={() => onViewModeChange(value as CatalogLayout)}
-                  className={`min-w-[8.5rem] whitespace-nowrap rounded px-3 text-xs font-semibold transition ${
+                  className={`min-h-11 min-w-0 whitespace-normal rounded px-2 text-xs font-semibold transition sm:min-w-[8.5rem] sm:whitespace-nowrap sm:px-3 ${
                     viewMode === value
                       ? "bg-white text-emerald-900 shadow-sm"
                       : "text-stone-600 hover:text-stone-950"

@@ -81,7 +81,7 @@ export default function PhotoTrashAction({
         </button>
       </div>
       {isOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4 py-6">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-stone-950/40 p-3 sm:items-center sm:p-6">
           <div
             ref={dialogRef}
             role="dialog"
@@ -90,7 +90,7 @@ export default function PhotoTrashAction({
             aria-describedby="delete-photo-description"
             tabIndex={-1}
             onKeyDown={handleKeyDown}
-            className="w-full max-w-md rounded-lg border border-stone-200 bg-white p-5 shadow-xl"
+            className="my-auto max-h-[calc(100vh-1.5rem)] w-full max-w-md overflow-y-auto rounded-lg border border-stone-200 bg-white p-4 shadow-xl sm:p-5"
           >
             <div className="border-b border-red-100 pb-4">
               <p className="text-xs font-medium uppercase tracking-[0.14em] text-red-700">
@@ -99,7 +99,10 @@ export default function PhotoTrashAction({
               <h2 id="delete-photo-title" className="mt-2 text-xl font-semibold text-stone-950">
                 Move photo to Trash
               </h2>
-              <p id="delete-photo-description" className="mt-2 text-sm leading-6 text-stone-600">
+              <p
+                id="delete-photo-description"
+                className="mt-2 break-words text-sm leading-6 text-stone-600"
+              >
                 This will hide <span className="font-semibold text-stone-900">{photo.original_filename}</span>{" "}
                 from your active collection. You can restore it from Trash.
               </p>
@@ -116,11 +119,14 @@ export default function PhotoTrashAction({
                   value={confirmation}
                   onChange={(event) => setConfirmation(event.target.value)}
                   disabled={isDeleting}
-                  className="mt-2 min-h-11 w-full rounded-md border border-stone-300 bg-white px-3 text-sm text-stone-950 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+                  className="mt-2 min-h-11 min-w-0 w-full rounded-md border border-stone-300 bg-white px-3 text-sm text-stone-950 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
                 />
               </label>
               {error ? (
-                <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+                <p
+                  role="alert"
+                  className="mt-4 break-words rounded-md bg-red-50 p-3 text-sm text-red-700"
+                >
                   {error}
                 </p>
               ) : null}

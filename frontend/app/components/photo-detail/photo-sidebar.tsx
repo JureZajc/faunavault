@@ -28,7 +28,7 @@ function StatusBadge({ status }: { status: PhotoStatus }) {
         : "border-sky-200 bg-sky-50 text-sky-800";
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}
+      className={`inline-flex max-w-full shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}
     >
       {statusLabels[status]}
     </span>
@@ -57,16 +57,16 @@ export default function PhotoSidebar({
     isMetadataBusy || isTrashBusy || classification.isMockClassifying;
 
   return (
-    <aside className="self-start rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+    <aside className="min-w-0 self-start rounded-lg border border-stone-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-emerald-700">
             Field record
           </p>
-          <h1 className="mt-2 text-2xl font-semibold text-stone-950">
+          <h1 className="mt-2 break-words text-2xl font-semibold text-stone-950">
             {photoDisplayTitle(photo)}
           </h1>
-          <p className="mt-1 truncate text-sm italic text-stone-500">
+          <p className="mt-1 break-words text-sm italic text-stone-500">
             {photo.species_guess ?? "Species not identified"}
           </p>
         </div>
@@ -75,7 +75,12 @@ export default function PhotoSidebar({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <span className="inline-flex max-w-full items-center rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium capitalize text-stone-700">
-          <span className="truncate">{photo.category ?? "Unknown category"}</span>
+          <span
+            title={photo.category ?? "Unknown category"}
+            className="truncate"
+          >
+            {photo.category ?? "Unknown category"}
+          </span>
         </span>
         <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-600">
           {confidenceLabel(photo.confidence)}

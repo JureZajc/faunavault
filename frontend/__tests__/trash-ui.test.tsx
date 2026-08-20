@@ -93,6 +93,25 @@ test("does not report a successful backend restore as failed when catalog sync f
   expect(screen.queryByText("Restore failed")).toBeNull();
 });
 
+test("preserves a long Trash filename in the card and confirmation", async () => {
+  const filename = `${"camera-import-".repeat(18)}.jpg`;
+  api.getTrashPhotos.mockResolvedValue({
+    items: [photo({ original_filename: filename })],
+    total: 1,
+    page: 1,
+    page_size: 24,
+  });
+
+  render(<TrashBrowser onNotice={vi.fn()} onRestored={vi.fn()} />);
+
+  expect((await screen.findByTitle(filename)).textContent).toBe(filename);
+  await userEvent.click(
+    screen.getByRole("button", { name: "Permanently delete" }),
+  );
+  const dialog = screen.getByRole("dialog", { name: "Permanently delete photo?" });
+  expect(within(dialog).getByText(filename)).toBeTruthy();
+});
+
 test("requires the filename before permanent deletion", async () => {
   const user = userEvent.setup();
   render(<TrashBrowser onNotice={vi.fn()} onRestored={vi.fn()} />);
@@ -108,6 +127,10 @@ test("requires the filename before permanent deletion", async () => {
   });
 
   expect(dialog.getAttribute("aria-modal")).toBe("true");
+  expect(dialog.className).toContain("max-h-[calc(100vh-1.5rem)]");
+  expect(
+    Boolean(cancel.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING),
+  ).toBe(true);
   expect(document.activeElement).toBe(cancel);
   expect((submit as HTMLButtonElement).disabled).toBe(true);
 

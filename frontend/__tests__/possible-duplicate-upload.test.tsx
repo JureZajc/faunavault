@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import Home from "../app/page";
@@ -125,15 +125,25 @@ test("reviews a possible duplicate and keeps both with explicit override", async
   const file = await selectFile();
   await userEvent.click(screen.getByRole("button", { name: "Upload photo" }));
 
-  expect(
-    await screen.findByRole("dialog", { name: "Possible duplicate" }),
-  ).toBeTruthy();
+  const dialog = await screen.findByRole("dialog", {
+    name: "Possible duplicate",
+  });
+  expect(dialog.className).toContain("max-h-[calc(100vh-1.5rem)]");
   expect(screen.getByAltText("Uploaded photo: new-fox.jpg")).toBeTruthy();
   const existingPreview = screen.getByAltText("Existing photo: Red fox");
   expect(existingPreview.getAttribute("src")).toContain("/photos/1/thumbnail");
   expect(existingPreview.getAttribute("src")).not.toContain("thumb.jpg");
+  expect(within(dialog).getByTitle("new-fox.jpg").textContent).toBe("new-fox.jpg");
+  expect(within(dialog).getByTitle("existing-fox.jpg").textContent).toBe(
+    "existing-fox.jpg",
+  );
+  const cancel = screen.getByRole("button", { name: "Cancel upload" });
+  const keep = screen.getByRole("button", { name: "Keep both" });
+  expect(
+    Boolean(cancel.compareDocumentPosition(keep) & Node.DOCUMENT_POSITION_FOLLOWING),
+  ).toBe(true);
 
-  await userEvent.click(screen.getByRole("button", { name: "Keep both" }));
+  await userEvent.click(keep);
   await waitFor(() => expect(api.uploadPhoto).toHaveBeenLastCalledWith(file, true));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(screen.getByText("Uploaded")).toBeTruthy();

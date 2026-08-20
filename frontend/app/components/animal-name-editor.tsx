@@ -142,10 +142,16 @@ export default function AnimalNameEditor({
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <p className="truncate font-medium text-stone-950">
+        <p
+          title={animal.display_name || animal.identifier}
+          className="truncate font-medium text-stone-950"
+        >
           {animal.display_name || animal.identifier}
         </p>
-        <p className="mt-1 truncate text-xs text-stone-500">
+        <p
+          title={animal.display_name ? animal.identifier : "Unnamed individual"}
+          className="mt-1 truncate text-xs text-stone-500"
+        >
           {animal.display_name ? animal.identifier : "Unnamed individual"}
         </p>
       </div>
@@ -153,7 +159,7 @@ export default function AnimalNameEditor({
         type="button"
         aria-label={`Edit name for ${animal.identifier}`}
         onClick={startEditing}
-        className="shrink-0 rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-700 transition hover:border-emerald-400 hover:text-emerald-900"
+        className="min-h-10 shrink-0 rounded-md border border-stone-200 bg-white px-2.5 text-xs font-semibold text-stone-700 transition hover:border-emerald-400 hover:text-emerald-900"
       >
         Edit name
       </button>

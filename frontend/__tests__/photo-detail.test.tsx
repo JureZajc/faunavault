@@ -176,6 +176,29 @@ test("opens the existing lightbox from the extracted media boundary", async () =
   await waitFor(() => expect(document.activeElement).toBe(trigger));
 });
 
+test("keeps long detail content inside width-constrained media and metadata", async () => {
+  const filename = `${"very-long-field-record-".repeat(10)}.jpg`;
+  const species = `Panthera ${"scientific-name-".repeat(10)}`;
+  api.getPhoto.mockResolvedValue(
+    photo({
+      original_filename: filename,
+      display_title: `Lion ${"observation-".repeat(8)}`,
+      species_guess: species,
+      description: `Detail ${"unbroken".repeat(20)}`,
+    }),
+  );
+
+  render(<PhotoDetail id="44" />);
+
+  const mediaTrigger = await screen.findByRole("button", {
+    name: "Open fullscreen image",
+  });
+  expect(mediaTrigger.closest("section")?.className).toContain("min-w-0");
+  expect(screen.getByRole("complementary").className).toContain("min-w-0");
+  expect(screen.getByText(filename)).toBeTruthy();
+  expect(screen.getAllByText(species)).toHaveLength(2);
+});
+
 test("moves to Trash and navigates to the sanitized return location", async () => {
   render(<PhotoDetail id="44" returnTo="/?catalog_page=2" />);
   const trigger = await screen.findByRole("button", { name: "Move to Trash" });

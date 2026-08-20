@@ -59,9 +59,9 @@ function nullIfBlank(value: string) {
 }
 
 const inputClassName =
-  "mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500";
+  "mt-2 min-h-11 min-w-0 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500";
 const textareaClassName =
-  "mt-2 min-h-28 w-full rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500";
+  "mt-2 min-h-28 min-w-0 w-full rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500";
 
 function MetadataRow({
   label,
@@ -75,7 +75,9 @@ function MetadataRow({
       <dt className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
         {label}
       </dt>
-      <dd className="mt-1 text-sm text-stone-950">{value ?? "Not available"}</dd>
+      <dd className="mt-1 break-words text-sm text-stone-950">
+        {value ?? "Not available"}
+      </dd>
     </div>
   );
 }
@@ -99,7 +101,7 @@ export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
         <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
           Description
         </h2>
-        <p className="mt-2 text-sm leading-6 text-stone-700">
+        <p className="mt-2 break-words text-sm leading-6 text-stone-700">
           {photo.description ?? "Not available"}
         </p>
       </div>
@@ -108,7 +110,8 @@ export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
           photo.tags.map((tag) => (
             <span
               key={tag}
-              className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800"
+              title={tag}
+              className="max-w-full break-words rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800"
             >
               {tag}
             </span>
@@ -195,7 +198,7 @@ export function PhotoMetadataEditor({
   }
 
   return (
-    <form onSubmit={save} className="mt-5 border-t border-stone-200 pt-5">
+    <form onSubmit={save} className="mt-5 min-w-0 border-t border-stone-200 pt-5">
       <div className="grid gap-4">
         <MetadataInput
           label="Display title"

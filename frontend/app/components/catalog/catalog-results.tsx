@@ -93,7 +93,7 @@ function StatusBadge({ status }: { status: PhotoStatus }) {
         : "border-sky-200 bg-sky-50 text-sky-800";
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}
+      className={`inline-flex max-w-full shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}
     >
       {statusLabels[status]}
     </span>
@@ -111,6 +111,7 @@ function TagList({ tags, limit = 3 }: { tags: string[]; limit?: number }) {
       {visibleTags.map((tag) => (
         <span
           key={tag}
+          title={tag}
           className="max-w-[9rem] truncate rounded-full border border-emerald-100 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800"
         >
           {tag}
@@ -143,7 +144,7 @@ function PhotoCard({
   const href = `/photos/${photo.id}?returnTo=${encodeURIComponent(returnTo)}`;
 
   return (
-    <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
+    <article className="group flex min-w-0 h-full flex-col overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
       <Link href={href} className="block">
         <div className="aspect-[4/3] overflow-hidden bg-stone-100">
           {failedImageUrl === thumbnailUrl ? (
@@ -183,7 +184,12 @@ function PhotoCard({
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="inline-flex max-w-full items-center rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium capitalize text-stone-700">
-              <span className="truncate">{photo.category ?? "Unknown"}</span>
+              <span
+                title={photo.category ?? "Unknown"}
+                className="truncate"
+              >
+                {photo.category ?? "Unknown"}
+              </span>
             </span>
             <span className="inline-flex items-center rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-600">
               {formatConfidence(photo.confidence)}
@@ -194,7 +200,12 @@ function PhotoCard({
           </div>
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-stone-100 pt-3 text-xs text-stone-500">
             <span>{formatDate(photo.created_at)}</span>
-            <span className="truncate">{photo.original_filename}</span>
+            <span
+              title={photo.original_filename}
+              className="min-w-0 truncate"
+            >
+              {photo.original_filename}
+            </span>
           </div>
         </Link>
         <div className="mt-3 border-t border-stone-100 pt-3">
@@ -202,7 +213,7 @@ function PhotoCard({
             photo={photo}
             onMoved={onMoved}
             onError={onError}
-            className="min-h-9 w-full rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-600 hover:border-red-200 hover:text-red-700"
+            className="min-h-10 w-full rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-600 hover:border-red-200 hover:text-red-700"
           />
         </div>
       </div>
@@ -220,7 +231,7 @@ function CatalogStateMessage({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-dashed border-stone-300 bg-white px-6 py-16 text-center">
+    <div className="rounded-lg border border-dashed border-stone-300 bg-white px-4 py-12 text-center sm:px-6 sm:py-16">
       <h2 className="text-xl font-semibold text-stone-900">{title}</h2>
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-stone-500">
         {description}
@@ -265,7 +276,7 @@ export default function CatalogResults({
       {error ? (
         <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p>{error}</p>
+            <p className="min-w-0 break-words">{error}</p>
             <button
               type="button"
               onClick={onRetry}
@@ -310,11 +321,11 @@ export default function CatalogResults({
         <div className="space-y-8 py-8">
           {groups.map((group) => (
             <section key={group.category}>
-              <div className="mb-3 flex items-center justify-between gap-3 border-b border-stone-200 pb-2">
-                <h2 className="text-lg font-semibold text-stone-950">
+              <div className="mb-3 flex items-start justify-between gap-3 border-b border-stone-200 pb-2">
+                <h2 className="min-w-0 break-words text-lg font-semibold text-stone-950">
                   {group.category}
                 </h2>
-                <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-500">
+                <span className="shrink-0 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-500">
                   {group.photos.length}{" "}
                   {group.photos.length === 1 ? "record" : "records"}
                 </span>
@@ -356,13 +367,13 @@ export default function CatalogResults({
       {!error && catalog && catalog.total_pages > 1 ? (
         <nav
           aria-label="Catalog pagination"
-          className="flex items-center justify-center gap-3 pb-10"
+          className="flex flex-wrap items-center justify-center gap-3 pb-10"
         >
           <button
             type="button"
             disabled={catalog.page === 1 || isLoading}
             onClick={() => onPageChange(catalog.page - 1)}
-            className="min-h-10 rounded-md border border-stone-200 bg-white px-4 text-sm font-semibold disabled:opacity-40"
+            className="min-h-11 rounded-md border border-stone-200 bg-white px-4 text-sm font-semibold disabled:opacity-40"
           >
             Previous
           </button>
@@ -373,7 +384,7 @@ export default function CatalogResults({
             type="button"
             disabled={catalog.page >= catalog.total_pages || isLoading}
             onClick={() => onPageChange(catalog.page + 1)}
-            className="min-h-10 rounded-md border border-stone-200 bg-white px-4 text-sm font-semibold disabled:opacity-40"
+            className="min-h-11 rounded-md border border-stone-200 bg-white px-4 text-sm font-semibold disabled:opacity-40"
           >
             Next
           </button>

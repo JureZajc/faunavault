@@ -24,8 +24,8 @@ export default function PhotoMedia({ photo }: { photo: Photo }) {
 
   return (
     <>
-      <section className="overflow-hidden rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
-        <div className="overflow-hidden rounded-md bg-stone-100">
+      <section className="min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+        <div className="min-w-0 overflow-hidden rounded-md bg-stone-100">
           {imageFailed ? (
             <div className="flex aspect-[4/3] max-h-[72vh] w-full items-center justify-center px-6 text-center text-sm font-medium text-stone-500">
               Image unavailable
@@ -35,7 +35,7 @@ export default function PhotoMedia({ photo }: { photo: Photo }) {
               type="button"
               aria-label="Open fullscreen image"
               onClick={() => setIsLightboxOpen(true)}
-              className="group relative flex w-full cursor-zoom-in items-center justify-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+              className="group relative flex min-w-0 w-full cursor-zoom-in items-center justify-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- Backend localhost images must bypass Next image optimization. */}
               <img

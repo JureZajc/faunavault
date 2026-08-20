@@ -51,10 +51,22 @@ function AlbumCard({ album }: { album: AlbumSummary }) {
         <div className="p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="truncate text-lg font-semibold text-stone-950">
+              <h2
+                title={title}
+                className="truncate text-lg font-semibold text-stone-950"
+              >
                 {title}
               </h2>
-              <p className="mt-1 truncate text-sm italic text-stone-500">
+              <p
+                title={
+                  album.common_name
+                    ? album.scientific_name
+                    : album.verified
+                      ? "Scientific name"
+                      : "Legacy species name"
+                }
+                className="mt-1 truncate text-sm italic text-stone-500"
+              >
                 {album.common_name ? album.scientific_name : album.verified ? "Scientific name" : "Legacy species name"}
               </p>
             </div>
@@ -184,17 +196,48 @@ export default function AlbumBrowser() {
       <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="xl:col-span-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">Search albums</span>
-            <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Common or scientific name" type="search" className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm outline-none focus:border-emerald-500 focus:bg-white" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+              Search albums
+            </span>
+            <input
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Common or scientific name"
+              type="search"
+              className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm outline-none focus:border-emerald-500 focus:bg-white"
+            />
           </label>
           <label>
-            <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">Sort</span>
-            <select value={sort} onChange={(event) => { setSort(event.target.value as AlbumSort); setPage(1); }} className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm">
-              <option value="name">Name</option><option value="newest">Newest addition</option><option value="animal_count">Number of animals</option><option value="photo_count">Number of photographs</option>
+            <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+              Sort
+            </span>
+            <select
+              value={sort}
+              onChange={(event) => {
+                setSort(event.target.value as AlbumSort);
+                setPage(1);
+              }}
+              className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm"
+            >
+              <option value="name">Name</option>
+              <option value="newest">Newest addition</option>
+              <option value="animal_count">Number of animals</option>
+              <option value="photo_count">Number of photographs</option>
             </select>
           </label>
-          <label className="flex items-end gap-2 pb-2 text-sm text-stone-700">
-            <input type="checkbox" checked={onlyWithPhotos} onChange={(event) => { setOnlyWithPhotos(event.target.checked); setPage(1); }} className="h-4 w-4 accent-emerald-800" />
+          <label className="flex min-h-11 items-center gap-2 text-sm text-stone-700 md:items-end md:pb-2">
+            <input
+              type="checkbox"
+              checked={onlyWithPhotos}
+              onChange={(event) => {
+                setOnlyWithPhotos(event.target.checked);
+                setPage(1);
+              }}
+              className="h-4 w-4 accent-emerald-800"
+            />
             Only with photos
           </label>
         </div>
@@ -208,30 +251,97 @@ export default function AlbumBrowser() {
           ] as const).map(([label, options, value, setter]) => (
             <label key={label}>
               <span className="sr-only">{label}</span>
-              <select value={value} onChange={(event) => updateFilter(setter, event.target.value)} className="min-h-10 w-full rounded-md border border-stone-200 bg-stone-50 px-2 text-sm">
+              <select
+                value={value}
+                onChange={(event) =>
+                  updateFilter(setter, event.target.value)
+                }
+                className="min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-2 text-sm"
+              >
                 <option value="">All {label.toLowerCase()}</option>
-                {options.map((option) => <option key={option.value} value={option.value}>{option.value} ({option.count})</option>)}
+                {options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.value} ({option.count})
+                  </option>
+                ))}
               </select>
             </label>
           ))}
         </div>
         <div className="mt-4 flex flex-col gap-3 border-t border-stone-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-stone-500">{total} species {total === 1 ? "album" : "albums"}</p>
-          <button type="button" onClick={() => void handleReconcile()} disabled={isReconciling} className="min-h-10 rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60">
+          <p className="text-sm text-stone-500">
+            {total} species {total === 1 ? "album" : "albums"}
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleReconcile()}
+            disabled={isReconciling}
+            className="min-h-11 rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+          >
             {isReconciling ? "Matching with GBIF…" : "Match unverified names"}
           </button>
         </div>
-        {notice ? <p className="mt-3 rounded-md bg-stone-50 px-3 py-2 text-sm text-stone-700">{notice}</p> : null}
+        {notice ? (
+          <p className="mt-3 break-words rounded-md bg-stone-50 px-3 py-2 text-sm text-stone-700">
+            {notice}
+          </p>
+        ) : null}
       </div>
-      {error ? <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} <button onClick={() => void load()} className="ml-2 font-semibold underline">Retry</button></div> : null}
+      {error ? (
+        <div className="mt-6 break-words rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}{" "}
+          <button
+            onClick={() => void load()}
+            className="min-h-10 px-2 font-semibold underline"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       {isLoading ? (
-        <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{Array.from({ length: 8 }, (_, index) => <div key={index} className="h-80 animate-pulse rounded-xl bg-white" />)}</div>
+        <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }, (_, index) => (
+            <div
+              key={index}
+              className="h-80 animate-pulse rounded-xl bg-white"
+            />
+          ))}
+        </div>
       ) : items.length ? (
-        <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{items.map((album) => <AlbumCard key={album.album_key} album={album} />)}</div>
+        <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {items.map((album) => (
+            <AlbumCard key={album.album_key} album={album} />
+          ))}
+        </div>
       ) : (
-        <div className="my-8 rounded-xl border border-dashed border-stone-300 bg-white px-6 py-16 text-center"><h2 className="text-xl font-semibold">No species albums found</h2><p className="mt-2 text-sm text-stone-500">Try clearing filters or add photographs to the collection.</p></div>
+        <div className="my-8 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-12 text-center sm:px-6 sm:py-16">
+          <h2 className="text-xl font-semibold">No species albums found</h2>
+          <p className="mt-2 text-sm text-stone-500">
+            Try clearing filters or add photographs to the collection.
+          </p>
+        </div>
       )}
-      {totalPages > 1 ? <div className="flex items-center justify-center gap-3 pb-10"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded-md border bg-white px-4 py-2 disabled:opacity-40">Previous</button><span className="text-sm text-stone-600">Page {page} of {totalPages}</span><button disabled={page === totalPages} onClick={() => setPage((value) => value + 1)} className="rounded-md border bg-white px-4 py-2 disabled:opacity-40">Next</button></div> : null}
+      {totalPages > 1 ? (
+        <div className="flex flex-wrap items-center justify-center gap-3 pb-10">
+          <button
+            disabled={page === 1}
+            onClick={() => setPage((value) => value - 1)}
+            className="min-h-11 rounded-md border bg-white px-4 disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-stone-600">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            disabled={page === totalPages}
+            onClick={() => setPage((value) => value + 1)}
+            className="min-h-11 rounded-md border bg-white px-4 disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

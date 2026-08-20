@@ -304,7 +304,9 @@ test("uses the verified album key for loads after taxonomy linking", async () =>
     "Panthera leo",
   );
   await userEvent.click(screen.getByRole("button", { name: "Search" }));
-  await userEvent.click(await screen.findByRole("button", { name: /Lion/ }));
+  const candidateButton = await screen.findByRole("button", { name: /Lion/ });
+  expect(candidateButton.className).toContain("min-w-0");
+  await userEvent.click(candidateButton);
   await waitFor(() =>
     expect(api.getSpeciesAlbum).toHaveBeenCalledWith(
       "taxon:7",

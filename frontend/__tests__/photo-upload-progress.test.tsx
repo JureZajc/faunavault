@@ -214,8 +214,9 @@ test("isolates mixed upload outcomes and reviews duplicates after the initial pa
 
 test("retries only a transient failed item and preserves completed siblings", async () => {
   const firstFile = new File(["first"], "first.jpg", { type: "image/jpeg" });
+  const failureMessage = `Could not save ${"unbroken".repeat(20)}`;
   api.uploadPhoto
-    .mockRejectedValueOnce(new ApiError("Could not save the uploaded photo", 500))
+    .mockRejectedValueOnce(new ApiError(failureMessage, 500))
     .mockResolvedValueOnce(photo(2, "second.jpg"))
     .mockResolvedValueOnce(photo(1, "first.jpg"));
 
@@ -230,6 +231,7 @@ test("retries only a transient failed item and preserves completed siblings", as
     name: "Retry file 1, first.jpg",
   });
   expect(row("first.jpg").getByText("Failed")).toBeTruthy();
+  expect(row("first.jpg").getByText(failureMessage)).toBeTruthy();
   expect(row("second.jpg").getByText("Uploaded")).toBeTruthy();
 
   await userEvent.click(retry);

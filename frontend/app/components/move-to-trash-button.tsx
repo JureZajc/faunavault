@@ -75,7 +75,7 @@ export default function MoveToTrashButton({
         Move to Trash
       </button>
       {isOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-stone-950/40 p-3 sm:items-center sm:p-6">
           <div
             ref={dialogRef}
             role="dialog"
@@ -84,21 +84,27 @@ export default function MoveToTrashButton({
             aria-describedby={`trash-description-${photo.id}`}
             tabIndex={-1}
             onKeyDown={handleKeyDown}
-            className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
+            className="my-auto max-h-[calc(100vh-1.5rem)] w-full max-w-md overflow-y-auto rounded-lg bg-white p-4 shadow-xl sm:p-5"
           >
             <h2 id={`trash-title-${photo.id}`} className="text-xl font-semibold">
               Move photo to Trash?
             </h2>
-            <p id={`trash-description-${photo.id}`} className="mt-2 text-sm leading-6 text-stone-600">
+            <p
+              id={`trash-description-${photo.id}`}
+              className="mt-2 break-words text-sm leading-6 text-stone-600"
+            >
               {photo.original_filename} will be hidden from the active collection.
               You can restore it later.
             </p>
             {dialogError ? (
-              <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+              <p
+                role="alert"
+                className="mt-4 break-words rounded-md bg-red-50 p-3 text-sm text-red-700"
+              >
                 {dialogError}
               </p>
             ) : null}
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <button
                 ref={cancelButtonRef}
                 type="button"

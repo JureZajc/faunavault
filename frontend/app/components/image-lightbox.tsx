@@ -88,7 +88,7 @@ export default function ImageLightbox({
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/95 px-4 py-5 sm:px-16"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-stone-950/95 p-3 sm:items-center sm:px-16 sm:py-5"
     >
       <h2 id={titleId} className="sr-only">
         Fullscreen image viewer
@@ -109,15 +109,15 @@ export default function ImageLightbox({
           event.stopPropagation();
           navigate(index - 1);
         }}
-        className="absolute left-3 z-10 h-12 w-12 rounded-full border border-white/20 bg-black/50 text-2xl text-white disabled:invisible sm:left-6"
+        className="absolute left-3 top-1/2 z-10 h-12 w-12 -translate-y-1/2 rounded-full border border-white/20 bg-black/50 text-2xl text-white disabled:invisible sm:left-6"
       >
         ‹
       </button>
       <figure
-        className="flex max-h-full max-w-full flex-col items-center gap-3"
+        className={`my-auto flex min-h-0 min-w-0 max-h-full max-w-full flex-col items-center gap-3 ${availableImages.length > 1 ? "px-12 sm:px-0" : ""}`}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="relative flex min-h-48 min-w-48 items-center justify-center">
+        <div className="relative flex min-h-48 min-w-48 max-w-full items-center justify-center">
           {isLoading && !hasFailed ? (
             <div className="absolute text-sm font-medium text-stone-300">
               Loading image…
@@ -126,7 +126,7 @@ export default function ImageLightbox({
           {hasFailed ? (
             <div
               role="alert"
-              className="flex h-64 w-[min(80vw,42rem)] items-center justify-center rounded-lg border border-white/20 bg-white/5 text-stone-300"
+              className="flex h-64 max-h-[calc(100vh-8rem)] w-[min(80vw,42rem)] max-w-full items-center justify-center rounded-lg border border-white/20 bg-white/5 px-4 text-center text-stone-300"
             >
               Image unavailable
             </div>
@@ -140,14 +140,14 @@ export default function ImageLightbox({
                 setIsLoading(false);
                 setHasFailed(true);
               }}
-              className={`max-h-[84vh] max-w-[90vw] object-contain shadow-2xl transition-opacity ${isLoading ? "opacity-0" : "opacity-100"}`}
+              className={`max-h-[calc(100vh-8rem)] max-w-full object-contain shadow-2xl transition-opacity ${isLoading ? "opacity-0" : "opacity-100"}`}
             />
           )}
         </div>
         {current.caption ? (
           <figcaption
             id={descriptionId}
-            className="max-w-[90vw] truncate text-center text-sm text-stone-200"
+            className="max-h-20 max-w-full overflow-y-auto break-words text-center text-sm text-stone-200"
           >
             {current.caption}
           </figcaption>
@@ -166,7 +166,7 @@ export default function ImageLightbox({
           event.stopPropagation();
           navigate(index + 1);
         }}
-        className="absolute right-3 z-10 h-12 w-12 rounded-full border border-white/20 bg-black/50 text-2xl text-white disabled:invisible sm:right-6"
+        className="absolute right-3 top-1/2 z-10 h-12 w-12 -translate-y-1/2 rounded-full border border-white/20 bg-black/50 text-2xl text-white disabled:invisible sm:right-6"
       >
         ›
       </button>

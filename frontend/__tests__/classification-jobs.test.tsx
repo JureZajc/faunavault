@@ -166,3 +166,24 @@ test("shows successful low-confidence work as needs review", async () => {
   expect(await screen.findByText("Needs review with fallback")).toBeTruthy();
   expect(screen.getAllByText("Needs review")).toHaveLength(2);
 });
+
+test("preserves long job filenames and provenance without hiding retry", async () => {
+  const filename = `${"field-record-".repeat(12)}.jpg`;
+  const model = `local-model-${"variant".repeat(12)}`;
+  api.getClassificationJobs.mockResolvedValue(
+    collection([
+      job({
+        status: "failed",
+        photo_original_filename: filename,
+        failure_message: `Failure from ${model}`,
+        retryable: true,
+      }),
+    ]),
+  );
+
+  render(<Home />);
+
+  expect((await screen.findByTitle(filename)).textContent).toBe(filename);
+  expect(screen.getByText(`Failure from ${model}`)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+});
