@@ -151,6 +151,42 @@ def test_upload_generates_variants_and_rejects_safe_duplicate(lifecycle):
     }
 
 
+@pytest.mark.parametrize(
+    ("filename", "media_type", "image_format"),
+    [
+        ("fox.jpg", "image/jpeg", "JPEG"),
+        ("fox.png", "image/png", "PNG"),
+        ("fox.webp", "image/webp", "WEBP"),
+    ],
+)
+def test_upload_variant_formats_remain_semantically_stable(
+    lifecycle, filename, media_type, image_format
+):
+    client, _, settings = lifecycle
+    output = BytesIO()
+    Image.new("RGB", (64, 32), "orange").save(output, format=image_format)
+    payload = output.getvalue()
+
+    response = client.post(
+        "/photos/upload",
+        files={"file": (filename, payload, media_type)},
+    )
+
+    assert response.status_code == 200
+    photo = response.json()
+    assert (
+        settings.image_dirs["original"] / photo["stored_filename"]
+    ).read_bytes() == payload
+    for role, field, bound in (
+        ("resized", "resized_filename", (1600, 1600)),
+        ("thumbs", "thumbnail_filename", (480, 480)),
+    ):
+        with Image.open(settings.image_dirs[role] / photo[field]) as variant:
+            assert variant.format == image_format
+            assert variant.size == (64, 32)
+            assert variant.width <= bound[0] and variant.height <= bound[1]
+
+
 def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecycle):
     _, engine, settings = lifecycle
     with engine.connect() as connection:

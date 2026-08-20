@@ -54,10 +54,29 @@ Audit date: 2026-08-11
   Uvicorn-reload and npm/Next.js process trees on both Windows and POSIX would
   be disproportionate to this small convenience layer.
 
+## P4 — Operability and recovery
+
+- Cold live-archive maintenance is implemented through the separate
+  `faunavault-maintenance` CLI. Read-only `doctor` validates the configured
+  SQLite database, active and Trash originals/derivatives, lifecycle state,
+  safe paths, inventory stability, perceptual hashes, and orphans.
+- `repair-derived` is dry-run by default and requires `--apply` for narrowly
+  scoped, same-filesystem atomic regeneration of only missing or invalid resized
+  and thumbnail files from fully verified originals. Upload and repair share one
+  variant generator; originals, SQLite, metadata, Trash state, and orphan files
+  are never modified.
+- Repair is sequential and idempotent, tolerates independent per-photo failures,
+  reports interrupted temp artifacts without treating them as sources, and runs
+  a complete doctor validation after apply. Backup format version 1 remains
+  unchanged and repaired archives retain normal create/verify compatibility.
+
 ## Deliberately not implemented in this slice
 
 - Cloud services, authentication, telemetry, external queues, Redis, Celery, or deployment workflows.
 - Automatic Trash expiration, destructive restore automation, scheduled/remote/incremental backup management, perceptual clustering/search, or legacy-record deduplication.
+- Automatic original recovery, orphan deletion, metadata/row reconstruction,
+  force regeneration, format migration, maintenance workers/watchers, or an
+  admin maintenance UI/API.
 - A breaking change to `GET /photos`, a full catalog rewrite, or a framework/global-state migration.
 - A broad WCAG audit, application-wide keyboard navigation, color-contrast redesign, and screen-reader optimization outside modal interaction surfaces.
 
