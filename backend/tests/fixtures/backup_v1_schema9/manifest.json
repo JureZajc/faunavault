@@ -1,0 +1,102 @@
+{
+  "application": {
+    "name": "FaunaVault",
+    "version": "0.1.0-schema9-fixture"
+  },
+  "backup_format_version": 1,
+  "backup_id": "5eaf8469-90ee-4c8d-a677-2cfca8c5d8d0",
+  "backup_tool_version": "0.1.0-schema9-fixture",
+  "counts": {
+    "active_photos": 1,
+    "animals": 2,
+    "classification_jobs": {
+      "failed": 0,
+      "queued": 0,
+      "running": 0,
+      "succeeded": 0,
+      "total": 0
+    },
+    "images": {
+      "original": 2,
+      "resized": 2,
+      "thumbs": 2
+    },
+    "payload_bytes": 98760,
+    "payload_files": 7,
+    "photos": 2,
+    "taxa": 1,
+    "trashed_photos": 1
+  },
+  "created_at_utc": "2026-08-20T08:00:00.000000Z",
+  "database": {
+    "applied_migrations": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "path": "database/faunavault.db",
+    "schema_version": 9
+  },
+  "files": [
+    {
+      "path": "database/faunavault.db",
+      "role": "database",
+      "sha256": "1399cc76b630811b5804f82971430246f36a74ea1f2437f9a7f664afee374237",
+      "size_bytes": 98304
+    },
+    {
+      "path": "images/original/active.png",
+      "photo_id": 1,
+      "role": "original",
+      "sha256": "2d2a9aa5de9e2386af7bcb4edd8439482f4f323fad7a4998799d017a5be7de44",
+      "size_bytes": 77
+    },
+    {
+      "path": "images/original/trash.png",
+      "photo_id": 2,
+      "role": "original",
+      "sha256": "f410455f484c5cdbd06e9ccaed8bd287de3d45d12053a30c1f8042e6971a8758",
+      "size_bytes": 77
+    },
+    {
+      "path": "images/resized/active_resized.png",
+      "photo_id": 1,
+      "role": "resized",
+      "sha256": "ad5ca01182575e125f540caf4209dd52e46b5592a79e8a98e0f8d43abc658d58",
+      "size_bytes": 76
+    },
+    {
+      "path": "images/resized/trash_resized.png",
+      "photo_id": 2,
+      "role": "resized",
+      "sha256": "8cb73e960e001b71cd6749a69ce415daf241090acb82bc2497eb5d6d04111bea",
+      "size_bytes": 76
+    },
+    {
+      "path": "images/thumbs/active_thumb.png",
+      "photo_id": 1,
+      "role": "thumbs",
+      "sha256": "464480f0d27285bf6a03e7f557d286b9dfc37d7899a07556356a417624346af1",
+      "size_bytes": 75
+    },
+    {
+      "path": "images/thumbs/trash_thumb.png",
+      "photo_id": 2,
+      "role": "thumbs",
+      "sha256": "92149923495df9f4cf6c078db02666ab7a9dbb88387724b44a818ace91c02115",
+      "size_bytes": 75
+    }
+  ],
+  "included_image_variants": [
+    "original",
+    "resized",
+    "thumbs"
+  ],
+  "source_warnings": []
+}

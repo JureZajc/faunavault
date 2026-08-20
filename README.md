@@ -215,6 +215,7 @@ From `backend`, pass an existing local destination directory:
 ```powershell
 uv run faunavault-backup create E:\FaunaVaultBackups
 uv run faunavault-backup verify E:\FaunaVaultBackups\faunavault-backup-20260812T151500.123456Z-1a2b3c4d
+uv run faunavault-backup rehearse E:\FaunaVaultBackups\faunavault-backup-20260812T151500.123456Z-1a2b3c4d E:\FaunaVaultRehearsals\recent-backup
 ```
 
 Creation validates the source archive, snapshots SQLite with its supported
@@ -253,6 +254,60 @@ paths, and verification never needs the original machine or live FaunaVault
 configuration. Checksums detect accidental corruption, not malicious rewriting
 of both the payload and manifest. Unexpected regular files are warnings;
 symlinks and junctions are rejected and never followed.
+
+### Backup verification and restore rehearsal
+
+`verify` is the fast, read-only integrity check. It proves that the backup
+format is supported, the SQLite database matches the schema claimed by the
+manifest, and every required payload is present and checksum-valid. It does not
+copy files, run migrations, or access configured live storage.
+
+`rehearse` proves that the same backup can be recovered by the current
+FaunaVault version. The target must not exist and its parent must already be a
+regular local directory. The command verifies the complete source first, copies
+only into a uniquely named isolated staging directory beside the target, runs
+the real storage initialization and migrations, recovers interrupted running
+classification jobs without starting the worker, checks preserved metadata and
+albums, and requires a healthy archive-doctor result before publishing the
+target. There is no `--force` option.
+
+The successful target is retained for inspection with this logical layout:
+
+```text
+<target>/
+  data/
+    faunavault.db
+    faunavault.pre-taxonomy.bak
+    faunavault.pre-migrate-*.db  # present when migrations were required
+  images/
+    original/
+    resized/
+    thumbs/
+    .staging/
+    .purge/
+```
+
+The pre-migration copies are an intentional consequence of exercising the real
+startup path, so allow extra free space for large databases. Rehearsal never
+changes `.env`, switches the application to the target, starts Ollama/GBIF, or
+processes queued classification jobs. Delete the complete target manually when
+it is no longer useful. Periodically rehearse a recent backup as part of the
+manual disaster-recovery routine.
+
+Backup container compatibility and database recovery compatibility are separate:
+
+| Backup format | Database schema | Current support | Action |
+| --- | ---: | --- | --- |
+| v1 | 9 | Supported | Verify, then rehearse/migrate in isolated storage |
+| Other | Any | Unsupported | Reject before target writes |
+| v1 | Other | Not supported until explicitly tested | Reject before target writes |
+
+Schema support is intentionally explicit rather than automatically following
+the latest application schema. Before adding schema `N`, existing historical
+fixtures must continue to verify and rehearse, migration from every retained
+supported schema must pass, and support for `N` must be added with dedicated
+tests. Removing recovery support requires an explicit documented decision;
+FaunaVault does not promise indefinite support for every historical schema.
 
 ### Live archive health and derived-image repair
 
@@ -296,11 +351,13 @@ and `2` means usage, configuration, or startup I/O prevented a reliable check.
 An applied repair finishes with a complete doctor pass and reports success only
 when no integrity or repairable findings remain.
 
-### Safe manual restore
+### Safe manual production restore
 
-Automated restore is intentionally not provided. To recover manually:
+Production replacement remains intentionally manual. `rehearse` never writes to
+configured live storage, renames production directories, or selects a backup.
+To recover manually:
 
-1. Stop FaunaVault and verify the selected backup. Do not continue if verification fails.
+1. Stop FaunaVault, verify the selected backup, and preferably complete a restore rehearsal with the current version. Do not continue if either check fails.
 2. Preserve the current database and complete image root as a separately named fallback. Never overwrite the only current copy.
 3. Prefer fresh, empty restore locations. Copy `database/faunavault.db` to the path selected by `DATABASE_URL` and copy the three directories under `images` to the root selected by `IMAGE_DIR`.
 4. Update `backend/.env` for those locations. Restore paths do not need to match the machine on which the backup was created.
