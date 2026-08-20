@@ -202,6 +202,47 @@ npm test
 npm run build
 ```
 
+## Portable metadata export
+
+FaunaVault can export a deterministic, schema-versioned inventory of all Photo,
+Animal, and locally stored Taxon metadata without copying media. JSON is the
+authoritative representation; an optional flat Photo CSV is available for
+spreadsheets and ordinary data-analysis tools. Both active and Trash Photos are
+included, with portable original paths, actual streamed sizes, and SHA-256
+values.
+
+From `backend`, choose a new destination directory whose parent already exists:
+
+```powershell
+uv run faunavault-export E:\FaunaVaultExports\metadata-2026-08-20
+uv run faunavault-export E:\FaunaVaultExports\metadata-2026-08-20-with-csv --csv
+```
+
+The command may run while the backend is online. It reads a coherent SQLite
+snapshot and fails safely if a referenced original disappears or changes while
+being inventoried. It never writes to the application database, calls Ollama or
+GBIF, runs archive repair, or includes absolute source paths and credentials.
+The destination must not already exist and is published only after every
+artifact passes internal validation.
+
+The directory contains `archive-metadata.json` and, with `--csv`, `photos.csv`.
+JSON is UTF-8 with visible Unicode, explicit nulls, deterministic ID ordering,
+canonical UTC timestamps, LF newlines, and no volatile generation timestamp.
+For example:
+
+```powershell
+python -m json.tool E:\FaunaVaultExports\metadata-2026-08-20\archive-metadata.json
+jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metadata.json
+```
+
+The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
+[metadata export format v1](docs/METADATA_EXPORT_FORMAT.md) for the complete
+field, encoding, relationship, and compatibility contract.
+
+This export is an inspectable metadata and audit artifact only. It contains no
+image bytes, has no import/restore guarantee, and does **not** replace a verified
+backup containing the SQLite database and complete image payload.
+
 ## Backup and recovery
 
 FaunaVault creates self-contained, verified local backup directories. Backups are

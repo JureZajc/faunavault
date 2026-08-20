@@ -19,6 +19,37 @@ uv run pytest
 
 Configuration is loaded through `pydantic-settings` from `backend/.env`. Relative SQLite paths resolve against this directory. See the root README for storage, backup, migration, and recovery details.
 
+## Portable metadata export
+
+Create a deterministic JSON metadata and original-file inventory in a new local
+directory, with an optional flattened Photo CSV:
+
+```powershell
+uv run faunavault-export E:\FaunaVaultExports\metadata-2026-08-20
+uv run faunavault-export E:\FaunaVaultExports\metadata-2026-08-20-with-csv --csv
+```
+
+Unlike backup creation and archive maintenance, export is snapshot-based and may
+run while the backend is online. It uses a read-only SQLite backup snapshot,
+queries the current schema without migrations, streams every referenced original
+through stable SHA-256 validation, rechecks file identity before publication,
+and ignores unrelated database commits after the snapshot. A concurrent
+permanent deletion may cause a safe failure and retry; no locking is added.
+
+`archive-metadata.json` is authoritative and includes all active/Trash Photos,
+Animals, and local Taxa. `photos.csv` is optional. Neither contains media,
+derivative paths, albums, perceptual hashes, classification jobs, absolute source
+paths, secrets, or a generation timestamp. The destination must not exist;
+same-parent staging is atomically renamed only after JSON and optional CSV
+round-trip validation. Exit `0` means complete, `1` means source/artifact
+integrity failure, and `2` means usage, configuration, destination, permission,
+disk, or publication failure.
+
+See the root README for the user workflow and
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v1
+field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
+does not replace a verified backup and is not an import or restore mechanism.
+
 ## Perceptual duplicate detection
 
 Uploads retain the authoritative SHA-256 duplicate check. After it finds no

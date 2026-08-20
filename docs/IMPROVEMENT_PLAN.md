@@ -106,7 +106,15 @@ storage, no automatic choice of backup, and no deletion of a pre-restore archive
 - the disaster-recovery runbook and backup/schema compatibility policy match the
   exercised workflow.
 
-### R2 - Portable metadata and archive inventory export
+### R2 - Portable metadata and archive inventory export — Complete
+
+**Status:** Completed on 2026-08-20. `faunavault-export` now produces a
+deterministic, independently versioned JSON description of all active/Trash
+Photos, Animals, local Taxa, and verified original paths/sizes/SHA-256 values,
+with an optional flattened Photo CSV. Snapshot-based online operation, atomic
+publication, focused source validation, explicit encoding/null/timestamp rules,
+and tests for portability, consistency, safety, Unicode, and empty archives keep
+the artifact useful without confusing it with a verified backup or restore path.
 
 **Problem:** Full backups preserve all user data, but their descriptive metadata
 is primarily a SQLite database. The manifest exposes file integrity and aggregate
