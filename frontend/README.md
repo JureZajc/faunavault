@@ -93,3 +93,27 @@ npm run build
 ```
 
 `npm test` runs the Vitest/JSDOM interaction suite.
+
+## Browser smoke tests
+
+The Playwright smoke suite complements Vitest rather than replacing it. Vitest
+keeps API and navigation boundaries mocked for fast component-level interaction
+coverage; the smoke command uses Chromium against the production `next build` /
+`next start` output and a real FastAPI process with disposable SQLite and image
+storage.
+
+Install Chromium once, then run the suite:
+
+```powershell
+npx playwright install chromium
+npm run test:e2e
+```
+
+The runner owns frontend port `3001`, backend port `8001`, both child processes,
+and a uniquely named archive beneath the OS temporary directory. Occupied ports
+fail the run instead of reusing an existing server. Temporary fixtures, the
+database, and all generated images are removed after success or failure. The
+smoke journey covers upload and duplicate safety, catalog/detail navigation and
+metadata persistence, real backend image loading, and Trash restore/permanent
+deletion. It makes no Ollama or GBIF request. Playwright traces and screenshots
+are retained only for failures; they are ignored by Git.
