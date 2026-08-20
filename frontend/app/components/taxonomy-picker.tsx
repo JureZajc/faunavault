@@ -47,14 +47,48 @@ export default function TaxonomyPicker({ animalId }: { animalId: number }) {
       <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
         GBIF taxonomy
       </h2>
-      <div className="mt-2 flex gap-2">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void search(); }} placeholder="Common or scientific name" className="min-h-10 min-w-0 flex-1 rounded-md border border-stone-200 bg-stone-50 px-3 text-sm outline-none focus:border-emerald-500" />
-        <button type="button" disabled={isBusy || query.trim().length < 2} onClick={() => void search()} className="rounded-md border border-emerald-700 px-3 text-sm font-semibold text-emerald-900 disabled:opacity-50">
+      <div className="mt-2 flex min-w-0 gap-2">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void search();
+          }}
+          placeholder="Common or scientific name"
+          className="min-h-10 min-w-0 flex-1 rounded-md border border-stone-200 bg-stone-50 px-3 text-sm outline-none focus:border-emerald-500"
+        />
+        <button
+          type="button"
+          disabled={isBusy || query.trim().length < 2}
+          onClick={() => void search()}
+          className="min-h-10 shrink-0 rounded-md border border-emerald-700 px-3 text-sm font-semibold text-emerald-900 disabled:opacity-50"
+        >
           Search
         </button>
       </div>
-      {status ? <p className="mt-2 text-xs text-stone-600">{status}</p> : null}
-      {results.length ? <div className="mt-2 max-h-56 space-y-1 overflow-auto">{results.map((candidate) => <button key={candidate.external_taxon_id} type="button" disabled={isBusy} onClick={() => void select(candidate)} className="block w-full rounded-md border border-stone-200 bg-white p-2 text-left text-xs hover:border-emerald-400"><strong>{candidate.common_name || candidate.canonical_name}</strong><span className="ml-1 italic text-stone-500">{candidate.scientific_name}</span></button>)}</div> : null}
+      {status ? (
+        <p className="mt-2 break-words text-xs text-stone-600">{status}</p>
+      ) : null}
+      {results.length ? (
+        <div className="mt-2 max-h-56 space-y-1 overflow-auto">
+          {results.map((candidate) => (
+            <button
+              key={candidate.external_taxon_id}
+              type="button"
+              disabled={isBusy}
+              onClick={() => void select(candidate)}
+              className="block min-h-10 w-full min-w-0 break-words rounded-md border border-stone-200 bg-white p-2 text-left text-xs hover:border-emerald-400"
+            >
+              <strong>
+                {candidate.common_name || candidate.canonical_name}
+              </strong>
+              <span className="ml-1 italic text-stone-500">
+                {candidate.scientific_name}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

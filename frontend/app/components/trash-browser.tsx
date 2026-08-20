@@ -140,12 +140,12 @@ export default function TrashBrowser({
         </p>
       </div>
       {error ? (
-        <div className="mb-5 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-5 break-words rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
       {photos.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-stone-300 bg-white p-16 text-center text-stone-500">
+        <div className="rounded-xl border border-dashed border-stone-300 bg-white px-4 py-12 text-center text-stone-500 sm:p-16">
           Trash is empty.
         </div>
       ) : (
@@ -160,16 +160,28 @@ export default function TrashBrowser({
                 className="aspect-[4/3] w-full object-cover"
               />
               <div className="p-4">
-                <h3 className="truncate font-semibold">
+                <h3
+                  title={
+                    photo.display_title ||
+                    photo.common_name ||
+                    photo.original_filename
+                  }
+                  className="truncate font-semibold"
+                >
                   {photo.display_title || photo.common_name || photo.original_filename}
                 </h3>
-                <p className="mt-1 truncate text-xs text-stone-500">{photo.original_filename}</p>
+                <p
+                  title={photo.original_filename}
+                  className="mt-1 truncate text-xs text-stone-500"
+                >
+                  {photo.original_filename}
+                </p>
                 <div className="mt-4 grid gap-2">
                   <button
                     type="button"
                     disabled={busyId === photo.id}
                     onClick={() => void restore(photo)}
-                    className="min-h-10 rounded-md bg-emerald-800 text-sm font-semibold text-white"
+                    className="min-h-11 rounded-md bg-emerald-800 text-sm font-semibold text-white"
                   >
                     Restore
                   </button>
@@ -180,7 +192,7 @@ export default function TrashBrowser({
                       setDeleteError(null);
                       setDeleteTarget(photo);
                     }}
-                    className="min-h-10 rounded-md border border-red-200 bg-red-50 text-sm font-semibold text-red-700"
+                    className="min-h-11 rounded-md border border-red-200 bg-red-50 text-sm font-semibold text-red-700"
                   >
                     Permanently delete
                   </button>
@@ -191,23 +203,88 @@ export default function TrashBrowser({
         </div>
       )}
       {totalPages > 1 ? (
-        <div className="mt-6 flex justify-center gap-3">
-          <button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded border bg-white px-4 py-2 disabled:opacity-40">Previous</button>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <button
+            disabled={page === 1}
+            onClick={() => setPage((value) => value - 1)}
+            className="min-h-11 rounded border bg-white px-4 disabled:opacity-40"
+          >
+            Previous
+          </button>
           <span className="py-2 text-sm">Page {page} of {totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)} className="rounded border bg-white px-4 py-2 disabled:opacity-40">Next</button>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage((value) => value + 1)}
+            className="min-h-11 rounded border bg-white px-4 disabled:opacity-40"
+          >
+            Next
+          </button>
         </div>
       ) : null}
       {deleteTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4">
-          <form ref={dialogRef} onSubmit={permanentlyDelete} onKeyDown={handleKeyDown} role="dialog" aria-modal="true" aria-labelledby="permanent-delete-title" aria-describedby="permanent-delete-description" tabIndex={-1} className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
-            <h2 id="permanent-delete-title" className="text-xl font-semibold">Permanently delete photo?</h2>
-            <p id="permanent-delete-description" className="mt-2 text-sm leading-6 text-stone-600">This removes the record and all local image variants. Type <strong>{deleteTarget.original_filename}</strong> to confirm.</p>
-            <label htmlFor="permanent-delete-confirmation" className="mt-4 block text-sm font-medium text-stone-700">Filename confirmation</label>
-            <input ref={confirmationInputRef} id="permanent-delete-confirmation" disabled={isDeleting} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-2 min-h-11 w-full rounded-md border px-3" />
-            {deleteError ? <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{deleteError}</p> : null}
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button ref={cancelButtonRef} type="button" disabled={isDeleting} onClick={closeDeleteDialog} className="min-h-11 rounded border">Cancel</button>
-              <button type="submit" disabled={confirmation !== deleteTarget.original_filename || isDeleting} className="min-h-11 rounded border border-red-200 bg-red-50 font-semibold text-red-700 disabled:opacity-40">{isDeleting ? "Permanently deleting" : "Permanently delete"}</button>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-stone-950/40 p-3 sm:items-center sm:p-6">
+          <form
+            ref={dialogRef}
+            onSubmit={permanentlyDelete}
+            onKeyDown={handleKeyDown}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="permanent-delete-title"
+            aria-describedby="permanent-delete-description"
+            tabIndex={-1}
+            className="my-auto max-h-[calc(100vh-1.5rem)] w-full max-w-md overflow-y-auto rounded-lg bg-white p-4 shadow-xl sm:p-5"
+          >
+            <h2 id="permanent-delete-title" className="text-xl font-semibold">
+              Permanently delete photo?
+            </h2>
+            <p
+              id="permanent-delete-description"
+              className="mt-2 break-words text-sm leading-6 text-stone-600"
+            >
+              This removes the record and all local image variants. Type{" "}
+              <strong>{deleteTarget.original_filename}</strong> to confirm.
+            </p>
+            <label
+              htmlFor="permanent-delete-confirmation"
+              className="mt-4 block text-sm font-medium text-stone-700"
+            >
+              Filename confirmation
+            </label>
+            <input
+              ref={confirmationInputRef}
+              id="permanent-delete-confirmation"
+              disabled={isDeleting}
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              className="mt-2 min-h-11 w-full min-w-0 rounded-md border px-3"
+            />
+            {deleteError ? (
+              <p
+                role="alert"
+                className="mt-4 break-words rounded-md bg-red-50 p-3 text-sm text-red-700"
+              >
+                {deleteError}
+              </p>
+            ) : null}
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <button
+                ref={cancelButtonRef}
+                type="button"
+                disabled={isDeleting}
+                onClick={closeDeleteDialog}
+                className="min-h-11 rounded border"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={
+                  confirmation !== deleteTarget.original_filename || isDeleting
+                }
+                className="min-h-11 rounded border border-red-200 bg-red-50 px-3 font-semibold text-red-700 disabled:opacity-40"
+              >
+                {isDeleting ? "Permanently deleting" : "Permanently delete"}
+              </button>
             </div>
           </form>
         </div>

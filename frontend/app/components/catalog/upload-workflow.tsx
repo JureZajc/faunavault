@@ -52,7 +52,7 @@ export default function UploadWorkflow({
     <>
       <form
         onSubmit={handleSubmit}
-        className="rounded-lg border border-stone-200 bg-stone-50 p-4 shadow-sm"
+        className="min-w-0 rounded-lg border border-stone-200 bg-stone-50 p-4 shadow-sm"
       >
         <label className="block">
           <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
@@ -70,7 +70,12 @@ export default function UploadWorkflow({
               disabled={upload.state.isQueueActive}
               className="sr-only"
             />
-            <span className="truncate">{upload.state.selectedFileLabel}</span>
+            <span
+              title={upload.state.selectedFileLabel}
+              className="min-w-0 truncate"
+            >
+              {upload.state.selectedFileLabel}
+            </span>
           </span>
         </label>
         {selectedCount > 0 ? (

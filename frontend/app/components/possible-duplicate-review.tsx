@@ -56,19 +56,25 @@ function CandidateCard({
         }
       />
       <div className={compact ? "min-w-0" : "p-4"}>
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="truncate font-semibold text-stone-950">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3
+            title={candidateTitle(candidate)}
+            className="min-w-0 flex-1 truncate font-semibold text-stone-950"
+          >
             {candidateTitle(candidate)}
           </h3>
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
+          <span className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
             {candidate.location === "catalog" ? "Catalog" : "Trash"}
           </span>
         </div>
-        <p className="mt-1 truncate text-xs text-stone-500">
+        <p
+          title={candidate.original_filename}
+          className="mt-1 truncate text-xs text-stone-500"
+        >
           {candidate.original_filename}
         </p>
         {candidate.species_guess ? (
-          <p className="mt-1 truncate text-xs text-stone-600">
+          <p className="mt-1 break-words text-xs text-stone-600">
             {candidate.species_guess}
           </p>
         ) : null}
@@ -115,7 +121,7 @@ export default function PossibleDuplicateReview({
   if (!strongest) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-stone-950/50 px-4 py-6">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-stone-950/50 p-3 sm:items-center sm:p-6">
       <div
         ref={dialogRef}
         role="dialog"
@@ -124,7 +130,7 @@ export default function PossibleDuplicateReview({
         aria-describedby="possible-duplicate-description"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="w-full max-w-3xl rounded-xl bg-stone-50 p-5 shadow-2xl"
+        className="my-auto max-h-[calc(100vh-1.5rem)] w-full max-w-3xl overflow-y-auto rounded-xl bg-stone-50 p-4 shadow-2xl sm:p-5"
       >
         <h2 id="possible-duplicate-title" className="text-xl font-semibold">
           Possible duplicate
@@ -149,7 +155,12 @@ export default function PossibleDuplicateReview({
             ) : null}
             <div className="p-4">
               <h3 className="font-semibold">Uploaded photo</h3>
-              <p className="mt-1 truncate text-xs text-stone-500">{file.name}</p>
+              <p
+                title={file.name}
+                className="mt-1 truncate text-xs text-stone-500"
+              >
+                {file.name}
+              </p>
             </div>
           </article>
           <CandidateCard candidate={strongest} />
@@ -176,7 +187,10 @@ export default function PossibleDuplicateReview({
         ) : null}
 
         {error ? (
-          <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <p
+            role="alert"
+            className="mt-4 break-words rounded-md bg-red-50 p-3 text-sm text-red-700"
+          >
             {error}
           </p>
         ) : null}

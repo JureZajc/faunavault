@@ -26,7 +26,7 @@ export default function ClassificationJobsPanel({ jobs, photos = [], onRetry }: 
 
   return (
     <div className="mt-3 space-y-3" aria-label="Classification jobs">
-      <p className="text-sm text-stone-600">
+      <p className="break-words text-sm text-stone-600">
         Total {jobs.length} · {counts.queued} queued · {counts.running} running ·{" "}
         {counts.succeeded} succeeded · {counts.failed} failed
       </p>
@@ -39,27 +39,34 @@ export default function ClassificationJobsPanel({ jobs, photos = [], onRetry }: 
               : labels[job.status];
           return (
             <div key={job.id} className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium text-stone-900">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 flex-1 basis-48">
+                  <p
+                    title={
+                      job.photo_original_filename ??
+                      photo?.original_filename ??
+                      `Photo ${job.photo_id}`
+                    }
+                    className="truncate text-sm font-medium text-stone-900"
+                  >
                     {job.photo_original_filename ??
                       photo?.original_filename ??
                       `Photo ${job.photo_id}`}
                   </p>
-                  <p className="text-xs text-stone-500">
+                  <p className="break-words text-xs text-stone-500">
                     {job.failure_message ??
                       (job.actual_model
                         ? `${resultLabel} with ${job.actual_model}`
                         : resultLabel)}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <span className="text-xs font-semibold text-stone-700">{resultLabel}</span>
                   {job.retryable ? (
                     <button
                       type="button"
                       onClick={() => void onRetry(job.id)}
-                      className="min-h-9 rounded-md border border-stone-300 bg-white px-3 text-xs font-semibold"
+                      className="min-h-10 rounded-md border border-stone-300 bg-white px-3 text-xs font-semibold"
                     >
                       Retry
                     </button>

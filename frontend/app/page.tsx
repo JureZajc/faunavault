@@ -119,8 +119,8 @@ function HomeContent() {
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
       <section className="border-b border-stone-200 bg-white">
-        <div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,440px)] lg:items-end">
-          <div>
+        <div className="mx-auto grid max-w-7xl gap-6 px-3 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,440px)] lg:items-end">
+          <div className="min-w-0">
             <p className="text-sm font-medium uppercase tracking-[0.18em] text-emerald-700">
               Local-first animal archive
             </p>
@@ -162,7 +162,7 @@ function HomeContent() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 py-6">
+      <section className="mx-auto max-w-7xl px-3 py-6 sm:px-6">
         {successNotice ? (
           <SuccessNotice
             message={successNotice}
@@ -174,13 +174,13 @@ function HomeContent() {
           />
         ) : null}
         <div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="inline-grid min-h-11 grid-cols-3 rounded-lg border border-stone-200 bg-stone-100 p-1">
+          <div className="grid w-full grid-cols-3 rounded-lg border border-stone-200 bg-stone-100 p-1 sm:w-auto">
             {(["list", "album", "trash"] as CollectionView[]).map((view) => (
               <button
                 key={view}
                 type="button"
                 onClick={() => query.setCollectionView(view)}
-                className={`min-w-28 rounded-md px-4 text-sm font-semibold capitalize transition ${
+                className={`min-h-11 min-w-0 rounded-md px-2 text-sm font-semibold capitalize transition sm:min-w-28 sm:px-4 ${
                   query.collectionView === view
                     ? "bg-white text-emerald-900 shadow-sm"
                     : "text-stone-600 hover:text-stone-900"
@@ -280,7 +280,7 @@ export default function Home() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-[#f7f8f4] p-8">
+        <main className="min-h-screen bg-[#f7f8f4] p-4 sm:p-8">
           <div className="mx-auto h-[32rem] max-w-7xl animate-pulse rounded-lg bg-white" />
         </main>
       }
