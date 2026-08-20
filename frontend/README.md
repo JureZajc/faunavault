@@ -73,8 +73,16 @@ npm run dev
 ```
 
 As an optional repository-root shortcut, run `python scripts/dev.py frontend`.
+On Windows, stop the Next.js development server before running `npm ci` because
+loaded native modules under `node_modules` may be locked.
 
-Run the complete frontend validation sequence from this directory:
+For routine repository-wide validation using the installed dependencies, run
+`python scripts/dev.py check` from the repository root. For clean CI-equivalent
+validation, stop the development server and run `python scripts/dev.py
+check-clean`; it replaces `node_modules` with `npm ci` before validation.
+
+Run a clean frontend validation sequence directly from this directory with the
+development server stopped:
 
 ```powershell
 npm ci

@@ -116,16 +116,30 @@ the repository root, the optional convenience commands are:
 ```powershell
 python scripts/dev.py setup
 python scripts/dev.py check
+python scripts/dev.py check-clean
 python scripts/dev.py backend
 python scripts/dev.py frontend
 ```
 
 `setup` runs `uv sync` for the backend and `npm ci` for the frontend. It does
 not create environment files, install or start Ollama, or pull models. `check`
-runs the same backend and frontend validation commands as CI, sequentially and
-with fail-fast behavior. Run `backend` and `frontend` in separate terminals;
-combined process orchestration is deliberately omitted so Ctrl+C behavior stays
-predictable on Windows and POSIX systems.
+runs the backend and frontend validation stages against the installed
+environment without synchronizing or reinstalling dependencies. Run `setup`
+first if the backend virtual environment or frontend `node_modules` is missing.
+`check-clean` performs the frozen backend sync and clean frontend install before
+running the same validation stages, making it the CI-equivalent path. Both
+checks are sequential and fail fast.
+
+`setup` and `check-clean` run `npm ci`, which replaces `node_modules`. On
+Windows, stop the Next.js development server before running either command so
+loaded native `.node` modules are not locked. If an interrupted install leaves
+the frontend dependencies incomplete, stop the server and rerun `python
+scripts/dev.py setup`. If `node_modules` remains locked or corrupt, manual
+cleanup of `frontend/node_modules` may be required before retrying setup.
+
+Run `backend` and `frontend` in separate terminals; combined process
+orchestration is deliberately omitted so Ctrl+C behavior stays predictable on
+Windows and POSIX systems.
 
 The commands resolve paths from the script location, so they can also be
 invoked by absolute or relative script path from another working directory.
@@ -184,23 +198,29 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ## Validation
 
-From the repository root, `python scripts/dev.py check` runs the complete
-sequence below. The manual subsystem commands remain useful for troubleshooting:
+From the repository root, `python scripts/dev.py check` runs routine validation
+against the currently installed dependencies:
 
 ```powershell
 cd backend
-uv sync --frozen
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
+uv run --no-sync ruff check .
+uv run --no-sync ruff format --check .
+uv run --no-sync pytest
 
 cd ../frontend
-npm ci
 npm run lint
 npm run typecheck
 npm test
 npm run build
 ```
+
+`python scripts/dev.py check-clean` is the clean, reproducible validation path.
+It runs `uv sync --frozen`, performs the backend commands above, runs `npm ci`,
+and then performs the frontend commands above. This is semantically equivalent
+to the dependency installation and validation sequence in GitHub Actions; the
+subsequent backend commands use `--no-sync` so only the explicit frozen sync can
+mutate dependencies. Stop the frontend development server first on Windows.
+The manual subsystem commands remain useful for troubleshooting.
 
 ## Portable metadata export
 
