@@ -47,6 +47,7 @@ existing local destination directory:
 ```powershell
 uv run faunavault-backup create E:\FaunaVaultBackups
 uv run faunavault-backup verify E:\FaunaVaultBackups\faunavault-backup-<timestamp>-<id>
+uv run faunavault-backup rehearse E:\FaunaVaultBackups\faunavault-backup-<timestamp>-<id> E:\FaunaVaultRehearsals\recent-backup
 ```
 
 `create` resolves the configured SQLite and image locations, rejects active
@@ -59,14 +60,28 @@ overlap the database directory or active image storage.
 `verify` is read-only and backup-local: it does not load `.env`, access the live
 archive, run migrations, or modify the backup. It validates format and schema
 versions, safe relative paths, checksums, SQLite integrity/foreign keys,
-migration metadata, counts, and every database-to-image reference. Both commands
-exit `0` for success (including warnings) and `1` for invalid or failed work.
+migration metadata, counts, and every database-to-image reference. `create` and
+`verify` exit `0` for success (including warnings) and `1` for invalid or failed work.
 Unexpected regular files are warnings; missing/changed owned files and symlinks
 or junctions are failures.
 
-The root README contains the format layout, complete inclusion/exclusion policy,
-limitations, and safe manual restore procedure. There is no automated restore
-command.
+`rehearse` is an isolated recovery proof, not an automated production restore.
+It never loads normal live settings. The target must not exist; the command
+verifies the source before target writes, copies into same-parent staging,
+exercises the storage-only startup/migration path, performs metadata and album
+checks, recovers interrupted running jobs without starting the worker, and runs
+the existing archive doctor before atomically publishing the retained target.
+Warnings are allowed only when doctor still reports `HEALTHY`; errors and
+repairable derivative defects fail the rehearsal. Exit `1` means integrity or
+recoverability failure and exit `2` means usage, target, permission, disk, or
+other setup failure.
+
+Backup format v1 and database recovery versions are independent. This version
+explicitly supports schema 9 backups. A later application schema must retain the
+frozen schema-9 verifier and migration rehearsal unless compatibility is
+intentionally removed and documented. The root README contains the compatibility
+table, target layout, limitations, and unchanged manual production-restore
+procedure.
 
 ## Live archive maintenance
 

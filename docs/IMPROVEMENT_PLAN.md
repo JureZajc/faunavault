@@ -68,7 +68,13 @@ and [dependency security review](DEPENDENCY_SECURITY_REVIEW.md).
 
 ## Recommended next (in order)
 
-### R1 - Isolated restore rehearsal and backup compatibility
+### R1 - Isolated restore rehearsal and backup compatibility — Complete
+
+**Status:** Completed on 2026-08-20. `faunavault-backup rehearse` now verifies a
+backup, restores it only into newly created isolated storage, exercises the real
+storage startup/migration path, validates preserved metadata and albums, and
+requires a healthy archive-doctor result. A committed v1/schema-9 fixture and
+explicit supported-backup-schema policy protect historical compatibility.
 
 **Problem:** Backup creation and verification are thoroughly tested, and manual
 restore is documented, but no automated check restores a backup into isolated

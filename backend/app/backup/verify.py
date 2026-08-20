@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from app.backup.compatibility import SUPPORTED_BACKUP_SCHEMA_VERSIONS
 from app.backup.integrity import (
     BackupError,
     hash_file,
@@ -17,11 +18,9 @@ from app.backup.manifest import (
     BACKUP_FORMAT_VERSION,
     DATABASE_BACKUP_PATH,
     BackupManifest,
+    UnsupportedBackupFormatError,
     read_manifest,
 )
-from app.migrations import LATEST_SCHEMA_VERSION
-
-SUPPORTED_SCHEMA_VERSION = LATEST_SCHEMA_VERSION
 
 
 @dataclass
@@ -81,15 +80,11 @@ def _compare_database_to_manifest(
 ) -> None:
     database_path = root / DATABASE_BACKUP_PATH
     try:
-        inventory = inspect_database(database_path, SUPPORTED_SCHEMA_VERSION)
+        inventory = inspect_database(database_path, manifest.database.schema_version)
     except BackupError as exc:
         result.errors.append(str(exc))
         return
 
-    if manifest.database.schema_version != SUPPORTED_SCHEMA_VERSION:
-        result.errors.append(
-            f"Unsupported backup schema version: {manifest.database.schema_version}"
-        )
     if manifest.database.applied_migrations != inventory.migrations:
         result.errors.append("Manifest migration metadata does not match the database")
 
@@ -177,6 +172,9 @@ def verify_backup(backup_path: Path) -> VerificationResult:
         return result
     try:
         manifest = read_manifest(manifest_path)
+    except UnsupportedBackupFormatError as exc:
+        result.errors.append(str(exc))
+        return result
     except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
         result.errors.append(f"Invalid backup manifest: {exc}")
         return result
@@ -184,6 +182,12 @@ def verify_backup(backup_path: Path) -> VerificationResult:
     if manifest.backup_format_version != BACKUP_FORMAT_VERSION:
         result.errors.append(
             f"Unsupported backup format version: {manifest.backup_format_version}"
+        )
+        return result
+    if manifest.database.schema_version not in SUPPORTED_BACKUP_SCHEMA_VERSIONS:
+        result.errors.append(
+            f"Unsupported backup database schema version: "
+            f"{manifest.database.schema_version}"
         )
         return result
 

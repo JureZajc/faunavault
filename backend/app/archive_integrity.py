@@ -140,7 +140,53 @@ def _photo_from_row(row) -> PhotoRecord:
     )
 
 
-def inspect_database(path: Path, supported_schema_version: int) -> DatabaseInventory:
+def _inspect_schema_9(
+    connection: sqlite3.Connection, migrations: list[int]
+) -> DatabaseInventory:
+    photos = [
+        _photo_from_row(row)
+        for row in connection.execute(
+            "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
+            "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
+            "media_type FROM photo ORDER BY id"
+        )
+    ]
+    malformed = [
+        photo.id
+        for photo in photos
+        if photo.perceptual_hash is not None
+        and PERCEPTUAL_HASH_PATTERN.fullmatch(photo.perceptual_hash) is None
+    ]
+    if malformed:
+        ids = ", ".join(str(photo_id) for photo_id in malformed)
+        raise ArchiveIntegrityError(f"Invalid perceptual hash for photo id(s): {ids}")
+    job_counts = {
+        status: int(
+            connection.execute(
+                "SELECT COUNT(*) FROM classification_job WHERE status = ?",
+                (status,),
+            ).fetchone()[0]
+        )
+        for status in JOB_STATUSES
+    }
+    return DatabaseInventory(
+        migrations=migrations,
+        photos=photos,
+        animals=int(connection.execute("SELECT COUNT(*) FROM animal").fetchone()[0]),
+        taxa=int(connection.execute("SELECT COUNT(*) FROM taxon").fetchone()[0]),
+        job_counts=job_counts,
+    )
+
+
+SCHEMA_INVENTORY_READERS = {9: _inspect_schema_9}
+
+
+def inspect_database(path: Path, expected_schema_version: int) -> DatabaseInventory:
+    reader = SCHEMA_INVENTORY_READERS.get(expected_schema_version)
+    if reader is None:
+        raise ArchiveIntegrityError(
+            f"No database inventory reader for schema {expected_schema_version}"
+        )
     try:
         connection = open_read_only_database(path)
     except sqlite3.Error as exc:
@@ -162,49 +208,13 @@ def inspect_database(path: Path, supported_schema_version: int) -> DatabaseInven
                 "SELECT version FROM schema_migration ORDER BY version"
             )
         ]
-        expected = list(range(1, supported_schema_version + 1))
+        expected = list(range(1, expected_schema_version + 1))
         if migrations != expected:
             raise ArchiveIntegrityError(
                 "Unsupported schema migration state: "
                 f"expected {expected}, found {migrations}"
             )
-        photos = [
-            _photo_from_row(row)
-            for row in connection.execute(
-                "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
-                "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
-                "media_type FROM photo ORDER BY id"
-            )
-        ]
-        malformed = [
-            photo.id
-            for photo in photos
-            if photo.perceptual_hash is not None
-            and PERCEPTUAL_HASH_PATTERN.fullmatch(photo.perceptual_hash) is None
-        ]
-        if malformed:
-            ids = ", ".join(str(photo_id) for photo_id in malformed)
-            raise ArchiveIntegrityError(
-                f"Invalid perceptual hash for photo id(s): {ids}"
-            )
-        job_counts = {
-            status: int(
-                connection.execute(
-                    "SELECT COUNT(*) FROM classification_job WHERE status = ?",
-                    (status,),
-                ).fetchone()[0]
-            )
-            for status in JOB_STATUSES
-        }
-        return DatabaseInventory(
-            migrations=migrations,
-            photos=photos,
-            animals=int(
-                connection.execute("SELECT COUNT(*) FROM animal").fetchone()[0]
-            ),
-            taxa=int(connection.execute("SELECT COUNT(*) FROM taxon").fetchone()[0]),
-            job_counts=job_counts,
-        )
+        return reader(connection, migrations)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not validate SQLite database: {exc}"

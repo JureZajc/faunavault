@@ -7,17 +7,12 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import text
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session
 
 from app.clients.gbif import GbifClient
 from app.config import BACKEND_DIR, get_settings
 from app.db import engine, get_session
-from app.migrations import (
-    backup_database_before_taxonomy_migration,
-    migrate_animals_and_taxonomy,
-    run_migrations,
-)
+from app.migrations import migrate_animals_and_taxonomy
 from app.models import Animal, Photo, Taxon, utc_now
 from app.routers.albums import create_albums_router
 from app.routers.animals import create_animals_router
@@ -39,10 +34,10 @@ from app.services.classification_jobs import (
     recover_interrupted_jobs,
 )
 from app.services.perceptual_duplicates import run_perceptual_hash_backfill
-from app.services.photo_lifecycle import active_photo_or_404, reconcile_purge_journal
-from app.services.photo_lifecycle import (
-    ensure_storage as ensure_lifecycle_storage,
-)
+from app.services.photo_lifecycle import active_photo_or_404
+from app.storage_startup import initialize_archive_storage
+
+__all__ = ["Animal", "Photo", "Taxon", "app", "migrate_animals_and_taxonomy"]
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -130,32 +125,8 @@ app.add_middleware(
 )
 
 
-def ensure_storage() -> None:
-    ensure_lifecycle_storage(settings)
-
-
-def ensure_photo_metadata_columns() -> None:
-    with engine.begin() as connection:
-        columns = {
-            row[1] for row in connection.execute(text("PRAGMA table_info(photo)"))
-        }
-        for column_name in ("display_title", "breed_guess"):
-            if column_name not in columns:
-                connection.execute(
-                    text(f"ALTER TABLE photo ADD COLUMN {column_name} TEXT")
-                )
-
-
 def on_startup() -> None:
-    ensure_storage()
-    backup_database_before_taxonomy_migration(engine)
-    SQLModel.metadata.create_all(
-        engine, tables=[Taxon.__table__, Animal.__table__, Photo.__table__]
-    )
-    migrate_animals_and_taxonomy(engine)
-    run_migrations(engine, settings, normalize_existing_domestic_metadata)
-    with Session(engine) as session:
-        reconcile_purge_journal(session, settings)
+    initialize_archive_storage(engine, settings)
 
 
 SessionDep = Annotated[Session, Depends(get_session)]

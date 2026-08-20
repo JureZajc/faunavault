@@ -319,7 +319,9 @@ def test_foreign_key_failure_and_unsupported_manifest_are_rejected(archive):
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     result = verify_backup(backup_path)
     assert not result.valid
-    assert any("Invalid backup manifest" in error for error in result.errors)
+    assert any(
+        "Unsupported backup format version: 99" in error for error in result.errors
+    )
 
 
 def test_cli_verify_reports_summary_without_source_paths(archive, capsys):

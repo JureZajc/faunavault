@@ -10,11 +10,16 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 BACKUP_FORMAT_VERSION = 1
+SUPPORTED_BACKUP_FORMAT_VERSIONS: frozenset[int] = frozenset({BACKUP_FORMAT_VERSION})
 DATABASE_BACKUP_PATH = "database/faunavault.db"
 INCLUDED_IMAGE_VARIANTS = ["original", "resized", "thumbs"]
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 FileRole = Literal["database", "original", "resized", "thumbs"]
+
+
+class UnsupportedBackupFormatError(ValueError):
+    """The manifest uses a container format this application cannot read."""
 
 
 def validate_relative_path(value: str) -> str:
@@ -187,6 +192,17 @@ class BackupManifest(StrictModel):
 
 def read_manifest(path: Path) -> BackupManifest:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    version = (
+        payload.get("backup_format_version") if isinstance(payload, dict) else None
+    )
+    if (
+        isinstance(version, int)
+        and not isinstance(version, bool)
+        and version not in SUPPORTED_BACKUP_FORMAT_VERSIONS
+    ):
+        raise UnsupportedBackupFormatError(
+            f"Unsupported backup format version: {version}"
+        )
     return BackupManifest.model_validate(payload)
 
 
