@@ -1,82 +1,180 @@
-# FaunaVault Engineering Improvement Plan
+# FaunaVault Engineering Improvement Roadmap
 
-Audit date: 2026-08-11
+Reviewed against `master` on 2026-08-20.
 
-## Baseline
+## Purpose
 
-- The inspected archive contained 18 photo records and matching original, resized, and thumbnail files. SQLite reported `integrity_check: ok`, no foreign-key violations, no missing variants, no orphan variants, and no exact duplicate originals.
-- Backend baseline: 10 tests passed and Ruff lint passed. Ruff format reported two unformatted modules.
-- Frontend baseline: 11 tests, ESLint, TypeScript, and the Next.js production build passed. `npm ci` reported one moderate and seven high dependency advisories.
-- There was no GitHub Actions workflow. The backend package description and frontend README were placeholders.
+FaunaVault has completed its original engineering-hardening cycle. This document
+keeps that history as a concise baseline and identifies only the next work that
+has clear value for a local-first personal archive.
 
-## P0 — Data safety and correctness
+The current product is a single-user, single-machine application. SQLite owns
+metadata and durable classification jobs, originals and reproducible derivatives
+remain on local storage, Ollama is optional and local, and GBIF is the only
+network-backed product integration. That boundary remains appropriate.
 
-| Finding | Evidence | Impact | Solution | Scope / risks |
-| --- | --- | --- | --- | --- |
-| Migration backup could target the wrong database | Runtime connections used `DATABASE_URL`, while backup/storage setup used a fixed `backend/data/faunavault.db` path | A custom database could be migrated without the intended backup | Resolve the SQLite path from the engine URL and create timestamped online backups before pending migrations | Implemented; relative URLs now resolve against `backend` to preserve the documented path independently of process CWD |
-| Upload commit failures could orphan files | Variants were written before `session.commit()` with no compensation around flush/commit | Database and filesystem could disagree | Stage validated files, promote them as one lifecycle operation, rollback and remove all promoted files on DB errors | Implemented; local single-process upload lock also closes duplicate races inside the supported runtime |
-| Permanent deletion removed files before committing the row deletion | Any filesystem or commit failure could leave a live row with missing variants | Irrecoverable photo loss | Normal deletion is now soft deletion; permanent deletion uses a same-filesystem staging journal with startup recovery | Implemented; no automatic Trash purge |
-| Startup normalization ran outside migration completion tracking | Earlier migrations could be recorded before `normalize_existing_domestic_metadata()` ran, allowing an interrupted startup to skip normalization permanently | Inconsistent legacy metadata after a crash | Make normalization migration 5 and record it only after the idempotent normalization succeeds | Implemented through the versioned migration runner; failed/interrupted normalization remains pending and is retried |
+## Completed hardening baseline (P0-P4)
 
-## P1 — Maintainability and reliability
+The 2026-08-11 audit originally organized work as P0-P3. Those findings are
+closed, and the subsequent archive-health P4 slice is also complete:
 
-| Finding | Evidence | Impact | Solution | Scope / risks |
-| --- | --- | --- | --- | --- |
-| Backend application is a 1,400+ line module | Models, config, migrations, images, AI, taxonomy, albums, and routes shared `app/main.py` | High coupling and difficult isolated testing | Extract settings, models, schemas, migrations, and domain services | Implemented for album, catalog, classification, photo lifecycle, taxonomy/GBIF, and Animal routing. GBIF HTTP behavior now has a closeable client boundary; taxonomy search, persistence, assignment, and reconciliation have cohesive service ownership and deterministic fake-client tests. |
-| Configuration was scattered | Custom `.env` parsing and direct `os.getenv()` calls existed in multiple modules | Inconsistent defaults and hard-to-test configuration | Centralize settings with `pydantic-settings` | Implemented |
-| Classification state is not durable | Only `pending`, `classified`, and `needs_review` were stored; running/failure progress lived in browser memory | Interrupted jobs and failures were difficult to understand or retry | Add persistent local classification jobs and provenance | Implemented with migration 6, a serial in-process worker, polling, safe retry, restart recovery, and model provenance |
-| Lifecycle behavior lacked tests | Existing backend tests covered taxonomy/albums and animal naming only | Regressions could cause data loss | Add isolated upload, duplicate, Trash, purge, and migration coverage | Implemented, including upload flush/commit failures, batch recovery, filesystem and database purge failures, interrupted purge recovery, and migration retry behavior |
-| Dependency advisories need review | The 2026-08-12 review confirmed eight npm affected-package findings and identified Pillow 12.2.0 security fixes | Production and development/build exposure was classified separately | Apply targeted Next.js, Tailwind, transitive lockfile, and Pillow patch/minor upgrades | Implemented/resolved; final live npm audits report zero findings, Pillow is 12.3.0, and the evidence and exposure assessment are recorded in `docs/DEPENDENCY_SECURITY_REVIEW.md` |
+- **Lifecycle and data safety:** migrations are versioned and preceded by SQLite
+  backups; uploads compensate for database/filesystem failures; exact duplicates
+  include Trash; normal deletion is recoverable; permanent deletion uses a
+  startup-reconciled journal.
+- **Archive integrity and recovery foundations:** backup format v1 creates cold,
+  self-contained archives with a standalone verifier, checksums, schema and
+  inventory checks, and a conservative manual-restore procedure. Read-only
+  `doctor` covers the live archive, and dry-run-by-default `repair-derived`
+  atomically rebuilds only missing or invalid derivatives from trusted originals.
+- **Catalog, albums, and duplicates:** catalog and album reads are SQL-paginated,
+  filtered, deterministically sorted, and supported by justified indexes. Exact
+  SHA-256 and conservative perceptual duplicate detection both require safe,
+  explicit user decisions.
+- **Classification and taxonomy:** local Ollama work uses durable, retryable,
+  serial SQLite jobs with provenance and restart handling. Taxonomy has a tested
+  GBIF client boundary and retains useful local behavior when GBIF is unavailable.
+- **Frontend and developer experience:** upload outcomes are per-file and
+  truthful; catalog navigation is URL-restorable; Trash, modal, lightbox,
+  responsive, and accessibility behavior has focused coverage; component
+  boundaries and root setup/check/run commands are in place.
+- **Security and validation:** the recorded dependency findings were remediated,
+  GitHub Actions runs backend and frontend checks, and the current audit collected
+  134 backend tests (132 passed, 2 platform-dependent skips) and passed all 62
+  frontend interaction tests, lint, type checking, and the production build.
 
-## P2 — High-value product improvements
+This summary replaces the old finding-by-finding completion log; it does not
+reopen or discard the engineering decisions behind that work. Detailed behavior
+remains documented in the [project README](../README.md),
+[backend README](../backend/README.md), [frontend README](../frontend/README.md),
+and [dependency security review](DEPENDENCY_SECURITY_REVIEW.md).
 
-| Finding | Evidence | Impact | Solution | Dependencies / risks |
-| --- | --- | --- | --- | --- |
-| Main catalog loads every photo | `GET /photos` returns a complete list and the former List implementation filtered it locally | Increasing latency and memory use for thousands of photos | Add a separate paginated catalog endpoint with backend search/status/category/taxonomy filters; retain `GET /photos` compatibility | Implemented with SQL-backed `/catalog/photos`, bounded lazy `/catalog/taxa` options, deterministic sorting, and URL-restorable List state. Generated 120,000-row SQLite plans verified the migration 7 active/status/category indexes avoid scans and temporary sorts on their target paths; substring search remains scan-based. |
-| Album pagination happens after loading all records | Album grouping loads all animals, photos, and taxa before slicing | Album requests scale poorly | Replace in-memory aggregation with query-level counts and pagination | Implemented with SQL-backed verified/legacy grouping, counts, filters, Unicode search, deterministic covers/sorts, direct detail pagination, and bounded reconciliation discovery |
-| AI calls are long synchronous requests | Each UI classification waited for an Ollama HTTP request | Refreshes lost progress; batch runs were fragile | Add a lightweight SQLite-backed job queue and polling | Implemented; retained classification URLs now return asynchronous HTTP 202 job resources |
-| Only exact duplicates are detected | SHA-256 catches identical bytes, not resized/re-encoded copies | Visually identical files may accumulate | Add optional perceptual hashes with explicit user confirmation | Implemented with Pillow-only `phash64-v1`, conservative distance `<= 4`, exact-first enforcement, active/Trash candidates, explicit per-file Keep both review, ID-based previews, and throttled resumable migration-9 backfill; no automatic merge or deletion |
-| Backup is manual | Data spans SQLite plus an external image root | Recovery requires careful coordination | Add verified archive manifests and non-destructive backup tooling | Implemented with cold local backup creation, versioned manifests, SHA-256 payload verification, SQLite/archive consistency checks, atomic publication, standalone verification, and documented manual restore; automated restore remains deferred |
+## Current architectural baseline
 
-## P3 — Polish
+- The supported runtime is one FastAPI process with one in-process classification
+  worker. Durable jobs remove the need for an external queue.
+- SQLite, the image directories, and cold backup directories are the complete
+  persistence boundary. Originals are authoritative; resized images and
+  thumbnails are reproducible.
+- Backup verification proves that a backup is internally complete, while live
+  maintenance proves archive health. Production restore remains a documented,
+  manual operation that preserves the current archive before replacement.
+- Catalog text search is escaped, case-insensitive substring matching across
+  photo, animal, and local taxonomy fields. Pagination and non-text filters are
+  indexed; leading-wildcard text search intentionally scans active candidates.
+- Frontend state is route-local or held in focused hooks. Durable work is restored
+  from the backend; transient browser-only upload and dialog state is not treated
+  as persistent application state.
 
-- Frontend component-boundary decomposition is implemented: the catalog and photo-detail clients now retain route-level orchestration while focused local hooks/components own URL query state, uploads and duplicate review, catalog rendering, photo loading, metadata editing, linked-animal/taxonomy presentation, classification controls, lightbox state, and the detail Trash confirmation. No global state or data-fetching library was added, and behavior is covered by 59 frontend interaction tests.
-- Dialog/lightbox accessibility hardening is implemented across duplicate review, Move to Trash, permanent delete, photo-detail confirmation, and the photo lightbox, including modal semantics, safe initial focus, dynamic focus traps, Escape/busy-state handling, focus restoration, reference-counted scroll locking, and interaction tests.
-- Richer per-file batch upload progress is implemented with a sequential frontend queue, truthful Waiting/Uploading/Uploaded/Exact duplicate/Possible duplicate/Failed states, independent mixed results, and per-file transient retries. The initial queue continues past failures and possible duplicates, then perceptual reviews proceed independently; catalog refreshes are batched after the initial pass and after review completion. The compatibility batch API remains available, and byte-level percentages are not claimed.
-- Responsive UI polish and focused JSX cleanup are implemented across the catalog, albums, Trash, upload and duplicate-review states, photo detail, dialogs, and lightbox. Representative browser verification at 320, 360, 375, 768, 1024, and 1440 pixels found no unintended document overflow on the inspected catalog, album, taxonomy, Trash, or photo-detail surfaces; an isolated temporary backend also covered upload progress, exact and possible duplicates, Trash, and destructive-dialog fixtures without touching the primary catalog. Component tests cover long-content, queue, duplicate, destructive-dialog, and lightbox states. This is representative viewport coverage rather than a claim of universal browser or device compatibility.
-- Optional root developer commands are implemented through the dependency-free
-  `scripts/dev.py` CLI. From any working directory it resolves the repository
-  path explicitly and provides `setup`, CI-equivalent sequential `check`,
-  `backend`, and `frontend` commands while leaving uv, npm, and the independent
-  CI jobs authoritative. Windows `PATH`/`PATHEXT` resolution, including
-  `npm.CMD`, is handled without shell command strings. A combined `dev` command
-  remains deliberately deferred because reliably stopping the complete
-  Uvicorn-reload and npm/Next.js process trees on both Windows and POSIX would
-  be disproportionate to this small convenience layer.
+## Recommended next (in order)
 
-## P4 — Operability and recovery
+### R1 - Isolated restore rehearsal and backup compatibility
 
-- Cold live-archive maintenance is implemented through the separate
-  `faunavault-maintenance` CLI. Read-only `doctor` validates the configured
-  SQLite database, active and Trash originals/derivatives, lifecycle state,
-  safe paths, inventory stability, perceptual hashes, and orphans.
-- `repair-derived` is dry-run by default and requires `--apply` for narrowly
-  scoped, same-filesystem atomic regeneration of only missing or invalid resized
-  and thumbnail files from fully verified originals. Upload and repair share one
-  variant generator; originals, SQLite, metadata, Trash state, and orphan files
-  are never modified.
-- Repair is sequential and idempotent, tolerates independent per-photo failures,
-  reports interrupted temp artifacts without treating them as sources, and runs
-  a complete doctor validation after apply. Backup format version 1 remains
-  unchanged and repaired archives retain normal create/verify compatibility.
+**Problem:** Backup creation and verification are thoroughly tested, and manual
+restore is documented, but no automated check restores a backup into isolated
+storage and starts the current application against it. The verifier also accepts
+only the current database schema, so compatibility of today's valid v1 backup
+after a future schema migration is not yet protected by a fixture or policy.
 
-## Deliberately not implemented in this slice
+**Why it matters:** A backup is operationally useful only if it can be recovered.
+The highest remaining data-safety risk is an undiscovered gap between verification,
+restore layout, startup recovery, migrations, and current runtime expectations.
 
-- Cloud services, authentication, telemetry, external queues, Redis, Celery, or deployment workflows.
-- Automatic Trash expiration, destructive restore automation, scheduled/remote/incremental backup management, perceptual clustering/search, or legacy-record deduplication.
-- Automatic original recovery, orphan deletion, metadata/row reconstruction,
-  force regeneration, format migration, maintenance workers/watchers, or an
-  admin maintenance UI/API.
-- A breaking change to `GET /photos`, a full catalog rewrite, or a framework/global-state migration.
-- A broad WCAG audit, application-wide keyboard navigation, color-contrast redesign, and screen-reader optimization outside modal interaction surfaces.
+**Proposed direction:** Add a non-destructive rehearsal path that uses a verified
+backup, newly created empty database/image locations, and isolated configuration.
+Exercise startup migrations and archive health there, and retain a v1/schema-9
+compatibility fixture before adding the next schema migration. Document which
+older backup schemas each application version can verify and rehearse.
 
+**Non-goals:** No in-place or one-click production restore, no overwrite of live
+storage, no automatic choice of backup, and no deletion of a pre-restore archive.
+
+**Complete when:**
+
+- a valid v1 backup can be copied only into empty isolated locations and passes
+  current startup/migrations plus a final archive doctor check;
+- active and Trash counts, albums, metadata, and representative original and
+  derived images are checked after rehearsal;
+- corrupt backups and non-empty targets fail before any restore writes occur;
+- the test proves that configured live storage is never opened or modified; and
+- the disaster-recovery runbook and backup/schema compatibility policy match the
+  exercised workflow.
+
+### R2 - Portable metadata and archive inventory export
+
+**Problem:** Full backups preserve all user data, but their descriptive metadata
+is primarily a SQLite database. The manifest exposes file integrity and aggregate
+counts, not a stable, human-readable representation of photos, animals, taxonomy,
+and Trash state.
+
+**Why it matters:** User-owned metadata should remain inspectable and reusable
+without a running FaunaVault application. An export also provides a useful audit
+inventory alongside, but not instead of, a verified backup.
+
+**Proposed direction:** Produce a deterministic, schema-versioned JSON export from
+a consistent read-only snapshot, with an optional flat photo CSV for common tools.
+Include active/Trash state, user-edited photo metadata, stable animal identifiers
+and display names, taxonomy provider identifiers/names, timestamps, backup-relative
+original paths, sizes, and SHA-256 values.
+
+**Non-goals:** No import path in this item, no cloud sync, no alternate primary
+database, no media duplication, and no claim that the export alone can restore
+the application.
+
+**Complete when:**
+
+- exports contain no absolute source paths, credentials, or transient staging
+  state and have documented encoding, ordering, null, and version semantics;
+- active and Trash records, Unicode metadata, linked and unlinked taxonomy, and
+  empty archives have focused tests;
+- record counts and original-file inventory reconcile with the source snapshot;
+  and
+- the README explains how to inspect the export with ordinary JSON/CSV tools and
+  why verified backups remain the recovery mechanism.
+
+## Later
+
+### R3 - Minimal cross-layer browser smoke coverage
+
+**Problem:** Backend API tests and Vitest/JSDOM interaction tests are strong but
+separate. CI does not currently prove that a real browser, built frontend, and
+isolated backend agree on the highest-risk workflows.
+
+**Why it matters:** A small contract-level check can catch routing, serialization,
+upload, and lifecycle integration failures that either test layer can miss alone.
+
+**Proposed direction:** Add only a few deterministic local browser workflows for
+upload/duplicate review, catalog-detail navigation, and Trash restore/permanent
+delete using temporary storage and synthetic images.
+
+**Non-goals:** No broad browser matrix, screenshot suite, real Ollama/GBIF calls,
+or attempt to duplicate all component and backend tests.
+
+**Complete when:** The selected flows run against isolated disposable data, cover
+both successful and safety-critical refusal paths, add acceptable CI time, and
+leave no dependency on the user's archive or network services.
+
+## Conditional work
+
+| Candidate | Current conclusion | Trigger to reconsider |
+| --- | --- | --- |
+| SQLite FTS | Not justified now. Current substring search is scan-based, but the indexed, paginated catalog remains appropriate for a personal archive in the low tens of thousands without observed latency evidence. FTS would add synchronization and query-semantics complexity. | Representative searches on a real-sized archive become noticeably slow and profiling identifies text matching, rather than facets, joins, sorting, or image loading, as the cause. Benchmark the existing query and an FTS prototype before choosing it. |
+| Derivative force regeneration or format/quality migration | Not needed while current dimensions, formats, and quality settings remain valid. Doctor and repair already handle missing or invalid derivatives and deliberately preserve healthy files. | The variant algorithm, size, quality, or output format changes and existing healthy derivatives must be upgraded deliberately. |
+| Backup format v2 | Not needed for the current complete, portable, uncompressed cold backup. Schema compatibility should be solved without changing the container format unless necessary. | A requirement such as compression, encryption, incremental storage, or incompatible payload layout cannot be added safely within v1 compatibility. |
+| Persistent local diagnostic logs | Not scheduled. Durable job records, focused domain warnings/errors, Uvicorn output, and explicit backup/maintenance reports cover current operations without enterprise observability. | Repeated upload, lifecycle, classification, backup, or maintenance failures cannot be diagnosed from current state and console output, or a packaged runtime no longer has a useful console. Use bounded local logs and operation IDs only; no telemetry or external collector. |
+| Additional state/build/orchestration tooling | Not justified by the current frontend boundaries or root commands. | Shared client state, test runtime, release complexity, or multi-process development becomes a measured source of defects or material delay. |
+
+## Intentionally deferred
+
+- Cloud sync, multi-device coordination, authentication, and multi-user roles.
+- External databases, distributed queues, Redis/Celery, message brokers,
+  microservices, containers, or orchestration platforms.
+- Telemetry, SaaS monitoring, external log collectors, vector search, or
+  perceptual-similarity search.
+- Destructive automatic restore, automatic original recovery, orphan deletion,
+  automatic Trash expiry, or metadata/row reconstruction from guesses.
+- Scheduled remote/incremental backup management and background maintenance
+  workers until a concrete retention or unattended-operation requirement exists.
+
+These are product-boundary decisions, not unfinished work. Reconsider them only
+when FaunaVault's actual requirements change.
