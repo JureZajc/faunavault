@@ -68,6 +68,33 @@ The root README contains the format layout, complete inclusion/exclusion policy,
 limitations, and safe manual restore procedure. There is no automated restore
 command.
 
+## Live archive maintenance
+
+Stop the backend before operating on the configured live archive:
+
+```powershell
+uv run faunavault-maintenance doctor
+uv run faunavault-maintenance repair-derived
+uv run faunavault-maintenance repair-derived --apply
+```
+
+`doctor` is read-only and covers SQLite/schema integrity, active and Trash
+inventory, authoritative original hashes/sizes/decodability, structurally valid
+resized and thumbnail files, safe paths, lifecycle state, perceptual-hash format,
+and bounded orphan reporting. `repair-derived` defaults to a dry run; only
+`--apply` atomically replaces missing or invalid derivatives whose originals are
+fully trusted. It never changes originals, database rows, metadata, hashes,
+taxonomy, jobs, or Trash state, and it never deletes orphans. Non-empty
+`.staging` or `.purge` blocks both operations. Apply uses same-directory unique
+temporary files and the exact upload variant generator, then performs a complete
+doctor pass.
+
+Exit `0` means healthy with optional warnings, `1` means integrity errors or
+repairable defects remain, and `2` means usage/configuration/startup failure.
+Missing or damaged originals require recovery from a verified backup; the
+maintenance CLI cannot recreate them. See the root README for the complete cold
+operation, interruption, and Windows atomic-replacement guidance.
+
 Classification is asynchronous and local-first. One lifespan-owned in-process worker claims SQLite jobs in `queued_at` order and processes them serially. Status and safe failures survive browser refresh and backend restart; interrupted running jobs are marked failed for explicit retry. The worker records requested/actual model, fallback use, attempt count, duration, and prompt version. FaunaVault supports one backend process, not multiple Uvicorn workers.
 
 `POST /classification-jobs`, `GET /classification-jobs`, `GET /classification-jobs/{id}`, and `POST /classification-jobs/{id}/retry` are the canonical API. The retained `/photos/{id}/classify` and `/photos/classify-pending` URLs now return HTTP 202 job resources and no longer provide synchronous response contracts.

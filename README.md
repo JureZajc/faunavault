@@ -239,10 +239,11 @@ faunavault-backup-<UTC timestamp>-<id>/
 
 The SQLite snapshot contains photos, animals, taxonomy, schema migrations, and
 classification jobs. All referenced original, resized, and thumbnail files are
-included for both active photos and Trash. Derived variants are retained because
-the current application has no repair/regeneration command. Upload staging,
-purge journals, SQLite sidecars, pre-migration database copies, environment
-files, credentials, caches, dependencies, and build artifacts are excluded.
+included for both active photos and Trash. Derived variants remain included so
+each backup is complete and immediately usable, even though they can now be
+regenerated from verified originals. Upload staging, purge journals, SQLite
+sidecars, pre-migration database copies, environment files, credentials, caches,
+dependencies, and build artifacts are excluded.
 Non-empty `.staging` or `.purge` state blocks creation; let normal backend
 startup reconcile an interrupted purge, stop the backend again, and retry.
 
@@ -252,6 +253,48 @@ paths, and verification never needs the original machine or live FaunaVault
 configuration. Checksums detect accidental corruption, not malicious rewriting
 of both the payload and manifest. Unexpected regular files are warnings;
 symlinks and junctions are rejected and never followed.
+
+### Live archive health and derived-image repair
+
+Archive-wide maintenance is also deliberately cold. Stop the backend and keep
+it stopped for the entire command. From `backend`, inspect the configured live
+SQLite database and image root with:
+
+```powershell
+uv run faunavault-maintenance doctor
+uv run faunavault-maintenance repair-derived
+uv run faunavault-maintenance repair-derived --apply
+```
+
+`doctor` is read-only. It checks SQLite integrity, foreign keys and migrations;
+active and Trash inventory; safe filenames and lifecycle state; original
+SHA-256, size, format, decodability and pixel limits; resized/thumbnail format
+and dimensions; perceptual-hash format; and unowned files. It uses a temporary
+SQLite snapshot and verifies that the live inventory did not change during the
+scan. Ordinary orphan files and directories are warnings and are never deleted.
+
+`repair-derived` performs the same inspection and defaults to a dry run. It
+lists only missing or invalid resized/thumbnail files whose originals pass the
+complete trust check. `--apply` is required to write anything. Each new variant
+is generated with the upload pipeline's current EXIF, sizing, format and quality
+semantics, validated beside its target, and atomically promoted on the same
+filesystem. On Windows, a sharing or permission failure leaves the prior target
+in place and is reported for retry. Healthy variants and their mtimes remain
+untouched; active and Trash photos receive identical protection.
+
+Maintenance never changes originals, SQLite rows, original checksums,
+perceptual hashes, metadata, taxonomy, classification jobs, or Trash state. A
+missing, corrupt, or checksum-mismatched original is not repairable by this tool;
+recover it from a separately verified backup. Non-empty `.staging` or `.purge`
+state blocks maintenance. Let normal startup reconcile purge state, stop the
+backend again, and retry. Recognizable interrupted-maintenance temp files are
+reported as warnings and ignored as repair sources.
+
+Exit codes are stable for automation: `0` means the completed archive check is
+healthy (warnings are allowed), `1` means errors or repairable defects remain,
+and `2` means usage, configuration, or startup I/O prevented a reliable check.
+An applied repair finishes with a complete doctor pass and reports success only
+when no integrity or repairable findings remain.
 
 ### Safe manual restore
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, func, select
 
@@ -20,6 +20,15 @@ from app.config import Settings
 from app.models import Animal, Photo, utc_now
 from app.schemas import TrashMutationResponse, TrashPage
 from app.services.classification_jobs import fail_active_jobs_for_photo
+from app.services.image_variants import (
+    ALLOWED_EXTENSIONS,
+    EXPECTED_FORMAT,
+    EXPECTED_MEDIA_TYPE,
+    RESIZED_MAX_SIZE,
+    THUMBNAIL_MAX_SIZE,
+    normalized_extension,
+    save_variant,
+)
 from app.services.perceptual_duplicates import (
     find_visual_duplicate_candidates,
     perceptual_hash_for_path,
@@ -27,16 +36,6 @@ from app.services.perceptual_duplicates import (
 
 logger = logging.getLogger(__name__)
 UPLOAD_LOCK = asyncio.Lock()
-ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
-EXPECTED_FORMAT = {"jpg": "JPEG", "jpeg": "JPEG", "png": "PNG", "webp": "WEBP"}
-EXPECTED_MEDIA_TYPE = {
-    "jpg": "image/jpeg",
-    "jpeg": "image/jpeg",
-    "png": "image/png",
-    "webp": "image/webp",
-}
-RESIZED_MAX_SIZE = (1600, 1600)
-THUMBNAIL_MAX_SIZE = (480, 480)
 
 
 @dataclass(frozen=True)
@@ -64,8 +63,7 @@ def ensure_storage(settings: Settings) -> None:
 
 
 def clean_extension(filename: str) -> str:
-    extension = Path(filename).suffix.lower().lstrip(".")
-    return "jpeg" if extension == "jpg" else extension
+    return normalized_extension(Path(filename).suffix)
 
 
 def safe_original_filename(filename: str | None) -> str:
@@ -88,19 +86,6 @@ def stored_image_path(
     except ValueError:
         return None
     return image_path if image_path.parent == image_dir else None
-
-
-def _save_variant(
-    image: Image.Image, path: Path, extension: str, size: tuple[int, int]
-) -> None:
-    variant = ImageOps.exif_transpose(image).copy()
-    variant.thumbnail(size, Image.Resampling.LANCZOS)
-    if extension == "jpeg" and variant.mode not in ("RGB", "L"):
-        variant = variant.convert("RGB")
-    save_kwargs = (
-        {"quality": 88, "optimize": True} if extension in {"jpeg", "webp"} else {}
-    )
-    variant.save(path, format=EXPECTED_FORMAT[extension], **save_kwargs)
 
 
 def _cleanup(paths: list[Path]) -> None:
@@ -163,10 +148,8 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
                     probe.verify()
                 with Image.open(staged_original) as image:
                     image.load()
-                    _save_variant(image, staged_resized, extension, RESIZED_MAX_SIZE)
-                    _save_variant(
-                        image, staged_thumbnail, extension, THUMBNAIL_MAX_SIZE
-                    )
+                    save_variant(image, staged_resized, extension, RESIZED_MAX_SIZE)
+                    save_variant(image, staged_thumbnail, extension, THUMBNAIL_MAX_SIZE)
         except HTTPException:
             raise
         except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:

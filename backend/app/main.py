@@ -51,10 +51,7 @@ DATABASE_URL = settings.resolved_database_url
 IMAGE_ROOT = settings.image_dir
 IMAGE_DIRS = settings.image_dirs
 
-ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_IMAGE_TYPES = set(IMAGE_DIRS)
-RESIZED_MAX_SIZE = (1600, 1600)
-THUMBNAIL_MAX_SIZE = (480, 480)
 
 
 async def _run_perceptual_hash_backfill() -> None:
