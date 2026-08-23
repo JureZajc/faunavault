@@ -16,6 +16,7 @@ ORIGINAL_FILENAME = "faunavault-e2e-original.jpg"
 RECOMPRESSED_FILENAME = "faunavault-e2e-recompressed.jpg"
 BULK_FIRST_FILENAME = "faunavault-e2e-bulk-first.jpg"
 BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg"
+HEIC_FILENAME = "faunavault-e2e-iphone.heic"
 
 
 def scene() -> Image.Image:
@@ -51,6 +52,17 @@ def bulk_scene(variant: int) -> Image.Image:
         for offset in range(0, 480, 60):
             draw.rectangle((0, offset, 640, offset + 29), fill=(145, 55, 95))
         draw.polygon([(320, 35), (590, 430), (50, 430)], fill=(70, 175, 105))
+    return image
+
+
+def heic_scene() -> Image.Image:
+    image = Image.new("RGB", (720, 540), (33, 48, 76))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 360, 720, 540), fill=(205, 145, 54))
+    draw.polygon([(80, 330), (275, 65), (470, 330)], fill=(88, 170, 132))
+    draw.polygon([(300, 330), (520, 90), (690, 330)], fill=(182, 83, 98))
+    draw.ellipse((525, 35, 655, 165), fill=(248, 225, 120))
+    draw.rectangle((42, 390, 678, 455), fill=(45, 75, 115))
     return image
 
 
@@ -91,6 +103,7 @@ def generate(test_root: Path) -> None:
     recompressed = fixtures / RECOMPRESSED_FILENAME
     bulk_first = fixtures / BULK_FIRST_FILENAME
     bulk_second = fixtures / BULK_SECOND_FILENAME
+    heic = fixtures / HEIC_FILENAME
 
     exif = Image.Exif()
     exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:22 14:30:00"
@@ -115,7 +128,18 @@ def generate(test_root: Path) -> None:
     temporary_recompressed.replace(recompressed)
     bulk_scene(1).save(bulk_first, format="JPEG", quality=92)
     bulk_scene(2).save(bulk_second, format="JPEG", quality=92)
-    fixture_hashes = [image_hash(path) for path in (original, bulk_first, bulk_second)]
+
+    heic_exif = Image.Exif()
+    heic_exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:23 09:15:00"
+    heic_exif[int(ExifTags.Base.OffsetTimeOriginal)] = "+02:00"
+    heic_exif[int(ExifTags.Base.Make)] = "Apple"
+    heic_exif[int(ExifTags.Base.Model)] = "iPhone Test"
+    heic_exif[int(ExifTags.Base.LensModel)] = "Synthetic HEIC Lens"
+    heic_scene().save(heic, format="HEIF", quality=90, exif=heic_exif)
+
+    fixture_hashes = [
+        image_hash(path) for path in (original, bulk_first, bulk_second, heic)
+    ]
     for first_index, first_hash in enumerate(fixture_hashes):
         for second_hash in fixture_hashes[first_index + 1 :]:
             fixture_distance = hamming_distance(first_hash, second_hash)

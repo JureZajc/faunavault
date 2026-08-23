@@ -5,7 +5,9 @@ from io import BytesIO
 import pytest
 from PIL import ExifTags, Image, TiffImagePlugin
 
+from app.services.image_codecs import open_image
 from app.services.photo_metadata import extract_photo_metadata
+from tests.heic_fixtures import heic_bytes
 
 
 def image_with_exif(exif: Image.Exif | None = None, size=(40, 20)) -> Image.Image:
@@ -162,3 +164,20 @@ def test_no_exif_returns_dimensions_and_nullable_metadata():
     assert metadata.captured_at is None
     assert metadata.camera_make is None
     assert metadata.latitude is None
+
+
+def test_heic_plugin_feeds_existing_extractor_without_double_orientation():
+    payload = heic_bytes(metadata=True, orientation=6, size=(40, 20))
+
+    with open_image(BytesIO(payload)) as image:
+        image.load()
+        metadata = extract_photo_metadata(image)
+
+    assert metadata.captured_at.isoformat() == "2024-05-24T18:42:00"
+    assert metadata.captured_at_offset_minutes == 120
+    assert metadata.camera_make == "Apple"
+    assert metadata.camera_model == "iPhone Test"
+    assert metadata.lens_model == "Synthetic 26mm"
+    assert (metadata.image_width, metadata.image_height) == (20, 40)
+    assert metadata.latitude == pytest.approx(46.12345)
+    assert metadata.longitude == pytest.approx(14.5432111111)

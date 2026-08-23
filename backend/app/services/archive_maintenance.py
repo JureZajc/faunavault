@@ -28,19 +28,20 @@ from app.archive_integrity import (
 )
 from app.config import Settings
 from app.migrations import LATEST_SCHEMA_VERSION
+from app.services.image_codecs import open_image
 from app.services.image_variants import (
-    EXPECTED_FORMAT,
-    EXPECTED_MEDIA_TYPE,
     RESIZED_MAX_SIZE,
     THUMBNAIL_MAX_SIZE,
+    ImageEncoding,
+    SourceFormatPolicy,
     normalized_extension,
     save_variant,
+    source_format_for_extension,
 )
 
 Severity = Literal["warning", "error", "repair"]
 ProgressCallback = Callable[[int, int], None]
 MAINTENANCE_TEMP_PREFIX = ".faunavault-maintenance-"
-SUPPORTED_EXTENSIONS = {"jpeg", "png", "webp"}
 GLOBAL_BLOCKING_CODES = {
     "archive_changed",
     "database_invalid",
@@ -68,7 +69,7 @@ class RepairCandidate:
     photo: PhotoRecord
     role: Literal["resized", "thumbs"]
     filename: str
-    original_extension: str
+    derivative_format: ImageEncoding
     target_identity: FileIdentity | None
     defect_code: str
 
@@ -134,7 +135,7 @@ class ImageValidation:
 @dataclass(frozen=True)
 class OriginalValidation:
     trusted: bool
-    extension: str | None
+    source_policy: SourceFormatPolicy | None
     findings: list[Finding]
 
 
@@ -257,7 +258,7 @@ def _decode_image(
         before = file_identity(path)
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(path) as probe:
+            with open_image(path) as probe:
                 if probe.format != expected_format:
                     return ImageValidation(
                         False,
@@ -278,8 +279,15 @@ def _decode_image(
                         before,
                     )
                 probe.verify()
-            with Image.open(path) as image:
+            with open_image(path) as image:
                 image.load()
+                if image.width * image.height > max_image_pixels:
+                    return ImageValidation(
+                        False,
+                        "pixel_limit",
+                        "image exceeds MAX_IMAGE_PIXELS",
+                        before,
+                    )
         after = file_identity(path)
         if before != after:
             return ImageValidation(False, "changed", "file changed while being read")
@@ -288,7 +296,14 @@ def _decode_image(
         return ImageValidation(
             False, "pixel_limit", "image exceeds MAX_IMAGE_PIXELS", before
         )
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
+    except (
+        UnidentifiedImageError,
+        EOFError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        ValueError,
+    ) as exc:
         return ImageValidation(
             False,
             "corrupt",
@@ -306,14 +321,14 @@ def _validate_original(
 ) -> OriginalValidation:
     findings: list[Finding] = []
     try:
-        extension = normalized_extension(photo.stored_filename)
+        source_policy = source_format_for_extension(photo.stored_filename)
         path = _safe_owned_path(storage.variants["original"], photo.stored_filename)
     except ArchiveIntegrityError as exc:
         findings.append(
             _finding("error", "original_unsafe_path", str(exc), photo, "original")
         )
         return OriginalValidation(False, None, findings)
-    if extension not in SUPPORTED_EXTENSIONS:
+    if source_policy is None:
         findings.append(
             _finding(
                 "error",
@@ -324,9 +339,9 @@ def _validate_original(
                 photo.stored_filename,
             )
         )
-        return OriginalValidation(False, extension, findings)
-    expected_format = EXPECTED_FORMAT[extension]
-    expected_media_type = EXPECTED_MEDIA_TYPE[extension]
+        return OriginalValidation(False, None, findings)
+    expected_format = source_policy.source.pillow_format
+    expected_media_type = source_policy.source.media_type
     if photo.media_type is None:
         findings.append(
             _finding(
@@ -361,7 +376,7 @@ def _validate_original(
                 photo.stored_filename,
             )
         )
-        return OriginalValidation(False, extension, findings)
+        return OriginalValidation(False, source_policy, findings)
     try:
         before = decoded.identity
         if is_link_or_junction(path):
@@ -381,7 +396,7 @@ def _validate_original(
                 photo.stored_filename,
             )
         )
-        return OriginalValidation(False, extension, findings)
+        return OriginalValidation(False, source_policy, findings)
     if photo.content_sha256 is None:
         findings.append(
             _finding(
@@ -427,16 +442,16 @@ def _validate_original(
             )
         )
     trusted = not any(finding.severity == "error" for finding in findings)
-    return OriginalValidation(trusted, extension, findings)
+    return OriginalValidation(trusted, source_policy, findings)
 
 
 def _validate_derivative(
     path: Path,
-    extension: str,
+    encoding: ImageEncoding,
     bound: tuple[int, int],
     max_image_pixels: int,
 ) -> ImageValidation:
-    return _decode_image(path, EXPECTED_FORMAT[extension], max_image_pixels, bound)
+    return _decode_image(path, encoding.pillow_format, max_image_pixels, bound)
 
 
 def _validate_inventory_names(
@@ -450,7 +465,6 @@ def _validate_inventory_names(
             "resized": photo.resized_filename,
             "thumbs": photo.thumbnail_filename,
         }
-        extensions: dict[str, str] = {}
         for role, filename in names.items():
             try:
                 validate_flat_filename(filename)
@@ -460,8 +474,6 @@ def _validate_inventory_names(
                     _finding("error", f"{role}_unsafe_path", str(exc), photo, role)
                 )
                 continue
-            extension = normalized_extension(filename)
-            extensions[role] = extension
             key = (role, filename.casefold())
             if key in folded:
                 invalid.add(folded[key])
@@ -478,16 +490,23 @@ def _validate_inventory_names(
                 )
             else:
                 folded[key] = photo.id
-        if len(extensions) == 3 and len(set(extensions.values())) != 1:
-            invalid.add(photo.id)
-            result.findings.append(
-                _finding(
-                    "error",
-                    "variant_format_mismatch",
-                    "original and derivative filename formats do not agree",
-                    photo,
+        source_policy = source_format_for_extension(photo.stored_filename)
+        if source_policy is not None:
+            expected = source_policy.derivative.extension
+            derivative_extensions = {
+                normalized_extension(photo.resized_filename),
+                normalized_extension(photo.thumbnail_filename),
+            }
+            if derivative_extensions != {expected}:
+                invalid.add(photo.id)
+                result.findings.append(
+                    _finding(
+                        "error",
+                        "variant_format_mismatch",
+                        f"derivative filename formats must be {expected}",
+                        photo,
+                    )
                 )
-            )
     return invalid
 
 
@@ -553,16 +572,19 @@ def doctor(
             result.findings.extend(original.findings)
             if original.trusted:
                 result.healthy_counts["original"] += 1
-            extension = original.extension
+            source_policy = original.source_policy
             for role, filename, bound in (
                 ("resized", photo.resized_filename, RESIZED_MAX_SIZE),
                 ("thumbs", photo.thumbnail_filename, THUMBNAIL_MAX_SIZE),
             ):
-                if photo.id in invalid_names or extension not in SUPPORTED_EXTENSIONS:
+                if photo.id in invalid_names or source_policy is None:
                     continue
                 path = storage.variants[role] / filename
                 validation = _validate_derivative(
-                    path, extension, bound, settings.max_image_pixels
+                    path,
+                    source_policy.derivative,
+                    bound,
+                    settings.max_image_pixels,
                 )
                 if validation.healthy:
                     result.healthy_counts[role] += 1
@@ -597,7 +619,7 @@ def doctor(
                             photo,
                             role,
                             filename,
-                            extension,
+                            source_policy.derivative,
                             validation.identity,
                             f"{code_role}_{validation.code}",
                         )
@@ -737,7 +759,7 @@ def repair_derived(
         target = storage.variants[candidate.role] / candidate.filename
         current = _validate_derivative(
             target,
-            candidate.original_extension,
+            candidate.derivative_format,
             _candidate_bound(candidate.role),
             settings.max_image_pixels,
         )
@@ -765,19 +787,19 @@ def repair_derived(
             source_before = file_identity(original_path)
             with warnings.catch_warnings():
                 warnings.simplefilter("error", Image.DecompressionBombWarning)
-                with Image.open(original_path) as image:
+                with open_image(original_path) as image:
                     image.load()
                     save_variant(
                         image,
                         temporary,
-                        candidate.original_extension,
+                        candidate.derivative_format,
                         _candidate_bound(candidate.role),
                     )
             if file_identity(original_path) != source_before:
                 raise ArchiveIntegrityError("original changed while rendering")
             generated = _validate_derivative(
                 temporary,
-                candidate.original_extension,
+                candidate.derivative_format,
                 _candidate_bound(candidate.role),
                 settings.max_image_pixels,
             )
@@ -787,7 +809,7 @@ def repair_derived(
                 )
             latest_target = _validate_derivative(
                 target,
-                candidate.original_extension,
+                candidate.derivative_format,
                 _candidate_bound(candidate.role),
                 settings.max_image_pixels,
             )
@@ -801,7 +823,7 @@ def repair_derived(
             replace_file(temporary, target)
             promoted = _validate_derivative(
                 target,
-                candidate.original_extension,
+                candidate.derivative_format,
                 _candidate_bound(candidate.role),
                 settings.max_image_pixels,
             )
@@ -815,7 +837,10 @@ def repair_derived(
             Image.DecompressionBombError,
             Image.DecompressionBombWarning,
             UnidentifiedImageError,
+            EOFError,
             OSError,
+            RuntimeError,
+            SyntaxError,
             ValueError,
         ) as exc:
             repair.failed += 1

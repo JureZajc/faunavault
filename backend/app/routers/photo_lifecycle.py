@@ -18,6 +18,7 @@ from app.schemas import (
     TrashMutationResponse,
     TrashPage,
 )
+from app.services.image_variants import encoding_for_filename
 from app.services.photo_lifecycle import (
     create_photo_from_upload,
     list_trash,
@@ -130,7 +131,11 @@ def create_photo_lifecycle_router(
         )
         if path is None or not path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
-        return FileResponse(path)
+        encoding = encoding_for_filename(photo.thumbnail_filename)
+        return FileResponse(
+            path,
+            media_type=encoding.media_type if encoding is not None else None,
+        )
 
     @router.get("/photos", response_model=list[Photo])
     def list_photos(session: SessionDep) -> list[Photo]:

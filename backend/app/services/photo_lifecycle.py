@@ -20,14 +20,14 @@ from app.config import Settings
 from app.models import Animal, Photo, utc_now
 from app.schemas import TrashMutationResponse, TrashPage
 from app.services.classification_jobs import fail_active_jobs_for_photos
+from app.services.image_codecs import open_image
 from app.services.image_variants import (
-    ALLOWED_EXTENSIONS,
-    EXPECTED_FORMAT,
-    EXPECTED_MEDIA_TYPE,
     RESIZED_MAX_SIZE,
     THUMBNAIL_MAX_SIZE,
+    ImageEncoding,
     normalized_extension,
     save_variant,
+    source_format_for_extension,
 )
 from app.services.perceptual_duplicates import (
     find_visual_duplicate_candidates,
@@ -42,7 +42,8 @@ UPLOAD_LOCK = asyncio.Lock()
 @dataclass(frozen=True)
 class PreparedUpload:
     original_filename: str
-    extension: str
+    source_format: ImageEncoding
+    derivative_format: ImageEncoding
     media_type: str
     digest: str
     size: int
@@ -103,12 +104,12 @@ def _cleanup(paths: list[Path]) -> None:
 
 async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload:
     original_filename = safe_original_filename(file.filename)
-    extension = clean_extension(original_filename)
-    if extension not in ALLOWED_EXTENSIONS:
+    source_policy = source_format_for_extension(clean_extension(original_filename))
+    if source_policy is None:
         raise HTTPException(status_code=415, detail="Unsupported image format")
 
     media_type = (file.content_type or "").lower()
-    if media_type != EXPECTED_MEDIA_TYPE[extension]:
+    if media_type not in source_policy.accepted_media_types:
         raise HTTPException(
             status_code=415, detail="Image MIME type does not match its filename"
         )
@@ -137,8 +138,8 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("error", Image.DecompressionBombWarning)
-                with Image.open(staged_original) as probe:
-                    if probe.format != EXPECTED_FORMAT[extension]:
+                with open_image(staged_original) as probe:
+                    if probe.format != source_policy.source.pillow_format:
                         raise HTTPException(
                             status_code=415,
                             detail="Image contents do not match the declared format",
@@ -149,19 +150,40 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
                             status_code=413, detail="Image dimensions are too large"
                         )
                     probe.verify()
-                with Image.open(staged_original) as image:
+                with open_image(staged_original) as image:
                     image.load()
+                    if image.width * image.height > settings.max_image_pixels:
+                        raise HTTPException(
+                            status_code=413, detail="Image dimensions are too large"
+                        )
                     metadata = extract_photo_metadata(image)
                     uploaded_perceptual_hash = perceptual_hash(image)
-                    save_variant(image, staged_resized, extension, RESIZED_MAX_SIZE)
-                    save_variant(image, staged_thumbnail, extension, THUMBNAIL_MAX_SIZE)
+                    save_variant(
+                        image,
+                        staged_resized,
+                        source_policy.derivative,
+                        RESIZED_MAX_SIZE,
+                    )
+                    save_variant(
+                        image,
+                        staged_thumbnail,
+                        source_policy.derivative,
+                        THUMBNAIL_MAX_SIZE,
+                    )
         except HTTPException:
             raise
         except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
             raise HTTPException(
                 status_code=413, detail="Image dimensions are too large"
             ) from exc
-        except (UnidentifiedImageError, OSError, ValueError) as exc:
+        except (
+            UnidentifiedImageError,
+            EOFError,
+            OSError,
+            RuntimeError,
+            SyntaxError,
+            ValueError,
+        ) as exc:
             raise HTTPException(
                 status_code=400, detail="Uploaded file is not a valid image"
             ) from exc
@@ -172,16 +194,17 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
     safe_id = uuid4().hex
     return PreparedUpload(
         original_filename=original_filename,
-        extension=extension,
+        source_format=source_policy.source,
+        derivative_format=source_policy.derivative,
         media_type=media_type,
         digest=digest.hexdigest(),
         size=size,
         staged_original=staged_original,
         staged_resized=staged_resized,
         staged_thumbnail=staged_thumbnail,
-        stored_filename=f"{safe_id}.{extension}",
-        resized_filename=f"{safe_id}_resized.{extension}",
-        thumbnail_filename=f"{safe_id}_thumb.{extension}",
+        stored_filename=f"{safe_id}.{source_policy.source.extension}",
+        resized_filename=f"{safe_id}_resized.{source_policy.derivative.extension}",
+        thumbnail_filename=f"{safe_id}_thumb.{source_policy.derivative.extension}",
         metadata=metadata,
         perceptual_hash=uploaded_perceptual_hash,
     )

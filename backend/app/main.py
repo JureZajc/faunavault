@@ -35,6 +35,7 @@ from app.services.classification_jobs import (
     ClassificationWorker,
     recover_interrupted_jobs,
 )
+from app.services.image_variants import encoding_for_filename
 from app.services.perceptual_duplicates import run_perceptual_hash_backfill
 from app.services.photo_lifecycle import active_photo_or_404
 from app.storage_startup import initialize_archive_storage
@@ -220,4 +221,8 @@ def get_image(image_type: str, filename: str) -> FileResponse:
     if not image_path.exists() or not image_path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
 
-    return FileResponse(image_path)
+    encoding = encoding_for_filename(safe_filename)
+    return FileResponse(
+        image_path,
+        media_type=encoding.media_type if encoding is not None else None,
+    )

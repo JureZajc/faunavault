@@ -11,6 +11,7 @@ from app.config import Settings
 from app.database import create_database_engine
 from app.migrations import LATEST_SCHEMA_VERSION
 from app.models import Photo
+from app.services.image_codecs import open_image
 from app.services.photo_lifecycle import stored_image_path
 from app.services.photo_metadata import ExtractedPhotoMetadata, extract_photo_metadata
 
@@ -115,7 +116,7 @@ def backfill_photo_metadata(
                             warnings.simplefilter(
                                 "error", Image.DecompressionBombWarning
                             )
-                            with Image.open(path) as image:
+                            with open_image(path) as image:
                                 if (
                                     image.width * image.height
                                     > settings.max_image_pixels
@@ -127,7 +128,10 @@ def backfill_photo_metadata(
                         Image.DecompressionBombError,
                         Image.DecompressionBombWarning,
                         UnidentifiedImageError,
+                        EOFError,
                         OSError,
+                        RuntimeError,
+                        SyntaxError,
                         ValueError,
                     ) as exc:
                         errors.append(MetadataBackfillError(cursor, str(exc)))

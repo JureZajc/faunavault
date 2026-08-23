@@ -16,6 +16,7 @@ from sqlmodel import Session, func, select
 from app.config import Settings
 from app.models import Photo
 from app.schemas import VisualDuplicateCandidate
+from app.services.image_codecs import open_image
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def perceptual_hash(image: Image.Image) -> str:
 def perceptual_hash_for_path(path: Path, max_image_pixels: int) -> str:
     with warnings.catch_warnings():
         warnings.simplefilter("error", Image.DecompressionBombWarning)
-        with Image.open(path) as image:
+        with open_image(path) as image:
             width, height = image.size
             if width * height > max_image_pixels:
                 raise ValueError("Image dimensions are too large")

@@ -6,7 +6,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 
 ## Features
 
-- Interactive single- and multi-file upload with JPEG, PNG, and WebP content validation and a frontend-controlled sequential queue
+- Interactive single- and multi-file upload with JPEG, PNG, WebP, HEIC, and HEIF content validation and a frontend-controlled sequential queue
 - Exact duplicate detection using SHA-256, including duplicates currently in Trash
 - Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
@@ -119,9 +119,19 @@ filenames.
 
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
 - Backend: FastAPI, Python 3.12+, SQLModel, SQLite, Pillow
-- AI: local Ollama (`qwen3-vl:8b`, with `gemma4:e4b` fallback by default)
+- AI: local Ollama (`qwen3-vl:8b` for primary and fallback by default)
 
-The default Windows configuration stores image files under `E:/FaunaVault/data/images` and SQLite metadata under `backend/data/faunavault.db`. Existing `.env` values take precedence; upgrades do not relocate data. Originals are preserved byte-for-byte. Resized and thumbnail files are reproducible derivatives.
+The default Windows configuration stores image files under `E:/FaunaVault/data/images` and SQLite metadata under `backend/data/faunavault.db`. Existing `.env` values take precedence; upgrades do not relocate data. Originals are preserved byte-for-byte. Resized and thumbnail files are reproducible derivatives. JPEG, PNG, and WebP retain their existing derivative formats; HEIC and HEIF originals use JPEG previews so every existing catalog, detail, Map, lightbox, and classifier path remains browser-compatible.
+
+HEIC/HEIF decoding and preview conversion happen locally through the locked
+Pillow codec dependency; no photo is sent to a conversion service and no system
+codec installation is required. For a multi-image container, FaunaVault uses
+the HEIF-designated primary image and ignores embedded thumbnails, auxiliary or
+depth images, and other frames while retaining the complete source container.
+Preview decoding is 8-bit RGB/RGBA and does not promise HDR, gain-map, or ICC
+color fidelity; that source information remains only in the untouched original.
+HEIC/HEIF editing, re-encoding, AVIF, sequence formats, and client-side HEIC
+rendering are not supported.
 
 On upload, schema 11 stores supported image-stated metadata without rewriting
 the original: EXIF capture time and its separately recorded offset, camera make
@@ -132,6 +142,10 @@ time never falls back to it. GPS stays in the local SQLite database and appears
 as plain coordinates plus an interactive map. Photos without complete GPS do not
 show a detail map or appear on the archive Map. Moving a Photo to Trash removes
 it from Map; restore returns it without changing its coordinates.
+
+EXIF/GPS extraction is local and uses the metadata exposed by the decoded
+primary image. Not every camera or exported HEIC/HEIF file contains these tags,
+so capture, camera, lens, and location fields may legitimately remain blank.
 
 The basemap defaults to standard OpenStreetMap raster tiles with visible
 attribution. The browser requests only tiles for the visible viewport; FaunaVault
@@ -233,7 +247,7 @@ IMAGE_DIR=E:/FaunaVault/data/images
 DATABASE_URL=sqlite:///./data/faunavault.db
 OLLAMA_BASE_URL=http://localhost:11434
 AI_PRIMARY_MODEL=qwen3-vl:8b
-AI_FALLBACK_MODEL=gemma4:e4b
+AI_FALLBACK_MODEL=qwen3-vl:8b
 AI_CONFIDENCE_THRESHOLD=0.65
 MAX_UPLOAD_BYTES=52428800
 MAX_IMAGE_PIXELS=80000000

@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/faunavault.db"
     ollama_base_url: str = "http://localhost:11434"
     ai_primary_model: str = "qwen3-vl:8b"
-    ai_fallback_model: str = "gemma4:e4b"
+    ai_fallback_model: str = "qwen3-vl:8b"
     ai_confidence_threshold: float = Field(default=0.65, ge=0, le=1)
     gbif_base_url: str = "https://api.gbif.org/v1"
     max_upload_bytes: int = Field(default=50 * 1024 * 1024, ge=1)

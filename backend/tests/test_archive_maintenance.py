@@ -21,12 +21,17 @@ from app.services.archive_maintenance import (
     doctor,
     repair_derived,
 )
+from app.services.image_codecs import open_image
 from app.services.image_variants import (
+    JPEG,
+    PNG,
     RESIZED_MAX_SIZE,
     THUMBNAIL_MAX_SIZE,
+    WEBP,
     save_variant,
 )
 from app.services.photo_metadata_backfill import backfill_photo_metadata
+from tests.heic_fixtures import heic_bytes
 
 
 def image_bytes(
@@ -59,16 +64,17 @@ def add_photo(
     original_path = settings.image_dirs["original"] / original_name
     original_path.write_bytes(payload)
     with Image.open(io.BytesIO(payload)) as image:
+        encoding = {"jpeg": JPEG, "png": PNG, "webp": WEBP}[extension]
         save_variant(
             image,
             settings.image_dirs["resized"] / resized_name,
-            extension,
+            encoding,
             RESIZED_MAX_SIZE,
         )
         save_variant(
             image,
             settings.image_dirs["thumbs"] / thumbnail_name,
-            extension,
+            encoding,
             THUMBNAIL_MAX_SIZE,
         )
     animal = Animal(identifier=f"FV-MAINT-{index}")
@@ -146,6 +152,71 @@ def test_doctor_reports_healthy_active_and_trash_archive(archive):
     assert result.findings == []
 
 
+def test_heic_doctor_repair_and_metadata_backfill_share_format_policy(archive):
+    settings, engine, _, _ = archive
+    payload = heic_bytes(metadata=True, orientation=6)
+    original_name = "photo-3.heic"
+    resized_name = "photo-3_resized.jpeg"
+    thumbnail_name = "photo-3_thumb.jpeg"
+    (settings.image_dirs["original"] / original_name).write_bytes(payload)
+    with open_image(io.BytesIO(payload)) as image:
+        image.load()
+        save_variant(
+            image,
+            settings.image_dirs["resized"] / resized_name,
+            JPEG,
+            RESIZED_MAX_SIZE,
+        )
+        save_variant(
+            image,
+            settings.image_dirs["thumbs"] / thumbnail_name,
+            JPEG,
+            THUMBNAIL_MAX_SIZE,
+        )
+    with Session(engine) as session:
+        animal = Animal(identifier="FV-MAINT-HEIC")
+        session.add(animal)
+        session.flush()
+        photo = Photo(
+            original_filename="iPhone.HEIC",
+            stored_filename=original_name,
+            resized_filename=resized_name,
+            thumbnail_filename=thumbnail_name,
+            animal_id=animal.id,
+            content_sha256=hashlib.sha256(payload).hexdigest(),
+            original_size_bytes=len(payload),
+            media_type="image/heic",
+            perceptual_hash="0000000000000003",
+        )
+        session.add(photo)
+        session.commit()
+        photo_id = photo.id
+
+    healthy = doctor(settings)
+    assert healthy.status == "HEALTHY"
+    assert "variant_format_mismatch" not in finding_codes(healthy)
+
+    (settings.image_dirs["resized"] / resized_name).unlink()
+    dry_run = repair_derived(settings)
+    assert dry_run.health.status == "NEEDS_REPAIR"
+    assert "resized_missing" in finding_codes(dry_run.health)
+    repaired = repair_derived(settings, apply=True)
+    assert repaired.repaired == 1
+    assert repaired.health.status == "HEALTHY"
+    with Image.open(settings.image_dirs["resized"] / resized_name) as image:
+        assert image.format == "JPEG"
+
+    backfilled = backfill_photo_metadata(settings, apply=True)
+    assert backfilled.errors == ()
+    with Session(engine) as session:
+        stored = session.get(Photo, photo_id)
+        assert stored is not None
+        assert stored.captured_at.isoformat() == "2024-05-24T18:42:00"
+        assert stored.camera_make == "Apple"
+        assert (stored.image_width, stored.image_height) == (32, 64)
+        assert stored.latitude == pytest.approx(46.12345)
+
+
 @pytest.mark.parametrize(
     ("extension", "expected_format", "expected_kwargs", "expected_mode"),
     [
@@ -176,7 +247,8 @@ def test_shared_variant_save_semantics(
     monkeypatch.setattr(Image.Image, "save", capture_save)
     source = Image.new("RGBA", (2000, 1000), (255, 0, 0, 128))
 
-    save_variant(source, tmp_path / "variant.tmp", extension, (1600, 1600))
+    encoding = {"jpeg": JPEG, "png": PNG, "webp": WEBP}[extension]
+    save_variant(source, tmp_path / "variant.tmp", encoding, (1600, 1600))
 
     assert captured == {
         "mode": expected_mode,
