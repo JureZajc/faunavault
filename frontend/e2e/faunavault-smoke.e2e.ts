@@ -8,6 +8,8 @@ const UPDATED_TITLE = "FaunaVault E2E specimen";
 const BULK_FIRST_FILENAME = "faunavault-e2e-bulk-first.jpg";
 const BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg";
 const HEIC_FILENAME = "faunavault-e2e-iphone.heic";
+const TIMELINE_JANUARY_FILENAME = "faunavault-e2e-timeline-january.jpg";
+const TIMELINE_FEBRUARY_FILENAME = "faunavault-e2e-timeline-february.jpg";
 const COLLECTION_NAME = "FaunaVault E2E bulk collection";
 const TRANSPARENT_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -367,4 +369,69 @@ test("HEIC upload produces browser-safe JPEG previews", async ({ page }) => {
   await expect(page.getByText("Apple iPhone Test", { exact: true })).toBeVisible();
   await expect(page.getByText("Synthetic HEIC Lens", { exact: true })).toBeVisible();
   await expectDecodedImage(page.getByRole("img", { name: "Unclassified" }));
+});
+
+test("Timeline groups capture months and opens the filtered List", async ({ page }) => {
+  await page.goto("/");
+  await uploadFile(page, TIMELINE_JANUARY_FILENAME);
+  await expect(uploadRow(page, TIMELINE_JANUARY_FILENAME)).toContainText("Uploaded");
+  await uploadFile(page, TIMELINE_FEBRUARY_FILENAME);
+  await expect(uploadRow(page, TIMELINE_FEBRUARY_FILENAME)).toContainText("Uploaded");
+
+  await page.getByRole("link", { name: "Timeline", exact: true }).click();
+  await expect(page).toHaveURL(/\/timeline$/);
+  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "2024", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "2023", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "View 1 photo from February 2024" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "View 1 photo from January 2023" }),
+  ).toBeVisible();
+  await expectDecodedImage(
+    page.getByRole("img", { name: TIMELINE_FEBRUARY_FILENAME }),
+  );
+  await expectDecodedImage(
+    page.getByRole("img", { name: TIMELINE_JANUARY_FILENAME }),
+  );
+
+  for (const viewport of [
+    { width: 360, height: 760 },
+    { width: 768, height: 900 },
+    { width: 1280, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(true);
+  }
+
+  await page
+    .getByRole("link", { name: "View 1 photo from February 2024" })
+    .click();
+  await expect(page).toHaveURL(/\/\?catalog_taken_from=/);
+  const listUrl = new URL(page.url());
+  expect(Object.fromEntries(listUrl.searchParams)).toEqual({
+    catalog_taken_from: "2024-02-01",
+    catalog_taken_to: "2024-02-29",
+    catalog_sort: "captured_at",
+    catalog_order: "desc",
+  });
+  await expect(page.getByLabel("Taken from")).toHaveValue("2024-02-01");
+  await expect(page.getByLabel("Taken to")).toHaveValue("2024-02-29");
+  await expect(catalogCard(page, TIMELINE_FEBRUARY_FILENAME)).toHaveCount(1);
+  await expect(catalogCard(page, TIMELINE_JANUARY_FILENAME)).toHaveCount(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/timeline$/);
+  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 });

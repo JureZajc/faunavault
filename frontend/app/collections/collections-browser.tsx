@@ -30,7 +30,7 @@ export default function CollectionsBrowser() {
 
   return <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
     <div className="mx-auto max-w-7xl px-3 py-8 sm:px-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><ArchiveNavigation active="collections" /><p className="text-sm text-stone-500">Manual photo groupings, separate from species Albums</p></div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><ArchiveNavigation active="collections" /><p className="text-sm text-stone-500 lg:text-right">Manual photo groupings, separate from species Albums</p></div>
       <header className="mt-6 flex flex-col gap-4 rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Manual organization</p><h1 className="mt-2 text-3xl font-semibold">Collections</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">Create named groups for printing, trips, favorites, or any organization you choose. Photos can appear in several Collections.</p></div>
         <button type="button" onClick={() => setNameTarget("create")} className="min-h-11 shrink-0 rounded-md bg-emerald-800 px-5 font-semibold text-white">Create Collection</button>

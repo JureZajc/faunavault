@@ -82,7 +82,8 @@ framework.
 ## Current product feature: user-defined Photo Collections
 
 Schema 10 adds normalized persisted Collections and many-to-many Photo
-membership. The five peer destinations are List, Map, Albums, Collections, and Trash.
+membership. The six peer destinations are List, Timeline, Map, Albums,
+Collections, and Trash.
 Users can create, rename, and delete Collections, add explicitly selected active
 Photos, and remove one or many memberships without changing Photo files or
 metadata. Recoverable Trash preserves membership, while permanent Photo deletion
@@ -123,6 +124,22 @@ OpenStreetMap raster tiles are requested remotely only for the visible viewport,
 with attribution, and are intercepted in browser smoke coverage so CI has no live
 tile dependency. Reverse geocoding, search, GPS editing, viewport APIs, spatial
 indexes, alternate layers, and offline tile downloads remain explicitly deferred.
+
+## Current product feature: Photo Timeline
+
+The dedicated `/timeline` destination is a compact chronological index into the
+existing List catalog. A typed `GET /catalog/timeline` projection groups active
+Photos by their stored camera-local `captured_at` year and month, returns fixed
+four-photo deterministic thumbnail previews, and reports missing capture dates
+without substituting `created_at`. Month links set the existing inclusive List
+date filters and newest-captured ordering; List continues to own complete photo
+rendering, search, pagination, selection, bulk actions, and detail navigation.
+
+Timeline adds no schema, cache table, dependency, backup/export format, or
+maintenance behavior. Capture offsets remain separate metadata and do not shift
+month placement. Trash removes Photos from counts/previews naturally, restoration
+returns them unchanged, and all supported source formats—including HEIC/HEIF—use
+the same capture and thumbnail paths.
 
 ## Current product feature: native HEIC/HEIF ingestion
 

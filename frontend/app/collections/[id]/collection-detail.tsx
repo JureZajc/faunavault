@@ -48,7 +48,7 @@ export default function CollectionDetailView({ collectionId }: { collectionId: n
 
   return <main className="min-h-screen bg-[#f7f8f4] text-stone-950">
     <div className="mx-auto max-w-7xl px-3 py-8 sm:px-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><ArchiveNavigation active="collections" /><p className="text-sm text-stone-500">Manual Collection</p></div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><ArchiveNavigation active="collections" /><p className="text-sm text-stone-500 lg:text-right">Manual Collection</p></div>
       {notice ? <p role="status" className="mt-5 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p> : null}
       <header className="mt-6 rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Collection</p><h1 className="mt-2 break-words text-3xl font-semibold">{collection.name}</h1><p className="mt-2 text-sm text-stone-500">{collection.active_photo_count} active {collection.active_photo_count === 1 ? "photo" : "photos"}</p></div><div className="grid grid-cols-2 gap-2 sm:flex"><button type="button" onClick={() => setRenameOpen(true)} className="min-h-11 rounded-md border bg-white px-4 text-sm font-semibold">Rename</button><button type="button" onClick={() => setDeleteOpen(true)} className="min-h-11 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700">Delete Collection</button></div></div>

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import String, and_, case, cast, func, or_
+from sqlalchemy import Integer, String, and_, case, cast, func, or_
 from sqlmodel import Session, select
 
 from app.models import Animal, Photo, Taxon
@@ -15,7 +15,13 @@ from app.schemas import (
     CatalogTaxonOption,
     CatalogTaxonPage,
     PhotoMapPoint,
+    TimelineMonth,
+    TimelinePhotoPreview,
+    TimelineResponse,
+    TimelineYear,
 )
+
+TIMELINE_PREVIEW_LIMIT = 4
 
 
 def _escape_like(value: str) -> str:
@@ -276,6 +282,117 @@ def list_photo_map_points(session: Session) -> list[PhotoMapPoint]:
         )
         for row in rows
     ]
+
+
+def get_photo_timeline(session: Session) -> TimelineResponse:
+    capture_year = cast(func.strftime("%Y", Photo.captured_at), Integer).label(
+        "capture_year"
+    )
+    capture_month = cast(func.strftime("%m", Photo.captured_at), Integer).label(
+        "capture_month"
+    )
+    active_known = (
+        Photo.deleted_at.is_(None),
+        Photo.captured_at.is_not(None),
+    )
+
+    month_rows = session.exec(
+        select(capture_year, capture_month, func.count(Photo.id).label("photo_count"))
+        .where(*active_known)
+        .group_by(capture_year, capture_month)
+        .order_by(capture_year.desc(), capture_month.desc())
+    ).all()
+    unknown_capture_count = session.exec(
+        select(func.count(Photo.id)).where(
+            Photo.deleted_at.is_(None),
+            Photo.captured_at.is_(None),
+        )
+    ).one()
+
+    preview_rank = (
+        func.row_number()
+        .over(
+            partition_by=(capture_year, capture_month),
+            order_by=(Photo.captured_at.desc(), Photo.id.desc()),
+        )
+        .label("preview_rank")
+    )
+    ranked_previews = (
+        select(
+            capture_year,
+            capture_month,
+            Photo.id.label("photo_id"),
+            Photo.thumbnail_filename,
+            Photo.original_filename,
+            Photo.display_title,
+            preview_rank,
+        )
+        .where(*active_known)
+        .subquery()
+    )
+    preview_rows = session.exec(
+        select(
+            ranked_previews.c.capture_year,
+            ranked_previews.c.capture_month,
+            ranked_previews.c.photo_id,
+            ranked_previews.c.thumbnail_filename,
+            ranked_previews.c.original_filename,
+            ranked_previews.c.display_title,
+            ranked_previews.c.preview_rank,
+        )
+        .where(ranked_previews.c.preview_rank <= TIMELINE_PREVIEW_LIMIT)
+        .order_by(
+            ranked_previews.c.capture_year.desc(),
+            ranked_previews.c.capture_month.desc(),
+            ranked_previews.c.preview_rank.asc(),
+        )
+    ).all()
+
+    previews_by_month: dict[tuple[int, int], list[TimelinePhotoPreview]] = {}
+    for row in preview_rows:
+        key = (int(row.capture_year), int(row.capture_month))
+        previews_by_month.setdefault(key, []).append(
+            TimelinePhotoPreview(
+                id=row.photo_id,
+                thumbnail_filename=row.thumbnail_filename,
+                original_filename=row.original_filename,
+                display_title=row.display_title,
+            )
+        )
+
+    month_counts = {
+        (int(row.capture_year), int(row.capture_month)): int(row.photo_count)
+        for row in month_rows
+    }
+    years: list[TimelineYear] = []
+    for year in sorted({year for year, _month in month_counts}, reverse=True):
+        months = [
+            TimelineMonth(
+                month=month,
+                photo_count=month_counts[(year, month)],
+                previews=previews_by_month.get((year, month), []),
+            )
+            for month in sorted(
+                (
+                    month
+                    for candidate_year, month in month_counts
+                    if candidate_year == year
+                ),
+                reverse=True,
+            )
+        ]
+        years.append(
+            TimelineYear(
+                year=year,
+                photo_count=sum(month.photo_count for month in months),
+                months=months,
+            )
+        )
+
+    return TimelineResponse(
+        years=years,
+        unknown_capture_count=unknown_capture_count,
+    )
 
 
 def _taxon_option(taxon_id: int, label: str, scientific_name: str, count: int):

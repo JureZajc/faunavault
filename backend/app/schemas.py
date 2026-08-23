@@ -348,6 +348,30 @@ class CatalogPhotoPage(SQLModel):
     facets: CatalogFacets
 
 
+class TimelinePhotoPreview(SQLModel):
+    id: int
+    thumbnail_filename: str
+    original_filename: str
+    display_title: str | None
+
+
+class TimelineMonth(SQLModel):
+    month: int = Field(ge=1, le=12)
+    photo_count: int = Field(ge=0)
+    previews: list[TimelinePhotoPreview]
+
+
+class TimelineYear(SQLModel):
+    year: int
+    photo_count: int = Field(ge=0)
+    months: list[TimelineMonth]
+
+
+class TimelineResponse(SQLModel):
+    years: list[TimelineYear]
+    unknown_capture_count: int = Field(ge=0)
+
+
 class CatalogTaxonOption(SQLModel):
     taxon_id: int
     label: str

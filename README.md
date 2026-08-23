@@ -11,6 +11,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
 - Read-only EXIF capture time, camera/lens, oriented dimensions, and local-only GPS metadata
+- Compact Photo Timeline grouped by camera-local capture year and month
 - Interactive Photo detail maps and a clustered archive Map for active geotagged photos
 - Searchable/filterable photo catalog, derived species Albums, persistent manual Collections, animals, and GBIF taxonomy linking
 - Explicit cross-page catalog selection with atomic bulk tag, category, Add to Collection, and Move to Trash actions
@@ -60,8 +61,17 @@ its display label, scientific name, and active-photo count. The legacy
 `GET /photos` endpoint remains unchanged and still returns the complete active
 Photo array for compatible consumers.
 
-The five peer archive destinations are List, Map, Albums, Collections, and
-Trash. Map has its own `/map` route and reads a lightweight, deterministic
+The six peer archive destinations are List, Timeline, Map, Albums, Collections,
+and Trash. Timeline has its own `/timeline` route and reads a compact,
+deterministic `GET /catalog/timeline` projection of active Photos grouped by the
+camera-local year and month stored in `captured_at`. Each month shows four
+newest-captured thumbnail previews and links to the existing List using its
+inclusive `catalog_taken_from` / `catalog_taken_to` URL filters with capture-date
+sorting. Photos without capture metadata are reported separately and are never
+assigned an import date or fabricated month; JPEG, PNG, WebP, HEIC, and HEIF
+participate identically when capture metadata exists.
+
+Map has its own `/map` route and reads a lightweight, deterministic
 `GET /catalog/map` projection containing only active geotagged Photos and the
 metadata needed for markers and previews. Nearby points cluster, exact-coordinate
 points remain distinct through spiderfying, and `/map?photo=<id>` focuses a

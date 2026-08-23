@@ -273,10 +273,33 @@ def test_heic_metadata_orientation_primary_image_and_map_lifecycle(lifecycle):
 
     points = client.get("/catalog/map").json()
     assert [point["id"] for point in points] == [photo["id"]]
+    timeline = client.get("/catalog/timeline").json()
+    assert timeline["years"] == [
+        {
+            "year": 2024,
+            "photo_count": 1,
+            "months": [
+                {
+                    "month": 5,
+                    "photo_count": 1,
+                    "previews": [
+                        {
+                            "id": photo["id"],
+                            "thumbnail_filename": photo["thumbnail_filename"],
+                            "original_filename": "oriented.HEIC",
+                            "display_title": None,
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
     assert client.delete(f"/photos/{photo['id']}").status_code == 200
     assert client.get("/catalog/map").json() == []
+    assert client.get("/catalog/timeline").json()["years"] == []
     assert client.post(f"/trash/photos/{photo['id']}/restore").status_code == 200
     assert [point["id"] for point in client.get("/catalog/map").json()] == [photo["id"]]
+    assert client.get("/catalog/timeline").json()["years"][0]["year"] == 2024
 
 
 def test_multi_image_heic_uses_only_the_primary_image(lifecycle):
