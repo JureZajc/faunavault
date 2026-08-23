@@ -49,6 +49,7 @@ type CatalogToolbarProps = {
   hasMoreTaxa: boolean;
   resultCount: number;
   totalCount: number;
+  isSelectionMode: boolean;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: StatusFilter) => void;
   onCategoryChange: (value: string) => void;
@@ -57,6 +58,7 @@ type CatalogToolbarProps = {
   onTaxonFocus: () => void;
   onTaxonChange: (value?: number) => void;
   onLoadMoreTaxa: () => void;
+  onEnterSelectionMode: () => void;
 };
 
 export default function CatalogToolbar({
@@ -74,6 +76,7 @@ export default function CatalogToolbar({
   hasMoreTaxa,
   resultCount,
   totalCount,
+  isSelectionMode,
   onSearchChange,
   onStatusChange,
   onCategoryChange,
@@ -82,6 +85,7 @@ export default function CatalogToolbar({
   onTaxonFocus,
   onTaxonChange,
   onLoadMoreTaxa,
+  onEnterSelectionMode,
 }: CatalogToolbarProps) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
@@ -215,6 +219,15 @@ export default function CatalogToolbar({
         </p>
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
           <p>Backend-filtered local collection.</p>
+          {!isSelectionMode ? (
+            <button
+              type="button"
+              onClick={onEnterSelectionMode}
+              className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+            >
+              Select photos
+            </button>
+          ) : null}
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
             <span className="shrink-0 text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
               View

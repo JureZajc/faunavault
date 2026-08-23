@@ -1,14 +1,26 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import ConfigDict, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    field_validator,
+    model_validator,
+)
+from pydantic import Field as PydanticField
 from sqlmodel import Field, SQLModel
 
 from app.models import Animal, Photo
 
 ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}
+BulkPhotoOperation = Literal[
+    "add_tags",
+    "remove_tags",
+    "set_category",
+    "clear_category",
+    "move_to_trash",
+]
 
 
 class AnimalUpdate(SQLModel):
@@ -185,6 +197,59 @@ class TrashMutationResponse(SQLModel):
     status: str
     photo_id: int
     missing_files: int = 0
+
+
+class BulkPhotoRequestBase(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    photo_ids: list[int]
+
+
+class BulkAddTagsRequest(BulkPhotoRequestBase):
+    operation: Literal["add_tags"]
+    tags: list[str]
+
+
+class BulkRemoveTagsRequest(BulkPhotoRequestBase):
+    operation: Literal["remove_tags"]
+    tags: list[str]
+
+
+class BulkSetCategoryRequest(BulkPhotoRequestBase):
+    operation: Literal["set_category"]
+    category: str
+
+
+class BulkClearCategoryRequest(BulkPhotoRequestBase):
+    operation: Literal["clear_category"]
+
+
+class BulkMoveToTrashRequest(BulkPhotoRequestBase):
+    operation: Literal["move_to_trash"]
+
+
+BulkPhotoRequest = Annotated[
+    BulkAddTagsRequest
+    | BulkRemoveTagsRequest
+    | BulkSetCategoryRequest
+    | BulkClearCategoryRequest
+    | BulkMoveToTrashRequest,
+    PydanticField(discriminator="operation"),
+]
+
+
+class BulkPhotoMutationResponse(SQLModel):
+    status: Literal["completed"] = "completed"
+    operation: BulkPhotoOperation
+    photo_ids: list[int]
+    affected_count: int
+
+
+class BulkPhotoErrorDetail(SQLModel):
+    code: str
+    message: str
+    photo_ids: list[int] | None = None
+    max_photo_ids: int | None = None
 
 
 class CatalogStatusCounts(SQLModel):

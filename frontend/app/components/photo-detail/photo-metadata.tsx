@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { Photo, PhotoStatus, PhotoUpdate, updatePhoto } from "../../lib/api";
+import { parseTags } from "../../lib/photo-metadata";
 
 const photoStatuses: PhotoStatus[] = ["pending", "classified", "needs_review"];
 const statusLabels: Record<PhotoStatus, string> = {
@@ -175,10 +176,7 @@ export function PhotoMetadataEditor({
           ? null
           : Number((confidenceNumber / 100).toFixed(4)),
       description: nullIfBlank(form.description),
-      tags: form.tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
+      tags: parseTags(form.tags),
       status: form.status,
     };
 

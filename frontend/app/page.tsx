@@ -2,6 +2,10 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AlbumBrowser from "./components/album-browser";
+import BulkActionDialog from "./components/catalog/bulk-action-dialog";
+import BulkSelectionToolbar, {
+  BulkDialogAction,
+} from "./components/catalog/bulk-selection-toolbar";
 import CatalogClassificationPanel from "./components/catalog/catalog-classification-panel";
 import CatalogResults from "./components/catalog/catalog-results";
 import CatalogToolbar, {
@@ -12,10 +16,16 @@ import UploadWorkflow from "./components/catalog/upload-workflow";
 import SuccessNotice from "./components/success-notice";
 import TrashBrowser from "./components/trash-browser";
 import { useCatalogQueryState } from "./hooks/use-catalog-query-state";
+import { useBulkPhotoActions } from "./hooks/use-bulk-photo-actions";
+import { useCatalogSelection } from "./hooks/use-catalog-selection";
 import { useCatalogTaxa } from "./hooks/use-catalog-taxa";
 import { useClassificationJobs } from "./hooks/use-classification-jobs";
 import { usePhotoCatalog } from "./hooks/use-photo-catalog";
-import { classifyPendingPhotos, Photo } from "./lib/api";
+import {
+  BulkPhotoMutationResponse,
+  classifyPendingPhotos,
+  Photo,
+} from "./lib/api";
 import {
   catalogSortOption,
   CollectionView,
@@ -23,6 +33,21 @@ import {
 
 function HomeContent() {
   const query = useCatalogQueryState();
+  const selectionContextKey = useMemo(
+    () =>
+      JSON.stringify({
+        view: query.collectionView,
+        search: query.catalogState.search ?? null,
+        status: query.catalogState.status ?? null,
+        category: query.catalogState.category ?? null,
+        uncategorized: query.catalogState.uncategorized ?? false,
+        taxonId: query.catalogState.taxon_id ?? null,
+        sort: query.catalogState.sort,
+        order: query.catalogState.order,
+      }),
+    [query.catalogState, query.collectionView],
+  );
+  const selection = useCatalogSelection(selectionContextKey);
   const {
     data: catalog,
     isLoading,
@@ -38,6 +63,7 @@ function HomeContent() {
   }, [taxa.items, taxa.selected]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [bulkDialog, setBulkDialog] = useState<BulkDialogAction | null>(null);
   const refreshTimer = useRef<number | null>(null);
   const scheduleCatalogRefresh = useCallback(() => {
     if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
@@ -71,7 +97,7 @@ function HomeContent() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const photos = catalog?.items ?? [];
+  const photos = useMemo(() => catalog?.items ?? [], [catalog?.items]);
   const categoryOptions = catalog?.facets.categories.map((item) => item.value) ?? [];
   const catalogStats = catalog?.facets.status_counts ?? {
     pending: 0,
@@ -93,6 +119,40 @@ function HomeContent() {
     categoryFilter !== "all" ||
     query.catalogState.taxon_id !== undefined;
   const error = actionError ?? catalogError;
+  const visiblePhotoIds = useMemo(() => photos.map((photo) => photo.id), [photos]);
+
+  const handleBulkMutationSucceeded = useCallback(
+    (response: BulkPhotoMutationResponse) => {
+      const actionLabel =
+        response.operation === "add_tags"
+          ? "Added tags to"
+          : response.operation === "remove_tags"
+            ? "Removed tags from"
+            : response.operation === "set_category"
+              ? "Set the category for"
+              : response.operation === "clear_category"
+                ? "Cleared the category for"
+                : "Moved to Trash";
+      setBulkDialog(null);
+      selection.reset();
+      setActionError(null);
+      setSuccessNotice(
+        response.operation === "move_to_trash"
+          ? `Moved ${response.affected_count} ${response.affected_count === 1 ? "photo" : "photos"} to Trash.`
+          : `${actionLabel} ${response.affected_count} ${response.affected_count === 1 ? "photo" : "photos"}.`,
+      );
+    },
+    [selection],
+  );
+  const handleBulkRefreshFailed = useCallback((message: string) => {
+    setActionError(message);
+  }, []);
+  const bulkActions = useBulkPhotoActions({
+    selectedIds: selection.selectedIds,
+    refreshCatalog: loadPhotos,
+    onMutationSucceeded: handleBulkMutationSucceeded,
+    onRefreshFailed: handleBulkRefreshFailed,
+  });
 
   async function handleClassifyPending() {
     setActionError(null);
@@ -179,7 +239,10 @@ function HomeContent() {
               <button
                 key={view}
                 type="button"
-                onClick={() => query.setCollectionView(view)}
+                onClick={() => {
+                  if (query.collectionView !== view) selection.reset();
+                  query.setCollectionView(view);
+                }}
                 className={`min-h-11 min-w-0 rounded-md px-2 text-sm font-semibold capitalize transition sm:min-w-28 sm:px-4 ${
                   query.collectionView === view
                     ? "bg-white text-emerald-900 shadow-sm"
@@ -223,26 +286,55 @@ function HomeContent() {
               hasMoreTaxa={taxa.hasMore}
               resultCount={photos.length}
               totalCount={catalog?.total ?? 0}
-              onSearchChange={query.setSearchInput}
-              onStatusChange={(value) =>
-                query.setStatus(value === "all" ? undefined : value)
-              }
-              onCategoryChange={(value) =>
+              isSelectionMode={selection.isSelecting}
+              onSearchChange={(value) => {
+                selection.reset();
+                query.setSearchInput(value);
+              }}
+              onStatusChange={(value) => {
+                selection.reset();
+                query.setStatus(value === "all" ? undefined : value);
+              }}
+              onCategoryChange={(value) => {
+                selection.reset();
                 query.setCategory(
                   value === "all" || value === UNKNOWN_CATEGORY_VALUE
                     ? undefined
                     : value,
                   value === UNKNOWN_CATEGORY_VALUE,
-                )
-              }
-              onSortChange={query.setSort}
+                );
+              }}
+              onSortChange={(value) => {
+                selection.reset();
+                query.setSort(value);
+              }}
               onViewModeChange={query.setLayout}
               onTaxonFocus={() => {
                 if (!taxa.isLoaded && !taxa.isLoading) void taxa.load();
               }}
-              onTaxonChange={query.setTaxon}
+              onTaxonChange={(value) => {
+                selection.reset();
+                query.setTaxon(value);
+              }}
               onLoadMoreTaxa={() => void taxa.loadMore()}
+              onEnterSelectionMode={selection.enter}
             />
+
+            {selection.isSelecting ? (
+              <BulkSelectionToolbar
+                selectedIds={selection.selectedIds}
+                visibleIds={visiblePhotoIds}
+                isBusy={bulkActions.isBusy}
+                error={selection.error}
+                onTogglePage={selection.togglePage}
+                onClear={selection.clear}
+                onExit={selection.reset}
+                onOpenAction={(action) => {
+                  bulkActions.clearError();
+                  setBulkDialog(action);
+                }}
+              />
+            ) : null}
 
             {showClassificationPanel ? (
               <CatalogClassificationPanel
@@ -263,11 +355,33 @@ function HomeContent() {
               viewMode={query.catalogState.layout}
               hasActiveFilters={hasActiveViewFilters}
               returnTo={query.returnTo}
-              onRetry={() => void loadPhotos().catch(() => undefined)}
-              onClearFilters={query.clearFilters}
+              onRetry={() => {
+                setActionError(null);
+                void loadPhotos().catch(() => undefined);
+              }}
+              onClearFilters={() => {
+                selection.reset();
+                query.clearFilters();
+              }}
               onPageChange={query.setPage}
               onPhotoMoved={handlePhotoMoved}
               onError={setActionError}
+              isSelectionMode={selection.isSelecting}
+              selectedIds={selection.selectedIds}
+              isSelectionBusy={bulkActions.isBusy}
+              onToggleSelection={selection.toggle}
+            />
+            <BulkActionDialog
+              key={bulkDialog ?? "closed"}
+              action={bulkDialog}
+              selectedCount={selection.selectedCount}
+              categoryOptions={categoryOptions}
+              isBusy={bulkActions.isBusy}
+              error={bulkActions.error}
+              onClose={() => {
+                if (!bulkActions.isBusy) setBulkDialog(null);
+              }}
+              onSubmit={bulkActions.execute}
             />
           </>
         )}

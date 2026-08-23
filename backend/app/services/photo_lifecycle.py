@@ -19,7 +19,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import Settings
 from app.models import Animal, Photo, utc_now
 from app.schemas import TrashMutationResponse, TrashPage
-from app.services.classification_jobs import fail_active_jobs_for_photo
+from app.services.classification_jobs import fail_active_jobs_for_photos
 from app.services.image_variants import (
     ALLOWED_EXTENSIONS,
     EXPECTED_FORMAT,
@@ -322,12 +322,25 @@ def trash_photo_for_permanent_delete(photo_id: int, session: Session) -> Photo:
 
 def move_to_trash(photo_id: int, session: Session) -> TrashMutationResponse:
     photo = active_photo_or_404(photo_id, session)
-    photo.deleted_at = utc_now()
-    photo.updated_at = utc_now()
-    fail_active_jobs_for_photo(session, photo_id)
-    session.add(photo)
+    mark_photos_trashed([photo], session)
     session.commit()
     return TrashMutationResponse(status="trashed", photo_id=photo_id)
+
+
+def mark_photos_trashed(
+    photos: list[Photo],
+    session: Session,
+) -> None:
+    now = utc_now()
+    photo_ids: list[int] = []
+    for photo in photos:
+        if photo.id is None:
+            continue
+        photo.deleted_at = now
+        photo.updated_at = now
+        photo_ids.append(photo.id)
+        session.add(photo)
+    fail_active_jobs_for_photos(session, photo_ids, clock=lambda: now)
 
 
 def list_trash(session: Session, page: int, page_size: int) -> TrashPage:

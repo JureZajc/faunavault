@@ -164,6 +164,40 @@ export type PhotoUpdate = Partial<{
   status: PhotoStatus;
 }>;
 
+export type BulkPhotoOperation =
+  | "add_tags"
+  | "remove_tags"
+  | "set_category"
+  | "clear_category"
+  | "move_to_trash";
+
+export type BulkPhotoActionRequest =
+  | { operation: "add_tags"; tags: string[] }
+  | { operation: "remove_tags"; tags: string[] }
+  | { operation: "set_category"; category: string }
+  | { operation: "clear_category" }
+  | { operation: "move_to_trash" };
+
+export type BulkPhotoRequest = BulkPhotoActionRequest & { photo_ids: number[] };
+
+export type BulkPhotoMutationResponse = {
+  status: "completed";
+  operation: BulkPhotoOperation;
+  photo_ids: number[];
+  affected_count: number;
+};
+
+export type BulkPhotoErrorCode =
+  | "empty_photo_ids"
+  | "too_many_photo_ids"
+  | "invalid_photo_ids"
+  | "duplicate_photo_ids"
+  | "photos_not_found"
+  | "photos_not_active"
+  | "invalid_tags"
+  | "invalid_category"
+  | "bulk_operation_failed";
+
 export type BatchUploadFailure = {
   file_index: number;
   filename: string;
@@ -252,6 +286,8 @@ export type ApiErrorDetails = {
   code?: string;
   message?: string;
   photo_id?: number;
+  photo_ids?: number[];
+  max_photo_ids?: number;
   location?: "catalog" | "trash";
   candidates?: VisualDuplicateCandidate[];
 };
@@ -341,6 +377,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
               typeof detail.message === "string" ? detail.message : undefined,
             photo_id:
               typeof detail.photo_id === "number" ? detail.photo_id : undefined,
+            photo_ids: Array.isArray(detail.photo_ids)
+              ? detail.photo_ids.filter(
+                  (photoId: unknown): photoId is number =>
+                    typeof photoId === "number",
+                )
+              : undefined,
+            max_photo_ids:
+              typeof detail.max_photo_ids === "number"
+                ? detail.max_photo_ids
+                : undefined,
             location:
               detail.location === "catalog" || detail.location === "trash"
                 ? detail.location
@@ -519,6 +565,14 @@ export function updatePhoto(id: number, metadata: PhotoUpdate) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(metadata),
+  });
+}
+
+export function bulkUpdatePhotos(requestBody: BulkPhotoRequest) {
+  return request<BulkPhotoMutationResponse>("/photos/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
   });
 }
 

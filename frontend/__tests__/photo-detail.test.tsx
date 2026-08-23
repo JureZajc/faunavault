@@ -114,7 +114,7 @@ test("loads the detail and preserves the exact metadata update payload", async (
       category: "mammal",
       confidence: 0.25,
       description: "Adult lion",
-      tags: ["cat", "savanna", "cat"],
+      tags: ["cat", "savanna"],
       status: "classified",
     }),
   );

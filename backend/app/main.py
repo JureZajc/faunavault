@@ -16,6 +16,7 @@ from app.migrations import migrate_animals_and_taxonomy
 from app.models import Animal, Photo, Taxon, utc_now
 from app.routers.albums import create_albums_router
 from app.routers.animals import create_animals_router
+from app.routers.bulk_photos import create_bulk_photos_router
 from app.routers.catalog import create_catalog_router
 from app.routers.classification import create_classification_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
@@ -131,6 +132,7 @@ def on_startup() -> None:
 
 SessionDep = Annotated[Session, Depends(get_session)]
 app.include_router(create_photo_lifecycle_router(lambda: settings))
+app.include_router(create_bulk_photos_router())
 app.include_router(create_catalog_router())
 app.include_router(create_classification_router(lambda: settings))
 app.include_router(create_albums_router())

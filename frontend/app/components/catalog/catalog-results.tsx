@@ -131,11 +131,19 @@ function PhotoCard({
   returnTo,
   onMoved,
   onError,
+  isSelectionMode,
+  isSelected,
+  isSelectionBusy,
+  onToggleSelection,
 }: {
   photo: Photo;
   returnTo: string;
   onMoved: (photo: Photo) => void | Promise<void>;
   onError: (message: string) => void;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+  isSelectionBusy: boolean;
+  onToggleSelection: (photoId: number) => void;
 }) {
   const thumbnailUrl = imageUrl("thumbs", photo.thumbnail_filename);
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
@@ -144,7 +152,27 @@ function PhotoCard({
   const href = `/photos/${photo.id}?returnTo=${encodeURIComponent(returnTo)}`;
 
   return (
-    <article className="group flex min-w-0 h-full flex-col overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
+    <article
+      className={`group relative flex min-w-0 h-full flex-col overflow-hidden rounded-lg bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+        isSelected
+          ? "border-2 border-emerald-700 ring-2 ring-emerald-200"
+          : "border border-stone-200 hover:border-emerald-300"
+      }`}
+    >
+      {isSelectionMode ? (
+        <label className="absolute left-3 top-3 z-10 flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-stone-200 bg-white/95 px-3 text-xs font-semibold text-stone-800 shadow-sm">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            disabled={isSelectionBusy}
+            aria-label={`Select photo ${photo.id}: ${title}`}
+            onClick={(event) => event.stopPropagation()}
+            onChange={() => onToggleSelection(photo.id)}
+            className="h-5 w-5 accent-emerald-800"
+          />
+          {isSelected ? "Selected" : "Select"}
+        </label>
+      ) : null}
       <Link href={href} className="block">
         <div className="aspect-[4/3] overflow-hidden bg-stone-100">
           {failedImageUrl === thumbnailUrl ? (
@@ -208,14 +236,14 @@ function PhotoCard({
             </span>
           </div>
         </Link>
-        <div className="mt-3 border-t border-stone-100 pt-3">
+        {!isSelectionMode ? <div className="mt-3 border-t border-stone-100 pt-3">
           <MoveToTrashButton
             photo={photo}
             onMoved={onMoved}
             onError={onError}
             className="min-h-10 w-full rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-600 hover:border-red-200 hover:text-red-700"
           />
-        </div>
+        </div> : null}
       </div>
     </article>
   );
@@ -253,6 +281,10 @@ type CatalogResultsProps = {
   onPageChange: (page: number) => void;
   onPhotoMoved: (photo: Photo) => void | Promise<void>;
   onError: (message: string) => void;
+  isSelectionMode: boolean;
+  selectedIds: ReadonlySet<number>;
+  isSelectionBusy: boolean;
+  onToggleSelection: (photoId: number) => void;
 };
 
 export default function CatalogResults({
@@ -267,6 +299,10 @@ export default function CatalogResults({
   onPageChange,
   onPhotoMoved,
   onError,
+  isSelectionMode,
+  selectedIds,
+  isSelectionBusy,
+  onToggleSelection,
 }: CatalogResultsProps) {
   const photos = useMemo(() => catalog?.items ?? [], [catalog?.items]);
   const groups = useMemo(() => groupPhotosByCategory(photos), [photos]);
@@ -314,6 +350,10 @@ export default function CatalogResults({
               returnTo={returnTo}
               onMoved={onPhotoMoved}
               onError={onError}
+              isSelectionMode={isSelectionMode}
+              isSelected={selectedIds.has(photo.id)}
+              isSelectionBusy={isSelectionBusy}
+              onToggleSelection={onToggleSelection}
             />
           ))}
         </div>
@@ -338,6 +378,10 @@ export default function CatalogResults({
                     returnTo={returnTo}
                     onMoved={onPhotoMoved}
                     onError={onError}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedIds.has(photo.id)}
+                    isSelectionBusy={isSelectionBusy}
+                    onToggleSelection={onToggleSelection}
                   />
                 ))}
               </div>
