@@ -8,6 +8,10 @@ const UPDATED_TITLE = "FaunaVault E2E specimen";
 const BULK_FIRST_FILENAME = "faunavault-e2e-bulk-first.jpg";
 const BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg";
 const COLLECTION_NAME = "FaunaVault E2E bulk collection";
+const TRANSPARENT_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 function testRoot() {
   const root = process.env.FAUNAVAULT_E2E_ROOT;
@@ -139,6 +143,48 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
     await expect(page.getByRole("heading", { name: UPDATED_TITLE })).toBeVisible();
     await expectDecodedImage(page.getByRole("img", { name: UPDATED_TITLE }));
     await page.getByRole("link", { name: "Back to catalog" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(catalogCard(page, UPDATED_TITLE)).toHaveCount(1);
+  });
+
+  await test.step("archive and detail location maps", async () => {
+    await page.route(
+      /^https:\/\/tile\.openstreetmap\.org\/\d+\/\d+\/\d+\.png$/,
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "image/png",
+          body: TRANSPARENT_PNG,
+        }),
+    );
+
+    await page.getByRole("link", { name: "Map", exact: true }).click();
+    await expect(page).toHaveURL(/\/map$/);
+    await expect(page.getByRole("heading", { name: "Photo Map" })).toBeVisible();
+    const archiveMap = page.getByRole("region", {
+      name: "Interactive archive map showing 1 geotagged photo",
+    });
+    await expect(archiveMap).toBeVisible();
+    await archiveMap
+      .getByRole("button", {
+        name: `Open map preview for ${UPDATED_TITLE}`,
+      })
+      .click();
+    await expectDecodedImage(
+      archiveMap.getByRole("img", { name: UPDATED_TITLE }),
+    );
+    await archiveMap.getByRole("link", { name: "Open photo" }).click();
+
+    await expect(page).toHaveURL(/\/photos\/\d+\?returnTo=%2Fmap%3Fphoto%3D\d+/);
+    await expect(page.getByText("46.12345, 14.54321")).toBeVisible();
+    await expect(
+      page.getByRole("region", {
+        name: `Interactive map showing the location of ${UPDATED_TITLE}`,
+      }),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "Back to catalog" }).click();
+    await expect(page).toHaveURL(/\/map\?photo=\d+$/);
+    await page.getByRole("link", { name: "List", exact: true }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(catalogCard(page, UPDATED_TITLE)).toHaveCount(1);
   });

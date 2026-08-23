@@ -5,6 +5,7 @@ import { Photo, PhotoStatus } from "../../lib/api";
 import { PhotoClassificationController } from "../../hooks/use-photo-classification";
 import PhotoAnimalSection from "./photo-animal-section";
 import PhotoClassificationPanel from "./photo-classification-panel";
+import PhotoLocationSection from "./photo-location-section";
 import {
   confidenceLabel,
   PhotoMetadataDetails,
@@ -123,6 +124,7 @@ export default function PhotoSidebar({
       ) : (
         <>
           <PhotoMetadataDetails photo={photo} />
+          <PhotoLocationSection photo={photo} />
           {photo.animal_id ? (
             <PhotoAnimalSection animalId={photo.animal_id} />
           ) : null}

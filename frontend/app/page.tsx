@@ -241,7 +241,7 @@ function HomeContent() {
           <ArchiveNavigation
             active={query.homeView}
             onNavigate={(section, event) => {
-              if (section === "collections") {
+              if (section === "collections" || section === "map") {
                 selection.reset();
                 return;
               }

@@ -14,6 +14,7 @@ from app.schemas import (
     CatalogStatusCounts,
     CatalogTaxonOption,
     CatalogTaxonPage,
+    PhotoMapPoint,
 )
 
 
@@ -239,6 +240,42 @@ def list_catalog_photos(
         total_pages=math.ceil(total / page_size) if total else 0,
         facets=_catalog_facets(session),
     )
+
+
+def list_photo_map_points(session: Session) -> list[PhotoMapPoint]:
+    rows = session.exec(
+        select(
+            Photo.id,
+            Photo.latitude,
+            Photo.longitude,
+            Photo.thumbnail_filename,
+            Photo.original_filename,
+            Photo.display_title,
+            Photo.common_name,
+            Photo.species_guess,
+            Photo.captured_at,
+        )
+        .where(
+            Photo.deleted_at.is_(None),
+            Photo.latitude.is_not(None),
+            Photo.longitude.is_not(None),
+        )
+        .order_by(Photo.id.asc())
+    ).all()
+    return [
+        PhotoMapPoint(
+            id=row.id,
+            latitude=row.latitude,
+            longitude=row.longitude,
+            thumbnail_filename=row.thumbnail_filename,
+            original_filename=row.original_filename,
+            display_title=row.display_title,
+            common_name=row.common_name,
+            species_guess=row.species_guess,
+            captured_at=row.captured_at,
+        )
+        for row in rows
+    ]
 
 
 def _taxon_option(taxon_id: int, label: str, scientific_name: str, count: int):

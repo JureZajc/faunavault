@@ -4,7 +4,7 @@ import hashlib
 import sys
 from pathlib import Path
 
-from PIL import ExifTags, Image, ImageDraw
+from PIL import ExifTags, Image, ImageDraw, TiffImagePlugin
 
 from app.services.perceptual_duplicates import (
     PHASH_DISTANCE_THRESHOLD,
@@ -64,6 +64,24 @@ def image_hash(path: Path) -> str:
         return perceptual_hash(image)
 
 
+def gps_ifd() -> dict[int, object]:
+    rational = TiffImagePlugin.IFDRational
+    return {
+        int(ExifTags.GPS.GPSLatitudeRef): "N",
+        int(ExifTags.GPS.GPSLatitude): (
+            rational(46, 1),
+            rational(7, 1),
+            rational(2442, 100),
+        ),
+        int(ExifTags.GPS.GPSLongitudeRef): "E",
+        int(ExifTags.GPS.GPSLongitude): (
+            rational(14, 1),
+            rational(32, 1),
+            rational(3556, 100),
+        ),
+    }
+
+
 def generate(test_root: Path) -> None:
     fixtures = test_root / "fixtures"
     fixtures.mkdir(parents=True, exist_ok=False)
@@ -76,6 +94,7 @@ def generate(test_root: Path) -> None:
 
     exif = Image.Exif()
     exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:22 14:30:00"
+    exif[int(ExifTags.Base.GPSInfo)] = gps_ifd()
     scene().save(temporary_original, format="JPEG", quality=95, exif=exif)
     with Image.open(temporary_original) as decoded:
         decoded.load()

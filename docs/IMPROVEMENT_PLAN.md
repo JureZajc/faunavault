@@ -82,7 +82,7 @@ framework.
 ## Current product feature: user-defined Photo Collections
 
 Schema 10 adds normalized persisted Collections and many-to-many Photo
-membership. The four peer destinations are List, Albums, Collections, and Trash.
+membership. The five peer destinations are List, Map, Albums, Collections, and Trash.
 Users can create, rename, and delete Collections, add explicitly selected active
 Photos, and remove one or many memberships without changing Photo files or
 metadata. Recoverable Trash preserves membership, while permanent Photo deletion
@@ -103,8 +103,26 @@ dimensions, and complete validated GPS coordinates. Originals remain byte
 identical. Capture data is read-only, survives Trash/restore, appears in every
 Photo response, supports null-last capture sorting and inclusive local-date
 catalog filters, and can be safely filled for existing active/Trash rows with
-the dry-run-by-default stopped-archive maintenance command. Maps, geocoding,
-arbitrary EXIF blobs, inference, editing, and cloud integrations remain deferred.
+the dry-run-by-default stopped-archive maintenance command. Geocoding, arbitrary
+EXIF blobs, inference, GPS editing, and cloud integrations remain deferred.
+
+## Current product feature: Photo location maps
+
+Active Photos with complete stored GPS now support two focused browsing paths:
+a compact one-marker Photo detail map and a dedicated `/map` archive destination.
+The archive uses one lightweight projected `GET /catalog/map` query, Leaflet,
+and established marker clustering with maximum-zoom spiderfying, including for
+multiple Photos at identical coordinates. `?photo=<id>` focuses a point and the
+popup returns to the real Photo detail route; no List filtering or bulk-selection
+model is duplicated.
+
+No schema migration or geospatial backend was added. Trash membership is derived
+from `deleted_at`, so Trash removes a point and restore returns it without changing
+GPS. Photo records and thumbnails stay on the local FaunaVault API. Standard
+OpenStreetMap raster tiles are requested remotely only for the visible viewport,
+with attribution, and are intercepted in browser smoke coverage so CI has no live
+tile dependency. Reverse geocoding, search, GPS editing, viewport APIs, spatial
+indexes, alternate layers, and offline tile downloads remain explicitly deferred.
 
 ## Recommended next (in order)
 

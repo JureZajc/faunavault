@@ -1,6 +1,6 @@
 # FaunaVault
 
-FaunaVault is a local-first animal photo archive. Originals and derived images stay on your computer, metadata lives in SQLite, and optional AI classification runs through local Ollama vision models. GBIF taxonomy lookup is the only network-backed product integration and degrades to locally cached taxonomy when unavailable.
+FaunaVault is a local-first animal photo archive. Originals and derived images stay on your computer, metadata lives in SQLite, and optional AI classification runs through local Ollama vision models. GBIF taxonomy lookup and remote OpenStreetMap basemap tiles are the only network-backed product integrations; taxonomy degrades to locally cached data and map markers remain available if tiles cannot load.
 
 ![FaunaVault album view](faunavault-album-desktop.png)
 
@@ -11,6 +11,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
 - Read-only EXIF capture time, camera/lens, oriented dimensions, and local-only GPS metadata
+- Interactive Photo detail maps and a clustered archive Map for active geotagged photos
 - Searchable/filterable photo catalog, derived species Albums, persistent manual Collections, animals, and GBIF taxonomy linking
 - Explicit cross-page catalog selection with atomic bulk tag, category, Add to Collection, and Move to Trash actions
 - Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
@@ -59,6 +60,13 @@ its display label, scientific name, and active-photo count. The legacy
 `GET /photos` endpoint remains unchanged and still returns the complete active
 Photo array for compatible consumers.
 
+The five peer archive destinations are List, Map, Albums, Collections, and
+Trash. Map has its own `/map` route and reads a lightweight, deterministic
+`GET /catalog/map` projection containing only active geotagged Photos and the
+metadata needed for markers and previews. Nearby points cluster, exact-coordinate
+points remain distinct through spiderfying, and `/map?photo=<id>` focuses a
+specific active point. Map does not duplicate List filters or bulk selection.
+
 List page, search, filters, sorting, verified taxon, and flat/grouped layout are
 stored in URL search parameters. Refresh, copied URLs, browser Back/Forward,
 and photo detail return navigation restore the same catalog context. Grouping
@@ -66,7 +74,7 @@ is intentionally page-local once pagination is active.
 
 The List view also offers an explicit Select mode. Selection contains only photo
 IDs the user checks and can span visited pages within the same search/filter/sort
-context. Search, filter, sort, Albums, Collections, or Trash changes clear it; flat/grouped and
+context. Search, filter, sort, Map, Albums, Collections, or Trash changes clear it; flat/grouped and
 page changes do not. Select page means the currently loaded page only, requests
 are capped at 250 photos, and there is no select-all-results behavior. Bulk actions
 can add/remove tags, set or explicitly clear category, add photos to one persisted
@@ -120,8 +128,17 @@ the original: EXIF capture time and its separately recorded offset, camera make
 and model, lens model, oriented dimensions, and a complete valid GPS pair. A
 missing or malformed optional tag remains null and does not reject a valid
 image. `created_at` continues to mean when FaunaVault added the record; capture
-time never falls back to it. GPS stays on the local machine and is displayed as
-plain coordinates without maps, geocoding, external links, or telemetry.
+time never falls back to it. GPS stays in the local SQLite database and appears
+as plain coordinates plus an interactive map. Photos without complete GPS do not
+show a detail map or appear on the archive Map. Moving a Photo to Trash removes
+it from Map; restore returns it without changing its coordinates.
+
+The basemap defaults to standard OpenStreetMap raster tiles with visible
+attribution. The browser requests only tiles for the visible viewport; FaunaVault
+does not send photo records, filenames, species, tags, or thumbnails to the tile
+provider. Remote tiles mean basemap rendering is not offline, and there is no
+reverse geocoding, place search, coordinate editing, tile downloader, analytics,
+or external map metadata API.
 
 Normal deletion only sets a deleted timestamp. Trash continues to reference the same local files. A photo must be moved to Trash before it can be permanently deleted. Permanent deletion stages variants in a private journal, commits the row deletion, and cleans the staged files; interrupted work is reconciled on the next backend startup.
 
@@ -260,7 +277,9 @@ The focused Playwright smoke suite is separate from routine pytest and
 Vitest/JSDOM validation. It builds the production frontend with the test API URL,
 starts that build with `next start`, launches the real FastAPI application, and
 uses Chromium to exercise upload and duplicate refusal, catalog/detail metadata
-editing, real backend image loading, and Trash restore/permanent deletion.
+editing, the real map endpoint and marker-to-detail path, real backend image
+loading, and Trash restore/permanent deletion. External tile URLs are fulfilled
+inside Playwright, so CI never depends on OpenStreetMap availability.
 
 Install the Chromium runtime once after installing frontend dependencies:
 

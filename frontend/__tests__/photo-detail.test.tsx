@@ -21,6 +21,26 @@ vi.mock("../app/lib/api", async (importOriginal) => ({
   ...api,
 }));
 
+vi.mock("../app/components/maps/map-boundaries", () => ({
+  PhotoLocationMap: ({
+    latitude,
+    longitude,
+    label,
+  }: {
+    latitude: number;
+    longitude: number;
+    label: string;
+  }) => (
+    <div
+      role="region"
+      aria-label={`Test map for ${label}`}
+      data-latitude={latitude}
+      data-longitude={longitude}
+    />
+  ),
+  ArchivePhotoMap: () => null,
+}));
+
 function photo(overrides: Partial<Photo> = {}): Photo {
   return {
     id: 44,
@@ -117,6 +137,9 @@ test("shows extracted capture metadata separately from the archive date", async 
   expect(screen.getByText("7008 × 4672")).toBeTruthy();
   expect(screen.getByText("46.12345, 14.54321")).toBeTruthy();
   expect(screen.getByText("Added to FaunaVault")).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Test map for Lion" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "View on map" }).getAttribute("href"))
+    .toBe("/map?photo=44");
 });
 
 test("omits absent extracted rows and labels unknown capture timezone", async () => {
@@ -131,6 +154,8 @@ test("omits absent extracted rows and labels unknown capture timezone", async ()
   expect(screen.queryByText("Camera")).toBeNull();
   expect(screen.queryByText("Lens")).toBeNull();
   expect(screen.queryByText("Location")).toBeNull();
+  expect(screen.queryByText("Location map")).toBeNull();
+  expect(screen.queryByRole("link", { name: "View on map" })).toBeNull();
 });
 
 test("loads the detail and preserves the exact metadata update payload", async () => {
