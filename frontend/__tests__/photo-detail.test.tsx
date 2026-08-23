@@ -41,6 +41,9 @@ function photo(overrides: Partial<Photo> = {}): Photo {
     content_sha256: null,
     original_size_bytes: null,
     media_type: "image/jpeg",
+    captured_at: null, captured_at_offset_minutes: null,
+    camera_make: null, camera_model: null, lens_model: null,
+    image_width: null, image_height: null, latitude: null, longitude: null,
     deleted_at: null,
     created_at: "2026-08-12T08:00:00Z",
     updated_at: "2026-08-12T08:00:00Z",
@@ -88,6 +91,46 @@ beforeEach(() => {
   });
   api.selectAnimalTaxon.mockResolvedValue({});
   api.deletePhoto.mockResolvedValue({ status: "trashed", photo_id: 44 });
+});
+
+test("shows extracted capture metadata separately from the archive date", async () => {
+  api.getPhoto.mockResolvedValue(
+    photo({
+      captured_at: "2024-05-24T18:42:00",
+      captured_at_offset_minutes: 120,
+      camera_make: "SONY",
+      camera_model: "SONY ILCE-7M4",
+      lens_model: "FE 200-600mm",
+      image_width: 7008,
+      image_height: 4672,
+      latitude: 46.12345,
+      longitude: 14.54321,
+    }),
+  );
+
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+
+  expect(screen.getByText("May 24, 2024, 6:42 PM · UTC+02:00")).toBeTruthy();
+  expect(screen.getByText("SONY ILCE-7M4")).toBeTruthy();
+  expect(screen.getByText("FE 200-600mm")).toBeTruthy();
+  expect(screen.getByText("7008 × 4672")).toBeTruthy();
+  expect(screen.getByText("46.12345, 14.54321")).toBeTruthy();
+  expect(screen.getByText("Added to FaunaVault")).toBeTruthy();
+});
+
+test("omits absent extracted rows and labels unknown capture timezone", async () => {
+  api.getPhoto.mockResolvedValue(
+    photo({ captured_at: "2024-05-24T18:42:00" }),
+  );
+
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+
+  expect(screen.getByText(/timezone not recorded/)).toBeTruthy();
+  expect(screen.queryByText("Camera")).toBeNull();
+  expect(screen.queryByText("Lens")).toBeNull();
+  expect(screen.queryByText("Location")).toBeNull();
 });
 
 test("loads the detail and preserves the exact metadata update payload", async () => {

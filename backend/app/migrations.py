@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 10
+LATEST_SCHEMA_VERSION = 11
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -388,6 +388,32 @@ def _migration_10(connection) -> None:
     )
 
 
+def _migration_11(connection) -> None:
+    columns = _columns(connection, "photo")
+    additions = {
+        "captured_at": "DATETIME",
+        "captured_at_offset_minutes": (
+            "INTEGER CHECK (captured_at_offset_minutes BETWEEN -1439 AND 1439)"
+        ),
+        "camera_make": "VARCHAR(200)",
+        "camera_model": "VARCHAR(200)",
+        "lens_model": "VARCHAR(200)",
+        "image_width": "INTEGER CHECK (image_width > 0)",
+        "image_height": "INTEGER CHECK (image_height > 0)",
+        "latitude": "REAL CHECK (latitude BETWEEN -90 AND 90)",
+        "longitude": "REAL CHECK (longitude BETWEEN -180 AND 180)",
+    }
+    for name, sql_type in additions.items():
+        if name not in columns:
+            connection.execute(text(f"ALTER TABLE photo ADD COLUMN {name} {sql_type}"))
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_photo_catalog_active_captured "
+            "ON photo (deleted_at, captured_at, id)"
+        )
+    )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -443,6 +469,8 @@ def run_migrations(
                 _migration_9(connection)
             elif version == 10:
                 _migration_10(connection)
+            elif version == 11:
+                _migration_11(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

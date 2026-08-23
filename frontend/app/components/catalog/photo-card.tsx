@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ReactNode, useState } from "react";
 import { imageUrl, Photo, PhotoStatus } from "../../lib/api";
+import { formatCameraLocalDate } from "../../lib/photo-metadata";
 
 const statusLabels: Record<PhotoStatus, string> = {
   pending: "Pending",
@@ -170,7 +171,11 @@ export default function PhotoCard({
           </div>
           <div className="mt-4"><TagList tags={photo.tags} /></div>
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-stone-100 pt-3 text-xs text-stone-500">
-            <span>{formatDate(photo.created_at)}</span>
+            <span>
+              {photo.captured_at
+                ? `Taken ${formatCameraLocalDate(photo.captured_at)}`
+                : `Added ${formatDate(photo.created_at)}`}
+            </span>
             <span title={photo.original_filename} className="min-w-0 truncate">
               {photo.original_filename}
             </span>

@@ -22,8 +22,10 @@ const statusLabels: Record<StatusFilter, string> = {
 };
 
 const sortLabels: Record<CatalogSortOption, string> = {
-  newest: "Newest",
-  oldest: "Oldest",
+  newest: "Added, newest first",
+  oldest: "Added, oldest first",
+  taken_newest: "Date taken, newest first",
+  taken_oldest: "Date taken, oldest first",
   confidence_desc: "Confidence high to low",
   confidence_asc: "Confidence low to high",
   name_asc: "Name A-Z",
@@ -38,6 +40,8 @@ type CatalogToolbarProps = {
   searchQuery: string;
   statusFilter: StatusFilter;
   categoryFilter: string;
+  takenFrom?: string;
+  takenTo?: string;
   sortOption: CatalogSortOption;
   viewMode: CatalogLayout;
   categoryOptions: string[];
@@ -49,15 +53,19 @@ type CatalogToolbarProps = {
   hasMoreTaxa: boolean;
   resultCount: number;
   totalCount: number;
+  hasActiveFilters: boolean;
   isSelectionMode: boolean;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: StatusFilter) => void;
   onCategoryChange: (value: string) => void;
+  onTakenFromChange: (value?: string) => void;
+  onTakenToChange: (value?: string) => void;
   onSortChange: (value: CatalogSortOption) => void;
   onViewModeChange: (value: CatalogLayout) => void;
   onTaxonFocus: () => void;
   onTaxonChange: (value?: number) => void;
   onLoadMoreTaxa: () => void;
+  onResetFilters: () => void;
   onEnterSelectionMode: () => void;
 };
 
@@ -65,6 +73,8 @@ export default function CatalogToolbar({
   searchQuery,
   statusFilter,
   categoryFilter,
+  takenFrom,
+  takenTo,
   sortOption,
   viewMode,
   categoryOptions,
@@ -76,15 +86,19 @@ export default function CatalogToolbar({
   hasMoreTaxa,
   resultCount,
   totalCount,
+  hasActiveFilters,
   isSelectionMode,
   onSearchChange,
   onStatusChange,
   onCategoryChange,
+  onTakenFromChange,
+  onTakenToChange,
   onSortChange,
   onViewModeChange,
   onTaxonFocus,
   onTaxonChange,
   onLoadMoreTaxa,
+  onResetFilters,
   onEnterSelectionMode,
 }: CatalogToolbarProps) {
   return (
@@ -98,7 +112,7 @@ export default function CatalogToolbar({
             type="search"
             value={searchQuery}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Name, species, category, description, tags"
+            placeholder="Name, species, camera, description, tags"
             className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition placeholder:text-stone-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
           />
         </label>
@@ -211,6 +225,37 @@ export default function CatalogToolbar({
         </label>
       </div>
 
+      <div className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-2 lg:max-w-xl">
+        <label className="block">
+          <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+            Taken from
+          </span>
+          <input
+            type="date"
+            value={takenFrom ?? ""}
+            max={takenTo}
+            onChange={(event) =>
+              onTakenFromChange(event.target.value || undefined)
+            }
+            className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
+            Taken to
+          </span>
+          <input
+            type="date"
+            value={takenTo ?? ""}
+            min={takenFrom}
+            onChange={(event) =>
+              onTakenToChange(event.target.value || undefined)
+            }
+            className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
+          />
+        </label>
+      </div>
+
       <div className="mt-4 flex flex-col gap-3 border-t border-stone-100 pt-4 text-sm text-stone-500 lg:flex-row lg:items-center lg:justify-between">
         <p>
           Showing <span className="font-semibold text-stone-800">{resultCount}</span>{" "}
@@ -219,6 +264,15 @@ export default function CatalogToolbar({
         </p>
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
           <p>Backend-filtered local collection.</p>
+          {hasActiveFilters ? (
+            <button
+              type="button"
+              onClick={onResetFilters}
+              className="min-h-11 rounded-md border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 hover:bg-stone-50"
+            >
+              Reset filters
+            </button>
+          ) : null}
           {!isSelectionMode ? (
             <button
               type="button"

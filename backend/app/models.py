@@ -6,6 +6,7 @@ from sqlalchemy import (
     JSON,
     CheckConstraint,
     Column,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -97,9 +98,77 @@ class Photo(SQLModel, table=True):
     )
     original_size_bytes: int | None = None
     media_type: str | None = None
+    captured_at: datetime | None = None
+    captured_at_offset_minutes: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            CheckConstraint(
+                "captured_at_offset_minutes BETWEEN -1439 AND 1439",
+                name="ck_photo_capture_offset_range",
+            ),
+            nullable=True,
+        ),
+    )
+    camera_make: str | None = Field(
+        default=None, sa_column=Column(String(200), nullable=True)
+    )
+    camera_model: str | None = Field(
+        default=None, sa_column=Column(String(200), nullable=True)
+    )
+    lens_model: str | None = Field(
+        default=None, sa_column=Column(String(200), nullable=True)
+    )
+    image_width: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            CheckConstraint("image_width > 0", name="ck_photo_image_width_positive"),
+            nullable=True,
+        ),
+    )
+    image_height: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            CheckConstraint("image_height > 0", name="ck_photo_image_height_positive"),
+            nullable=True,
+        ),
+    )
+    latitude: float | None = Field(
+        default=None,
+        sa_column=Column(
+            Float,
+            CheckConstraint(
+                "latitude BETWEEN -90 AND 90", name="ck_photo_latitude_range"
+            ),
+            nullable=True,
+        ),
+    )
+    longitude: float | None = Field(
+        default=None,
+        sa_column=Column(
+            Float,
+            CheckConstraint(
+                "longitude BETWEEN -180 AND 180", name="ck_photo_longitude_range"
+            ),
+            nullable=True,
+        ),
+    )
     deleted_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+@event.listens_for(Photo, "before_insert")
+@event.listens_for(Photo, "before_update")
+def validate_capture_metadata(_mapper, _connection, photo: Photo) -> None:
+    if (photo.image_width is None) != (photo.image_height is None):
+        raise ValueError("image dimensions must be both present or both null")
+    if (photo.latitude is None) != (photo.longitude is None):
+        raise ValueError("latitude and longitude must be both present or both null")
+    if photo.captured_at is None and photo.captured_at_offset_minutes is not None:
+        raise ValueError("capture offset requires captured_at")
 
 
 class Collection(SQLModel, table=True):

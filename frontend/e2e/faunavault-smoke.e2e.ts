@@ -123,6 +123,9 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
     detailLocation = `${new URL(page.url()).pathname}${new URL(page.url()).search}`;
 
     await expect(page.getByText(ORIGINAL_FILENAME, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Aug 22, 2026, 2:30 PM · timezone not recorded"),
+    ).toBeVisible();
     await expect(page.getByText("Pending", { exact: true }).first()).toBeVisible();
     await expectDecodedImage(page.getByRole("img", { name: "Unclassified" }));
 

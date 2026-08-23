@@ -7,9 +7,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-EXPORT_FORMAT_VERSION = 2
+EXPORT_FORMAT_VERSION = 3
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
+CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
 
 
 def validate_export_timestamp(value: str) -> str:
@@ -19,6 +20,18 @@ def validate_export_timestamp(value: str) -> str:
         datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise ValueError("timestamp must be a valid date and time") from exc
+    return value
+
+
+def validate_capture_timestamp(value: str) -> str:
+    if not CAPTURE_TIMESTAMP_PATTERN.fullmatch(value):
+        raise ValueError("capture timestamp must be a zone-free ISO-8601 value")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("capture timestamp must be valid") from exc
+    if parsed.tzinfo is not None:
+        raise ValueError("capture timestamp must not contain a timezone")
     return value
 
 
@@ -65,6 +78,15 @@ class PhotoExport(StrictExportModel):
     media_type: str | None
     original_size_bytes: int = Field(ge=0)
     original_sha256: str
+    captured_at: str | None
+    captured_at_offset_minutes: int | None = Field(default=None, ge=-1439, le=1439)
+    camera_make: str | None = Field(default=None, max_length=200)
+    camera_model: str | None = Field(default=None, max_length=200)
+    lens_model: str | None = Field(default=None, max_length=200)
+    image_width: int | None = Field(default=None, ge=1)
+    image_height: int | None = Field(default=None, ge=1)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     display_title: str | None
     common_name: str | None
     breed_guess: str | None
@@ -96,6 +118,11 @@ class PhotoExport(StrictExportModel):
     def validate_optional_timestamp(cls, value: str | None) -> str | None:
         return validate_export_timestamp(value) if value is not None else None
 
+    @field_validator("captured_at")
+    @classmethod
+    def validate_optional_capture_timestamp(cls, value: str | None) -> str | None:
+        return validate_capture_timestamp(value) if value is not None else None
+
     @field_validator("created_at", "updated_at")
     @classmethod
     def validate_timestamp(cls, value: str) -> str:
@@ -107,6 +134,12 @@ class PhotoExport(StrictExportModel):
             raise ValueError("active photos must not have a deleted timestamp")
         if self.lifecycle_state == "trash" and self.deleted_at is None:
             raise ValueError("Trash photos must have a deleted timestamp")
+        if self.captured_at is None and self.captured_at_offset_minutes is not None:
+            raise ValueError("capture offset requires captured_at")
+        if (self.image_width is None) != (self.image_height is None):
+            raise ValueError("image dimensions must be a complete pair")
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("GPS coordinates must be a complete pair")
         return self
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -22,8 +23,11 @@ def create_catalog_router() -> APIRouter:
         category: str | None = Query(default=None, max_length=200),
         uncategorized: bool = False,
         taxon_id: int | None = Query(default=None, ge=1),
+        taken_from: date | None = None,
+        taken_to: date | None = None,
         sort: Literal[
             "created_at",
+            "captured_at",
             "name",
             "species",
             "confidence",
@@ -38,6 +42,11 @@ def create_catalog_router() -> APIRouter:
                 status_code=422,
                 detail="category and uncategorized cannot be combined",
             )
+        if taken_from is not None and taken_to is not None and taken_from > taken_to:
+            raise HTTPException(
+                status_code=422,
+                detail="taken_from must be on or before taken_to",
+            )
         return list_catalog_photos(
             session,
             page=page,
@@ -47,6 +56,8 @@ def create_catalog_router() -> APIRouter:
             category=normalized_category,
             uncategorized=uncategorized,
             taxon_id=taxon_id,
+            taken_from=taken_from,
+            taken_to=taken_to,
             sort=sort,
             order=order,
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -61,7 +62,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for migration in range(1, 11):
+        for migration in range(1, 12):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (migration,),
@@ -103,6 +104,11 @@ def archive(tmp_path):
                 content_sha256=digest(original_payload),
                 original_size_bytes=len(original_payload),
                 media_type="image/jpeg",
+                captured_at=datetime(2024, 5, 24, 18, 42) if index == 1 else None,
+                captured_at_offset_minutes=120 if index == 1 else None,
+                camera_make="SONY" if index == 1 else None,
+                image_width=24,
+                image_height=18,
                 deleted_at=utc_now() if deleted else None,
             )
             session.add(photo)
@@ -142,8 +148,8 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert backup_path.name.startswith("faunavault-backup-")
     manifest = read_manifest(backup_path / "manifest.json")
     assert manifest.backup_format_version == 1
-    assert manifest.database.schema_version == 10
-    assert manifest.database.applied_migrations == list(range(1, 11))
+    assert manifest.database.schema_version == 11
+    assert manifest.database.applied_migrations == list(range(1, 12))
     assert manifest.counts.photos == 2
     assert manifest.counts.active_photos == 1
     assert manifest.counts.trashed_photos == 1
@@ -172,7 +178,7 @@ def test_schema10_backup_rehearsal_preserves_collections(archive):
 
     result = rehearse_backup(backup_path, target)
 
-    assert result.source_schema_version == 10
+    assert result.source_schema_version == 11
     assert result.collections == 1
     assert result.collection_memberships == 2
     recovered_settings = Settings(
@@ -185,8 +191,11 @@ def test_schema10_backup_rehearsal_preserves_collections(archive):
     with Session(recovered_engine) as session:
         collection = session.exec(select(Collection)).one()
         memberships = list(session.exec(select(CollectionPhoto)).all())
+        recovered_photo = session.get(Photo, 1)
     recovered_engine.dispose()
     assert collection.name == "Backup set"
+    assert recovered_photo.captured_at.isoformat() == "2024-05-24T18:42:00"
+    assert recovered_photo.captured_at_offset_minutes == 120
     assert {(item.collection_id, item.photo_id) for item in memberships} == {
         (collection.id, 1),
         (collection.id, 2),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import String, and_, case, cast, func, or_
 from sqlmodel import Session, select
@@ -29,6 +30,9 @@ def _search_conditions(search: str) -> list:
         Photo.category,
         Photo.description,
         Photo.original_filename,
+        Photo.camera_make,
+        Photo.camera_model,
+        Photo.lens_model,
         cast(Photo.tags, String),
         Animal.display_name,
         Animal.identifier,
@@ -86,6 +90,12 @@ def _order_by(sort: str, order: str) -> list:
 
     if sort == "created_at":
         return [direction(Photo.created_at), direction(Photo.id)]
+    if sort == "captured_at":
+        return [
+            case((Photo.captured_at.is_(None), 1), else_=0).asc(),
+            direction(Photo.captured_at),
+            direction(Photo.id),
+        ]
     if sort == "name":
         return [
             direction(_name_expression()),
@@ -161,6 +171,8 @@ def list_catalog_photos(
     category: str | None,
     uncategorized: bool,
     taxon_id: int | None,
+    taken_from: date | None,
+    taken_to: date | None,
     sort: str,
     order: str,
 ) -> CatalogPhotoPage:
@@ -200,6 +212,15 @@ def list_catalog_photos(
         conditions.append(Photo.category == category)
     if taxon_id is not None:
         conditions.append(Taxon.id == taxon_id)
+    if taken_from is not None:
+        conditions.append(Photo.captured_at >= datetime.combine(taken_from, time.min))
+    if taken_to is not None:
+        upper_bound = (
+            datetime.max
+            if taken_to == date.max
+            else datetime.combine(taken_to + timedelta(days=1), time.min)
+        )
+        conditions.append(Photo.captured_at < upper_bound)
 
     total = session.exec(count_query.where(*conditions)).one()
     items = list(

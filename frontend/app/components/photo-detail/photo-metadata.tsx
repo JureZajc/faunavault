@@ -2,7 +2,11 @@
 
 import { FormEvent, useState } from "react";
 import { Photo, PhotoStatus, PhotoUpdate, updatePhoto } from "../../lib/api";
-import { parseTags } from "../../lib/photo-metadata";
+import {
+  formatCameraLocalDate,
+  formatUtcOffset,
+  parseTags,
+} from "../../lib/photo-metadata";
 
 const photoStatuses: PhotoStatus[] = ["pending", "classified", "needs_review"];
 const statusLabels: Record<PhotoStatus, string> = {
@@ -83,10 +87,53 @@ function MetadataRow({
   );
 }
 
+function cameraLabel(photo: Photo) {
+  const make = photo.camera_make?.trim();
+  const model = photo.camera_model?.trim();
+  if (!make) return model ?? null;
+  if (!model) return make;
+  const normalizedMake = make.toLocaleLowerCase();
+  const normalizedModel = model.toLocaleLowerCase();
+  return normalizedModel === normalizedMake ||
+    normalizedModel.startsWith(`${normalizedMake} `)
+    ? model
+    : `${make} ${model}`;
+}
+
+function capturedAtLabel(photo: Photo) {
+  if (!photo.captured_at) return null;
+  const timezone =
+    photo.captured_at_offset_minutes === null
+      ? "timezone not recorded"
+      : formatUtcOffset(photo.captured_at_offset_minutes);
+  return `${formatCameraLocalDate(photo.captured_at, true)} · ${timezone}`;
+}
+
 export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
   return (
     <>
       <dl className="mt-5 rounded-lg border border-stone-200 px-4">
+        {photo.captured_at ? (
+          <MetadataRow label="Taken" value={capturedAtLabel(photo)} />
+        ) : null}
+        {cameraLabel(photo) ? (
+          <MetadataRow label="Camera" value={cameraLabel(photo)} />
+        ) : null}
+        {photo.lens_model ? (
+          <MetadataRow label="Lens" value={photo.lens_model} />
+        ) : null}
+        {photo.image_width !== null && photo.image_height !== null ? (
+          <MetadataRow
+            label="Dimensions"
+            value={`${photo.image_width} × ${photo.image_height}`}
+          />
+        ) : null}
+        {photo.latitude !== null && photo.longitude !== null ? (
+          <MetadataRow
+            label="Location"
+            value={`${photo.latitude.toFixed(5)}, ${photo.longitude.toFixed(5)}`}
+          />
+        ) : null}
         <MetadataRow label="Original file" value={photo.original_filename} />
         <MetadataRow label="Display title" value={photo.display_title} />
         <MetadataRow label="Common name" value={photo.common_name} />
@@ -95,7 +142,10 @@ export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
         <MetadataRow label="Category" value={photo.category} />
         <MetadataRow label="Confidence" value={confidenceLabel(photo.confidence)} />
         <MetadataRow label="Status" value={statusLabels[photo.status]} />
-        <MetadataRow label="Created" value={formatDateTime(photo.created_at)} />
+        <MetadataRow
+          label="Added to FaunaVault"
+          value={formatDateTime(photo.created_at)}
+        />
         <MetadataRow label="Updated" value={formatDateTime(photo.updated_at)} />
       </dl>
       <div className="mt-5 border-t border-stone-200 pt-5">

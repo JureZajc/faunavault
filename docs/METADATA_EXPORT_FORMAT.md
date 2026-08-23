@@ -1,4 +1,4 @@
-# FaunaVault metadata export format v2
+# FaunaVault metadata export format v3
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, user-defined Collections,
@@ -12,7 +12,7 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v2 is `2`. |
+| `format_version` | Metadata export representation version; v3 is `3`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
 | `counts` | Photo, active, Trash, Animal, Taxon, Collection, Collection-membership, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
@@ -24,8 +24,8 @@ import format.
 Export format and database schema versions have separate compatibility
 lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
-exports contain only Photos, Animals, and Taxa; v2 is required for a complete
-export of archives that support Collections. FaunaVault does not emit legacy v1.
+exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
+adds the durable Photo capture-metadata contract. FaunaVault emits only v3.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -42,6 +42,15 @@ archive_relative_original_path
 media_type
 original_size_bytes
 original_sha256
+captured_at
+captured_at_offset_minutes
+camera_make
+camera_model
+lens_model
+image_width
+image_height
+latitude
+longitude
 display_title
 common_name
 breed_guess
@@ -68,6 +77,14 @@ path, checksum, or content is included.
 Trash records have a timestamp. `status` is the durable Photo classification
 outcome, not classification-job execution state. `tags` is always a JSON string
 array and retains its stored order.
+
+`captured_at` is the image-stated, camera-local wall time, or null. It is never
+derived from upload time, filesystem metadata, a filename, or `created_at`.
+`captured_at_offset_minutes` independently records a valid paired EXIF offset;
+null means the camera timezone was not recorded. Dimensions describe the
+EXIF-oriented logical original. GPS is emitted only as a complete latitude and
+longitude pair and remains local metadata; export performs no geocoding or
+network access.
 
 Each Animal contains:
 
@@ -137,9 +154,13 @@ archive and all arrays use ascending ID order; membership pairs use ascending
   deterministic key ordering, LF newlines, and one final newline.
 - Every optional field is present. Absence is JSON `null`, never an empty-string
   substitute, `"NULL"`, or `"None"`. Persisted empty strings remain empty.
-- Timestamps are UTC ISO-8601 strings in the fixed form
+- Archive timestamps are UTC ISO-8601 strings in the fixed form
   `YYYY-MM-DDTHH:MM:SS.ffffffZ`. Current SQLite timestamps without offsets have
   FaunaVault UTC semantics; offset-aware legacy values are converted to UTC.
+- Photo capture timestamps use fixed
+  `YYYY-MM-DDTHH:MM:SS.ffffff` camera-local text without a suffix. They are not
+  normalized to UTC; the optional signed offset is exported separately in
+  `captured_at_offset_minutes`.
 - SHA-256 values are exactly 64 lowercase hexadecimal characters.
 
 ## Optional photo CSV
@@ -156,6 +177,15 @@ archive_relative_original_path
 media_type
 original_size_bytes
 original_sha256
+captured_at
+captured_at_offset_minutes
+camera_make
+camera_model
+lens_model
+image_width
+image_height
+latitude
+longitude
 display_title
 common_name
 breed_guess
@@ -187,6 +217,16 @@ is an empty cell. To preserve arbitrary text unambiguously, a non-null value tha
 starts with a backslash receives one additional leading backslash. A decoder
 maps exact `\N` to null and otherwise removes one slash from values beginning
 with two backslashes.
+
+Capture offsets and dimensions use decimal integers. GPS uses locale-independent
+decimal-dot numbers. Capture timestamps use the same zone-free fixed text as
+JSON.
+
+## Version history
+
+- v1: Photos, Animals, and Taxa.
+- v2: Collections and Collection memberships.
+- v3: persisted Photo capture time/offset, camera, lens, dimensions, and GPS.
 
 ## Deliberate exclusions
 

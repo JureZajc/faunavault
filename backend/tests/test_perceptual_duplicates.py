@@ -209,13 +209,10 @@ def test_upload_warns_then_keeps_both_and_exact_still_wins(
         assert stored is not None
         assert len(stored.perceptual_hash or "") == 16
 
-    def fail_if_hashed(*_args, **_kwargs):
-        raise AssertionError("exact duplicate must win before perceptual hashing")
-
-    monkeypatch.setattr(lifecycle_service, "perceptual_hash_for_path", fail_if_hashed)
     exact = post_image(client, original, "renamed.jpg", allow=True)
     assert exact.status_code == 409
     assert exact.json()["detail"]["code"] == "duplicate_photo"
+    assert calls == 1
 
 
 def test_trash_candidate_thumbnail_and_batch_results(perceptual_lifecycle):
