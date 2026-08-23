@@ -28,6 +28,19 @@ Durable classification state is restored from the backend after refresh. The
 frontend polls only while queued or running work exists and keeps low-confidence
 `needs_review` results distinct from failed job execution.
 
+Catalog Select mode follows the same route-local boundary. A focused selection
+hook stores only explicit photo IDs, preserves them across pages and flat/grouped
+layout changes, and clears them when the logical URL-backed query or collection
+view changes. A separate mutation hook sends one typed bulk request, waits for
+the authoritative result, clears selection only after mutation success, and
+refreshes the catalog once. Selection is not written to the URL or browser
+storage, and Albums and Trash do not expose bulk selection.
+
+Native checkboxes and the existing accessible modal primitive support Add tags,
+Remove tags, Set/Clear category, and recoverable Move to Trash. Select page is
+strictly page-local, the client and server both enforce a 250-photo maximum, and
+there is no all-matching-results or bulk permanent-delete action.
+
 ## Upload queue and duplicate review
 
 The interactive uploader uses the single-photo API through a
@@ -114,6 +127,7 @@ and a uniquely named archive beneath the OS temporary directory. Occupied ports
 fail the run instead of reusing an existing server. Temporary fixtures, the
 database, and all generated images are removed after success or failure. The
 smoke journey covers upload and duplicate safety, catalog/detail navigation and
-metadata persistence, real backend image loading, and Trash restore/permanent
-deletion. It makes no Ollama or GBIF request. Playwright traces and screenshots
+metadata persistence, real backend image loading, Trash restore/permanent
+deletion, and one explicit two-photo bulk Move to Trash contract. It makes no
+Ollama or GBIF request. Playwright traces and screenshots
 are retained only for failures; they are ignored by Git.

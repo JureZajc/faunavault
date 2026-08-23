@@ -11,6 +11,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
 - Searchable/filterable photo catalog, species albums, animals, and GBIF taxonomy linking
+- Explicit cross-page catalog selection with atomic bulk tag, category, and Move to Trash actions
 - Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
 - Recoverable Trash with restore and explicitly confirmed permanent deletion
 - Versioned, backed-up SQLite migrations and local-only storage
@@ -59,6 +60,18 @@ List page, search, filters, sorting, verified taxon, and flat/grouped layout are
 stored in URL search parameters. Refresh, copied URLs, browser Back/Forward,
 and photo detail return navigation restore the same catalog context. Grouping
 is intentionally page-local once pagination is active.
+
+The List view also offers an explicit Select mode. Selection contains only photo
+IDs the user checks and can span visited pages within the same search/filter/sort
+context. Search, filter, sort, Albums, or Trash changes clear it; flat/grouped and
+page changes do not. Select page means the currently loaded page only, requests
+are capped at 250 photos, and there is no select-all-results behavior. Bulk actions
+can add/remove tags, set or explicitly clear category, or move active photos to
+recoverable Trash. Permanent deletion is never available as a bulk action.
+
+`POST /photos/bulk` accepts a discriminated operation body with explicit
+`photo_ids`. The backend validates the complete active set before mutation and
+commits metadata changes or Trash/job-state transitions atomically.
 
 ## Exact and possible visual duplicates
 

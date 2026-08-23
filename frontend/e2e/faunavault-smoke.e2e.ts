@@ -5,6 +5,8 @@ import path from "node:path";
 const ORIGINAL_FILENAME = "faunavault-e2e-original.jpg";
 const RECOMPRESSED_FILENAME = "faunavault-e2e-recompressed.jpg";
 const UPDATED_TITLE = "FaunaVault E2E specimen";
+const BULK_FIRST_FILENAME = "faunavault-e2e-bulk-first.jpg";
+const BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg";
 
 function testRoot() {
   const root = process.env.FAUNAVAULT_E2E_ROOT;
@@ -223,5 +225,38 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
         )
         .toBe(0);
     }
+  });
+
+  await test.step("explicit bulk selection moves exactly two photos to Trash", async () => {
+    await page.goto("/");
+    await expect(
+      page.getByRole("heading", { name: "Start your animal archive" }),
+    ).toBeVisible();
+    await uploadFile(page, BULK_FIRST_FILENAME);
+    await expect(uploadRow(page, BULK_FIRST_FILENAME)).toContainText("Uploaded");
+    await uploadFile(page, BULK_SECOND_FILENAME);
+    await expect(uploadRow(page, BULK_SECOND_FILENAME)).toContainText("Uploaded");
+    await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
+    await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(1);
+
+    await page.getByRole("button", { name: "Select photos" }).click();
+    const photoCheckboxes = page.getByRole("checkbox", {
+      name: /Select photo \d+: Unclassified/,
+    });
+    await expect(photoCheckboxes).toHaveCount(2);
+    await photoCheckboxes.nth(0).check();
+    await photoCheckboxes.nth(1).check();
+    await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Move to Trash" }).click();
+    const bulkDialog = page.getByRole("dialog", {
+      name: "Move 2 photos to Trash?",
+    });
+    await bulkDialog.getByRole("button", { name: "Move to Trash" }).click();
+
+    await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(0);
+    await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(0);
+    await page.getByRole("button", { name: "trash", exact: true }).click();
+    await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
+    await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(1);
   });
 });

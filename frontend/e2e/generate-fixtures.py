@@ -14,6 +14,8 @@ from app.services.perceptual_duplicates import (
 
 ORIGINAL_FILENAME = "faunavault-e2e-original.jpg"
 RECOMPRESSED_FILENAME = "faunavault-e2e-recompressed.jpg"
+BULK_FIRST_FILENAME = "faunavault-e2e-bulk-first.jpg"
+BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg"
 
 
 def scene() -> Image.Image:
@@ -38,6 +40,20 @@ def scene() -> Image.Image:
     return image
 
 
+def bulk_scene(variant: int) -> Image.Image:
+    image = Image.new("RGB", (640, 480), (235, 230, 210))
+    draw = ImageDraw.Draw(image)
+    if variant == 1:
+        for offset in range(0, 640, 80):
+            draw.rectangle((offset, 0, offset + 39, 480), fill=(40, 105, 150))
+        draw.ellipse((170, 90, 470, 390), fill=(235, 175, 45), outline=(20, 20, 20), width=12)
+    else:
+        for offset in range(0, 480, 60):
+            draw.rectangle((0, offset, 640, offset + 29), fill=(145, 55, 95))
+        draw.polygon([(320, 35), (590, 430), (50, 430)], fill=(70, 175, 105))
+    return image
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -55,6 +71,8 @@ def generate(test_root: Path) -> None:
     temporary_recompressed = fixtures / f"{RECOMPRESSED_FILENAME}.tmp"
     original = fixtures / ORIGINAL_FILENAME
     recompressed = fixtures / RECOMPRESSED_FILENAME
+    bulk_first = fixtures / BULK_FIRST_FILENAME
+    bulk_second = fixtures / BULK_SECOND_FILENAME
 
     scene().save(temporary_original, format="JPEG", quality=95)
     with Image.open(temporary_original) as decoded:
@@ -74,6 +92,17 @@ def generate(test_root: Path) -> None:
 
     temporary_original.replace(original)
     temporary_recompressed.replace(recompressed)
+    bulk_scene(1).save(bulk_first, format="JPEG", quality=92)
+    bulk_scene(2).save(bulk_second, format="JPEG", quality=92)
+    fixture_hashes = [image_hash(path) for path in (original, bulk_first, bulk_second)]
+    for first_index, first_hash in enumerate(fixture_hashes):
+        for second_hash in fixture_hashes[first_index + 1 :]:
+            fixture_distance = hamming_distance(first_hash, second_hash)
+            if fixture_distance <= PHASH_DISTANCE_THRESHOLD:
+                raise RuntimeError(
+                    "Bulk E2E fixtures must not trigger possible-duplicate review: "
+                    f"distance {fixture_distance} is within threshold"
+                )
     print(f"Generated deterministic E2E images with perceptual distance {distance}.")
 
 

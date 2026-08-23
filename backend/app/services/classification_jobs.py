@@ -216,10 +216,28 @@ def fail_active_jobs_for_photo(
     message: str = "The photo was moved to Trash during classification.",
     clock: Callable[[], datetime] = utc_now,
 ) -> None:
+    fail_active_jobs_for_photos(
+        session,
+        [photo_id],
+        code=code,
+        message=message,
+        clock=clock,
+    )
+
+
+def fail_active_jobs_for_photos(
+    session: Session,
+    photo_ids: list[int],
+    code: str = "photo_trashed",
+    message: str = "The photo was moved to Trash during classification.",
+    clock: Callable[[], datetime] = utc_now,
+) -> None:
+    if not photo_ids:
+        return
     now = clock()
     jobs = session.exec(
         select(ClassificationJob).where(
-            ClassificationJob.photo_id == photo_id,
+            ClassificationJob.photo_id.in_(photo_ids),
             ClassificationJob.status.in_(ACTIVE_JOB_STATUSES),
         )
     ).all()

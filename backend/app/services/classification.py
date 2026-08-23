@@ -63,7 +63,14 @@ class ClassificationOutcome:
 def normalize_tags(tags: list[str] | None) -> list[str]:
     if tags is None:
         return []
-    return [tag.strip() for tag in tags if tag.strip()]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        value = tag.strip()
+        if value and value not in seen:
+            normalized.append(value)
+            seen.add(value)
+    return normalized
 
 
 def normalize_metadata_text(value: str | None) -> str | None:
