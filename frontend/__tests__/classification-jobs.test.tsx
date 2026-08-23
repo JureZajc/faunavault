@@ -197,6 +197,40 @@ test("hides a stale successful batch when new pending photos exist", async () =>
   ).toBe(false);
 });
 
+test("removes the classification panel after all pending jobs succeed", async () => {
+  api.getCatalogPhotos.mockImplementation(async (query) => ({
+    items: [photo({ status: "classified" })],
+    total: 1,
+    page: query.page,
+    page_size: query.page_size,
+    total_pages: 1,
+    facets: {
+      active_total: 1,
+      status_counts: { pending: 0, classified: 1, needs_review: 0 },
+      categories: [{ value: "mammal", count: 1 }],
+      uncategorized_count: 0,
+    },
+  }));
+  api.getClassificationJobs.mockResolvedValue(
+    collection([
+      job({
+        status: "succeeded",
+        actual_model: "primary",
+        photo_original_filename: "finished.jpg",
+      }),
+    ]),
+  );
+
+  render(<Home />);
+
+  expect(await screen.findByText("1 classified")).toBeTruthy();
+  expect(screen.queryByText("0 pending photos")).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Classify pending photos" }),
+  ).toBeNull();
+  expect(screen.queryByText("finished.jpg")).toBeNull();
+});
+
 test("preserves long job filenames and provenance without hiding retry", async () => {
   const filename = `${"field-record-".repeat(12)}.jpg`;
   const model = `local-model-${"variant".repeat(12)}`;

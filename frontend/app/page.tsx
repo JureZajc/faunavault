@@ -109,12 +109,11 @@ function HomeContent() {
   const hasUnknownCategory = (catalog?.facets.uncategorized_count ?? 0) > 0;
   const pendingPhotoCount = catalogStats.pending;
   const catalogClassificationJobs = useMemo(() => {
-    if (pendingPhotoCount === 0) return classificationJobs;
     const hasUnfinishedOrFailedJob = classificationJobs.some(
       (job) => job.status !== "succeeded",
     );
     return hasUnfinishedOrFailedJob ? classificationJobs : [];
-  }, [classificationJobs, pendingPhotoCount]);
+  }, [classificationJobs]);
   const showClassificationPanel =
     pendingPhotoCount > 0 || catalogClassificationJobs.length > 0;
   const statusFilter: StatusFilter = query.catalogState.status ?? "all";
