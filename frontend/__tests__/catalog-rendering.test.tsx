@@ -52,7 +52,7 @@ test("renders one shared card path grouped by sorted category", async () => {
   expect(screen.getAllByRole("button", { name: "Move to Trash" })).toHaveLength(3);
   expect(screen.getByTitle("1.jpg").textContent).toBe("1.jpg");
 
-  const listSwitch = screen.getByRole("button", { name: "list" });
+  const listSwitch = screen.getByRole("link", { name: "List" });
   const layoutSwitch = screen.getByRole("button", { name: "Flat grid" });
   expect(listSwitch.className).toContain("min-w-0");
   expect(listSwitch.parentElement?.className).toContain("w-full");

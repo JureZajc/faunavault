@@ -1,9 +1,10 @@
-# FaunaVault metadata export format v1
+# FaunaVault metadata export format v2
 
 FaunaVault metadata export is a deterministic, portable description of the
-archive's Photos, Animals, locally stored Taxa, Trash state, and authoritative
-original-file inventory. It contains no media bytes and is not a backup, restore
-format, or supported import format.
+archive's Photos, Animals, locally stored Taxa, user-defined Collections,
+Collection memberships, Trash state, and authoritative original-file inventory.
+It contains no media bytes and is not a backup, restore format, or supported
+import format.
 
 ## Version and top-level structure
 
@@ -11,17 +12,20 @@ format, or supported import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v1 is `1`. |
+| `format_version` | Metadata export representation version; v2 is `2`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
-| `counts` | Photo, active, Trash, Animal, Taxon, and original-byte totals. |
+| `counts` | Photo, active, Trash, Animal, Taxon, Collection, Collection-membership, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
 | `animals` | All Animals, including those without Photos, ordered by local ID. |
 | `taxa` | All locally stored Taxa, including unreferenced rows, ordered by local ID. |
+| `collections` | All user-defined Collections, ordered by local ID. |
+| `collection_photos` | All Collection membership pairs, including memberships to Trash Photos, ordered by Collection ID then Photo ID. |
 
 Export format and database schema versions have separate compatibility
-lifecycles. A database migration does not automatically require export format
-v2. Consumers should reject unsupported `format_version` values but ignore
-unknown fields added compatibly to a supported version.
+lifecycles. Consumers should reject unsupported `format_version` values but
+ignore unknown fields added compatibly to a supported version. Historical v1
+exports contain only Photos, Animals, and Taxa; v2 is required for a complete
+export of archives that support Collections. FaunaVault does not emit legacy v1.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -107,9 +111,25 @@ synchronized_at
 Provider taxon IDs are strings. These records describe the local taxonomy
 snapshot; export never contacts GBIF.
 
+Each Collection contains:
+
+```text
+id
+name
+created_at
+updated_at
+```
+
+The internal normalized uniqueness key is never exported. Each
+`collection_photos` record contains only `collection_id` and `photo_id`.
+Membership is organizational metadata and is exported even when the referenced
+Photo is in Trash.
+
 Photo `animal_id` and Animal `taxon_id` are either JSON `null` or references to
-records present in the same export. Local integer IDs are stable within the
-archive and all arrays use ascending ID order.
+records present in the same export. Every Collection membership references both
+a Collection and a Photo in the export. Local integer IDs are stable within the
+archive and all arrays use ascending ID order; membership pairs use ascending
+`(collection_id, photo_id)` order.
 
 ## Encoding, timestamps, and nulls
 
@@ -171,7 +191,8 @@ with two backslashes.
 ## Deliberate exclusions
 
 The format excludes originals and all other media bytes, derivative inventory,
-perceptual hashes, derived albums, classification-job history and failures,
+perceptual hashes, derived Albums, Collection normalized-name keys,
+classification-job history and failures,
 application configuration, credentials, absolute database/image paths, staging
 and purge paths, database internals, and export bookkeeping. There is no import
 or restore guarantee. Keep verified FaunaVault backups containing SQLite and

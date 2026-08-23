@@ -196,7 +196,7 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
                 "SELECT version FROM schema_migration ORDER BY version"
             )
         ]
-    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     with engine.connect() as connection:
         indexes = {
             row[1] for row in connection.exec_driver_sql("PRAGMA index_list(photo)")
@@ -247,8 +247,8 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         calls += 1
         main.normalize_existing_domestic_metadata()
 
-    assert run_migrations(engine, settings, normalize) == [5, 6, 7, 8, 9]
-    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert run_migrations(engine, settings, normalize) == [5, 6, 7, 8, 9, 10]
+    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
         assert photo is not None
@@ -285,8 +285,8 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
 
     assert run_migrations(
         engine, settings, main.normalize_existing_domestic_metadata
-    ) == [5, 6, 7, 8, 9]
-    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    ) == [5, 6, 7, 8, 9, 10]
+    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
         assert photo is not None
@@ -321,7 +321,7 @@ def test_migration_8_backfills_normalized_album_group_and_is_idempotent(tmp_path
             "(1, '  ČRNA   Štorklja '), (2, NULL), (3, '   ')"
         )
 
-    assert run_migrations(engine, settings) == [8, 9]
+    assert run_migrations(engine, settings) == [8, 9, 10]
     with engine.connect() as connection:
         rows = connection.exec_driver_sql(
             "SELECT id, legacy_species_group FROM animal ORDER BY id"
@@ -356,7 +356,7 @@ def test_migration_9_adds_nullable_perceptual_hash_without_backfill(tmp_path):
             )
         connection.exec_driver_sql("INSERT INTO photo(id) VALUES (1)")
 
-    assert run_migrations(engine, settings) == [9]
+    assert run_migrations(engine, settings) == [9, 10]
     with engine.connect() as connection:
         columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(photo)")
@@ -366,6 +366,90 @@ def test_migration_9_adds_nullable_perceptual_hash_without_backfill(tmp_path):
         ).scalar_one()
     assert "perceptual_hash" in columns
     assert value is None
+    assert run_migrations(engine, settings) == []
+
+
+def test_migration_10_creates_collection_relations_with_cascades(tmp_path):
+    database_path = tmp_path / "collections-migration.db"
+    settings = Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        image_dir=tmp_path / "images",
+        database_url=f"sqlite:///{database_path}",
+    )
+    engine = create_engine(settings.resolved_database_url)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE photo (id INTEGER PRIMARY KEY)")
+        connection.exec_driver_sql("INSERT INTO photo(id) VALUES (7)")
+        connection.exec_driver_sql(
+            "CREATE TABLE schema_migration "
+            "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
+        )
+        for version in range(1, 10):
+            connection.exec_driver_sql(
+                "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
+                (version,),
+            )
+
+    assert run_migrations(engine, settings) == [10]
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO collection(name, name_key, created_at, updated_at) "
+            "VALUES ('Birds', 'birds', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+        collection_id = connection.exec_driver_sql(
+            "SELECT id FROM collection"
+        ).scalar_one()
+        connection.exec_driver_sql(
+            "INSERT INTO collection_photo(collection_id, photo_id) VALUES (?, 7)",
+            (collection_id,),
+        )
+        foreign_keys = connection.exec_driver_sql(
+            "PRAGMA foreign_key_list(collection_photo)"
+        ).all()
+        collection_columns = connection.exec_driver_sql(
+            "PRAGMA table_info(collection)"
+        ).all()
+        membership_columns = connection.exec_driver_sql(
+            "PRAGMA table_info(collection_photo)"
+        ).all()
+        indexes = connection.exec_driver_sql(
+            "PRAGMA index_list(collection_photo)"
+        ).all()
+        collection_indexes = connection.exec_driver_sql(
+            "PRAGMA index_list(collection)"
+        ).all()
+        collection_sql = connection.exec_driver_sql(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='collection'"
+        ).scalar_one()
+        connection.exec_driver_sql("DELETE FROM photo WHERE id = 7")
+        memberships = connection.exec_driver_sql(
+            "SELECT COUNT(*) FROM collection_photo"
+        ).scalar_one()
+    assert {row[2]: row[6] for row in foreign_keys} == {
+        "photo": "CASCADE",
+        "collection": "CASCADE",
+    }
+    assert "ix_collection_photo_photo_collection" in {row[1] for row in indexes}
+    assert [row[1] for row in collection_columns] == [
+        "id",
+        "name",
+        "name_key",
+        "created_at",
+        "updated_at",
+    ]
+    assert {row[1]: row[3] for row in membership_columns} == {
+        "collection_id": 1,
+        "photo_id": 1,
+    }
+    assert {row[1]: row[5] for row in membership_columns} == {
+        "collection_id": 1,
+        "photo_id": 2,
+    }
+    assert any(row[2] == 1 for row in collection_indexes)
+    assert "length(name) BETWEEN 1 AND 100" in collection_sql
+    assert "length(name_key) >= 1" in collection_sql
+    assert memberships == 0
     assert run_migrations(engine, settings) == []
 
 

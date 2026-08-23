@@ -63,6 +63,10 @@ def _print_rehearsal(result: RehearsalResult) -> None:
     )
     print(f"Animals: {result.animals}")
     print(f"Taxa: {result.taxa}")
+    print(
+        f"Collections: {result.collections} with "
+        f"{result.collection_memberships} membership(s)"
+    )
     print(f"Albums: {result.albums}")
     print(
         "Classification recovery: "

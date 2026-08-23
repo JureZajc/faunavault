@@ -114,12 +114,12 @@ test("preserves catalog parameters while switching collection views", async () =
   render(<Home />);
   await screen.findByText("Page 2 of 2");
 
-  await userEvent.click(screen.getByRole("button", { name: "album" }));
+  await userEvent.click(screen.getByRole("link", { name: "Albums" }));
   expect(window.location.search).toContain("view=album");
   expect(window.location.search).toContain("catalog_page=2");
   expect(window.location.search).toContain("catalog_status=classified");
 
-  await userEvent.click(screen.getByRole("button", { name: "list" }));
+  await userEvent.click(screen.getByRole("link", { name: "List" }));
   expect(window.location.search).not.toContain("view=");
   expect(window.location.search).toContain("catalog_page=2");
 });

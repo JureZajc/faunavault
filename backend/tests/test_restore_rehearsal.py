@@ -86,7 +86,7 @@ def test_frozen_schema9_fixture_verifies_rehearses_and_remains_immutable(tmp_pat
     assert verification.valid
     assert verification.manifest is not None
     assert verification.manifest.database.schema_version == 9
-    assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset({9})
+    assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset({9, 10})
     assert result.source_schema_version == 9
     assert result.current_schema_version == LATEST_SCHEMA_VERSION
     assert result.applied_migrations == tuple(range(10, LATEST_SCHEMA_VERSION + 1))
@@ -95,6 +95,8 @@ def test_frozen_schema9_fixture_verifies_rehearses_and_remains_immutable(tmp_pat
     assert result.trashed_photos == 1
     assert result.animals == 2
     assert result.taxa == 1
+    assert result.collections == 0
+    assert result.collection_memberships == 0
     assert result.albums == 2
     assert result.doctor_status == "HEALTHY"
     assert target.is_dir()

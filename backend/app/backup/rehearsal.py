@@ -108,11 +108,22 @@ class TaxonRecoveryRecord:
 
 
 @dataclass(frozen=True)
+class CollectionRecoveryRecord:
+    id: int
+    name: str
+    name_key: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class RecoverySnapshot:
     photos: tuple[PhotoRecoveryRecord, ...]
     animals: tuple[AnimalRecoveryRecord, ...]
     taxa: tuple[TaxonRecoveryRecord, ...]
     job_counts: tuple[tuple[str, int], ...]
+    collections: tuple[CollectionRecoveryRecord, ...] = ()
+    collection_memberships: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -129,6 +140,8 @@ class RehearsalResult:
     trashed_photos: int
     animals: int
     taxa: int
+    collections: int
+    collection_memberships: int
     albums: int
     doctor_status: str
     warnings: tuple[str, ...]
@@ -252,11 +265,60 @@ def _read_schema_9_snapshot(database_path: Path) -> RecoverySnapshot:
             connection.close()
 
 
+def _read_schema_10_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_9_snapshot(database_path)
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = open_read_only_database(database_path)
+        collections = tuple(
+            CollectionRecoveryRecord(
+                id=int(row[0]),
+                name=str(row[1]),
+                name_key=str(row[2]),
+                created_at=str(row[3]),
+                updated_at=str(row[4]),
+            )
+            for row in connection.execute(
+                "SELECT id, name, name_key, created_at, updated_at "
+                "FROM collection ORDER BY id"
+            )
+        )
+        memberships = tuple(
+            (int(row[0]), int(row[1]))
+            for row in connection.execute(
+                "SELECT collection_id, photo_id FROM collection_photo "
+                "ORDER BY collection_id, photo_id"
+            )
+        )
+        return RecoverySnapshot(
+            base.photos,
+            base.animals,
+            base.taxa,
+            base.job_counts,
+            collections,
+            memberships,
+        )
+    except (sqlite3.Error, TypeError, ValueError) as exc:
+        raise ArchiveIntegrityError(
+            f"Could not read Collection metadata: {exc}"
+        ) from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
+    if schema_version == 9:
+        return _read_schema_9_snapshot(database_path)
+    if schema_version == 10:
+        return _read_schema_10_snapshot(database_path)
+    raise ArchiveIntegrityError(
+        f"No recovery metadata reader for schema {schema_version}"
+    )
+
+
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    # Schema 9 is the current schema. When a future migration intentionally
-    # transforms stable fields, update only this post-migration reader/comparator;
-    # the frozen schema-9 source reader above must remain unchanged.
-    return _read_schema_9_snapshot(database_path)
+    return _read_schema_10_snapshot(database_path)
 
 
 def _verify_source(backup_path: Path) -> tuple[VerificationResult, str]:
@@ -371,6 +433,10 @@ def _compare_recovery_snapshots(
         raise ArchiveIntegrityError("Animal metadata changed during rehearsal")
     if source.taxa != current.taxa:
         raise ArchiveIntegrityError("Taxonomy metadata changed during rehearsal")
+    if source.collections != current.collections:
+        raise ArchiveIntegrityError("Collection metadata changed during rehearsal")
+    if source.collection_memberships != current.collection_memberships:
+        raise ArchiveIntegrityError("Collection memberships changed during rehearsal")
     expected_jobs = dict(source.job_counts)
     running = expected_jobs.get("running", 0)
     expected_jobs["running"] = 0
@@ -460,7 +526,9 @@ def rehearse_backup(backup_path: Path, target: Path) -> RehearsalResult:
     assert manifest is not None
     database_source = verification.backup_path / DATABASE_BACKUP_PATH
     try:
-        source_snapshot = _read_schema_9_snapshot(database_source)
+        source_snapshot = _read_source_snapshot(
+            database_source, manifest.database.schema_version
+        )
     except ArchiveIntegrityError as exc:
         raise RehearsalIntegrityError("backup verification", str(exc)) from exc
 
@@ -538,6 +606,8 @@ def rehearse_backup(backup_path: Path, target: Path) -> RehearsalResult:
             trashed_photos=inventory.trashed_photos,
             animals=inventory.animals,
             taxa=inventory.taxa,
+            collections=inventory.collections,
+            collection_memberships=inventory.collection_memberships,
             albums=album_count,
             doctor_status=health.status,
             warnings=warnings,

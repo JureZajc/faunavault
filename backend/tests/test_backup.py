@@ -3,22 +3,40 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from io import BytesIO
 from pathlib import Path
 
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
+from PIL import Image
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.backup.integrity import BackupError
 from app.backup.manifest import read_manifest
+from app.backup.rehearsal import rehearse_backup
 from app.backup.service import create_backup
 from app.backup.verify import verify_backup
 from app.cli.backup import main as backup_main
 from app.config import Settings
-from app.models import Animal, ClassificationJob, Photo, Taxon, utc_now
+from app.database import create_database_engine
+from app.models import (
+    Animal,
+    ClassificationJob,
+    Collection,
+    CollectionPhoto,
+    Photo,
+    Taxon,
+    utc_now,
+)
 
 
 def digest(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def jpeg_payload(index: int, size: tuple[int, int]) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", size, (40 * index, 90, 130)).save(output, format="JPEG")
+    return output.getvalue()
 
 
 @pytest.fixture()
@@ -43,7 +61,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for migration in range(1, 10):
+        for migration in range(1, 11):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (migration,),
@@ -67,11 +85,11 @@ def archive(tmp_path):
             original = f"photo-{index}.jpg"
             resized = f"photo-{index}_resized.jpg"
             thumbnail = f"photo-{index}_thumb.jpg"
-            original_payload = f"original-{index}".encode()
+            original_payload = jpeg_payload(index, (24, 18))
             payloads = {
                 settings.image_dirs["original"] / original: original_payload,
-                settings.image_dirs["resized"] / resized: f"resized-{index}".encode(),
-                settings.image_dirs["thumbs"] / thumbnail: f"thumb-{index}".encode(),
+                settings.image_dirs["resized"] / resized: jpeg_payload(index, (16, 12)),
+                settings.image_dirs["thumbs"] / thumbnail: jpeg_payload(index, (8, 6)),
             }
             for path, payload in payloads.items():
                 path.write_bytes(payload)
@@ -101,6 +119,11 @@ def archive(tmp_path):
                         source_photo_updated_at=photo.updated_at,
                     )
                 )
+        collection = Collection(name="Backup set", name_key="backup set")
+        session.add(collection)
+        session.flush()
+        session.add(CollectionPhoto(collection_id=collection.id, photo_id=1))
+        session.add(CollectionPhoto(collection_id=collection.id, photo_id=2))
         session.commit()
     engine.dispose()
     destination = tmp_path / "backups"
@@ -119,8 +142,8 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert backup_path.name.startswith("faunavault-backup-")
     manifest = read_manifest(backup_path / "manifest.json")
     assert manifest.backup_format_version == 1
-    assert manifest.database.schema_version == 9
-    assert manifest.database.applied_migrations == list(range(1, 10))
+    assert manifest.database.schema_version == 10
+    assert manifest.database.applied_migrations == list(range(1, 11))
     assert manifest.counts.photos == 2
     assert manifest.counts.active_photos == 1
     assert manifest.counts.trashed_photos == 1
@@ -140,6 +163,34 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert settings.database_path.read_bytes() == database_before
     for path, payload in source_payloads.items():
         assert path.read_bytes() == payload
+
+
+def test_schema10_backup_rehearsal_preserves_collections(archive):
+    settings, destination, _ = archive
+    backup_path, _ = create_backup(destination, settings)
+    target = destination.parent / "schema10-rehearsal"
+
+    result = rehearse_backup(backup_path, target)
+
+    assert result.source_schema_version == 10
+    assert result.collections == 1
+    assert result.collection_memberships == 2
+    recovered_settings = Settings(
+        _env_file=None,
+        data_dir=target / "data",
+        image_dir=target / "images",
+        database_url=f"sqlite:///{(target / 'data' / 'faunavault.db').as_posix()}",
+    )
+    recovered_engine = create_database_engine(recovered_settings)
+    with Session(recovered_engine) as session:
+        collection = session.exec(select(Collection)).one()
+        memberships = list(session.exec(select(CollectionPhoto)).all())
+    recovered_engine.dispose()
+    assert collection.name == "Backup set"
+    assert {(item.collection_id, item.photo_id) for item in memberships} == {
+        (collection.id, 1),
+        (collection.id, 2),
+    }
 
 
 def test_verify_uses_only_backup_and_ignores_optional_diagnostics(archive):

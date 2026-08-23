@@ -39,6 +39,10 @@ def _print_result(result: ExportResult) -> None:
     )
     print(f"Animals: {counts.animals}")
     print(f"Taxa: {counts.taxa}")
+    print(
+        f"Collections: {counts.collections} with "
+        f"{counts.collection_memberships} membership(s)"
+    )
     print(f"Original bytes inventoried: {_format_size(counts.original_bytes)}")
     if result.missing_stored_identity_photos:
         print(

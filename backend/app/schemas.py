@@ -252,6 +252,63 @@ class BulkPhotoErrorDetail(SQLModel):
     max_photo_ids: int | None = None
 
 
+class CollectionCreateRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+
+
+class CollectionRenameRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+
+
+class CollectionMembershipRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    photo_ids: list[int]
+
+
+class CollectionSummaryRead(SQLModel):
+    id: int
+    name: str
+    active_photo_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CollectionPhotoPage(SQLModel):
+    items: list[Photo]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class CollectionDetailRead(CollectionSummaryRead):
+    photos: CollectionPhotoPage
+
+
+class CollectionDeleteResponse(SQLModel):
+    status: Literal["deleted"] = "deleted"
+    collection_id: int
+
+
+class CollectionAddPhotosResponse(SQLModel):
+    collection_id: int
+    requested_count: int
+    added_count: int
+    already_present_count: int
+
+
+class CollectionRemovePhotosResponse(SQLModel):
+    collection_id: int
+    requested_count: int
+    removed_count: int
+    already_absent_count: int
+
+
 class CatalogStatusCounts(SQLModel):
     pending: int = 0
     classified: int = 0

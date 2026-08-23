@@ -18,6 +18,8 @@ from app.archive_export.schema import (
     EXPORT_FORMAT_VERSION,
     AnimalExport,
     ArchiveMetadataExport,
+    CollectionExport,
+    CollectionPhotoExport,
     ExportCounts,
     PhotoExport,
     TaxonExport,
@@ -130,6 +132,8 @@ class SnapshotData:
     photos: list[SnapshotPhoto]
     animals: list[AnimalExport]
     taxa: list[TaxonExport]
+    collections: list[CollectionExport]
+    collection_photos: list[CollectionPhotoExport]
 
 
 @dataclass(frozen=True)
@@ -456,7 +460,37 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                 "synchronized_at FROM taxon ORDER BY id"
             )
         ]
-        return SnapshotData(migrations[-1], photos, animals, taxa)
+        collections = [
+            CollectionExport(
+                id=_required_id(row["id"], "collection.id"),
+                name=_required_text(row["name"], "collection.name"),
+                created_at=_timestamp(row["created_at"], "collection.created_at"),
+                updated_at=_timestamp(row["updated_at"], "collection.updated_at"),
+            )
+            for row in connection.execute(
+                "SELECT id, name, created_at, updated_at FROM collection ORDER BY id"
+            )
+        ]
+        collection_photos = [
+            CollectionPhotoExport(
+                collection_id=_required_id(
+                    row["collection_id"], "collection_photo.collection_id"
+                ),
+                photo_id=_required_id(row["photo_id"], "collection_photo.photo_id"),
+            )
+            for row in connection.execute(
+                "SELECT collection_id, photo_id FROM collection_photo "
+                "ORDER BY collection_id, photo_id"
+            )
+        ]
+        return SnapshotData(
+            migrations[-1],
+            photos,
+            animals,
+            taxa,
+            collections,
+            collection_photos,
+        )
     except ArchiveExportIntegrityError:
         raise
     except ArchiveIntegrityError as exc:
@@ -569,11 +603,15 @@ def _build_document(
             trashed_photos=len(photos) - active,
             animals=len(snapshot.animals),
             taxa=len(snapshot.taxa),
+            collections=len(snapshot.collections),
+            collection_memberships=len(snapshot.collection_photos),
             original_bytes=sum(photo.original_size_bytes for photo in photos),
         ),
         photos=photos,
         animals=snapshot.animals,
         taxa=snapshot.taxa,
+        collections=snapshot.collections,
+        collection_photos=snapshot.collection_photos,
     )
 
 

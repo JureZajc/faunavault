@@ -1,6 +1,6 @@
 # FaunaVault Engineering Improvement Roadmap
 
-Reviewed against `master` on 2026-08-20.
+Reviewed against `master` on 2026-08-23.
 
 ## Purpose
 
@@ -71,13 +71,28 @@ and [dependency security review](DEPENDENCY_SECURITY_REVIEW.md).
 The active List catalog now supports transient, ID-based selection across visited
 pages within one logical query context. Users can add or remove tags, set or
 explicitly clear category, and move only those selected photos to recoverable
-Trash through one bounded, typed, atomic backend request. Query/collection
+Trash through one bounded, typed, atomic backend request. Query/home-view
 changes clear selection; flat/grouped and pagination changes preserve it.
 
 The feature deliberately excludes implicit all-results selection, Albums/Trash
 selection, permanent deletion, classification, and taxonomy reassignment. It
 uses the existing React/Tailwind accessibility primitives and adds no UI or state
 framework.
+
+## Current product feature: user-defined Photo Collections
+
+Schema 10 adds normalized persisted Collections and many-to-many Photo
+membership. The four peer destinations are List, Albums, Collections, and Trash.
+Users can create, rename, and delete Collections, add explicitly selected active
+Photos, and remove one or many memberships without changing Photo files or
+metadata. Recoverable Trash preserves membership, while permanent Photo deletion
+cascades only the join rows.
+
+Backup format v1 now explicitly verifies and rehearses database schemas 9 and
+10. Schema-9 archives migrate to empty Collection tables; schema-10 rehearsals
+compare Collection metadata and membership exactly. Portable metadata export v2
+includes deterministic Collection records and memberships, including those to
+Trash Photos.
 
 ## Recommended next (in order)
 

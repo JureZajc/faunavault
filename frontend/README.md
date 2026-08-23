@@ -1,7 +1,8 @@
 # FaunaVault frontend
 
-The Next.js 16 App Router frontend provides the photo catalog, species albums,
-metadata review, persistent local-AI job controls, and Trash workflows.
+The Next.js 16 App Router frontend provides the photo catalog, species Albums,
+manually managed Collections, metadata review, persistent local-AI job controls,
+and Trash workflows.
 Project-wide setup, storage, backup, and backend behavior are documented in the
 [root README](../README.md).
 
@@ -13,7 +14,7 @@ options, classification-job polling, and upload state. Components under
 `app/components/catalog/` own the toolbar, results, classification panel, upload
 form, and per-file progress presentation. The List fetches one backend-filtered
 page at a time, debounces search, and stores page, search, filters, sorting,
-verified taxon, layout, and collection view in the URL. Category grouping is
+verified taxon, layout, and home view in the URL. Category grouping is
 intentionally limited to the current page.
 
 The photo-detail route follows the same boundary: `photo-detail.tsx` coordinates
@@ -34,10 +35,13 @@ layout changes, and clears them when the logical URL-backed query or collection
 view changes. A separate mutation hook sends one typed bulk request, waits for
 the authoritative result, clears selection only after mutation success, and
 refreshes the catalog once. Selection is not written to the URL or browser
-storage, and Albums and Trash do not expose bulk selection.
+storage. Albums and Trash do not expose bulk selection; Collection detail has
+its own route-local selection context used only to remove membership.
 
 Native checkboxes and the existing accessible modal primitive support Add tags,
-Remove tags, Set/Clear category, and recoverable Move to Trash. Select page is
+Remove tags, Set/Clear category, Add to Collection, and recoverable Move to Trash.
+Collection create/rename share an accessible name dialog; deletion and membership
+removal have explicit safety wording and Cancel-first focus. Select page is
 strictly page-local, the client and server both enforce a 250-photo maximum, and
 there is no all-matching-results or bulk permanent-delete action.
 
@@ -127,7 +131,8 @@ and a uniquely named archive beneath the OS temporary directory. Occupied ports
 fail the run instead of reusing an existing server. Temporary fixtures, the
 database, and all generated images are removed after success or failure. The
 smoke journey covers upload and duplicate safety, catalog/detail navigation and
-metadata persistence, real backend image loading, Trash restore/permanent
-deletion, and one explicit two-photo bulk Move to Trash contract. It makes no
+metadata persistence, real backend image loading, Collection creation/add/delete
+without Photo loss, Trash restore/permanent deletion, and one explicit two-photo
+bulk Move to Trash contract. It makes no
 Ollama or GBIF request. Playwright traces and screenshots
 are retained only for failures; they are ignored by Git.

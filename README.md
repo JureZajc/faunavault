@@ -10,8 +10,8 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Exact duplicate detection using SHA-256, including duplicates currently in Trash
 - Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
-- Searchable/filterable photo catalog, species albums, animals, and GBIF taxonomy linking
-- Explicit cross-page catalog selection with atomic bulk tag, category, and Move to Trash actions
+- Searchable/filterable photo catalog, derived species Albums, persistent manual Collections, animals, and GBIF taxonomy linking
+- Explicit cross-page catalog selection with atomic bulk tag, category, Add to Collection, and Move to Trash actions
 - Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
 - Recoverable Trash with restore and explicitly confirmed permanent deletion
 - Versioned, backed-up SQLite migrations and local-only storage
@@ -63,11 +63,19 @@ is intentionally page-local once pagination is active.
 
 The List view also offers an explicit Select mode. Selection contains only photo
 IDs the user checks and can span visited pages within the same search/filter/sort
-context. Search, filter, sort, Albums, or Trash changes clear it; flat/grouped and
+context. Search, filter, sort, Albums, Collections, or Trash changes clear it; flat/grouped and
 page changes do not. Select page means the currently loaded page only, requests
 are capped at 250 photos, and there is no select-all-results behavior. Bulk actions
-can add/remove tags, set or explicitly clear category, or move active photos to
-recoverable Trash. Permanent deletion is never available as a bulk action.
+can add/remove tags, set or explicitly clear category, add photos to one persisted
+Collection, or move active photos to recoverable Trash. Permanent deletion is
+never available as a bulk action.
+
+Collections are manually named groups with stable numeric IDs and explicit
+many-to-many Photo membership. Create, rename, and delete them under
+`/collections`; deleting a Collection never deletes Photos or files. Collection
+pages show active Photos in catalog order and support single or selected removal.
+Membership survives recoverable Trash and becomes visible again on restore;
+permanent Photo deletion removes the corresponding membership rows.
 
 `POST /photos/bulk` accepts a discriminated operation body with explicit
 `photo_ids`. The backend validates the complete active set before mutation and
@@ -268,7 +276,8 @@ part of `setup`, `check`, `check-clean`, or ordinary `npm test`.
 ## Portable metadata export
 
 FaunaVault can export a deterministic, schema-versioned inventory of all Photo,
-Animal, and locally stored Taxon metadata without copying media. JSON is the
+Animal, locally stored Taxon, Collection, and Collection-membership metadata
+without copying media. JSON is the
 authoritative representation; an optional flat Photo CSV is available for
 spreadsheets and ordinary data-analysis tools. Both active and Trash Photos are
 included, with portable original paths, actual streamed sizes, and SHA-256
@@ -299,7 +308,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v1](docs/METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v2](docs/METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -342,8 +351,8 @@ faunavault-backup-<UTC timestamp>-<id>/
     thumbs/
 ```
 
-The SQLite snapshot contains photos, animals, taxonomy, schema migrations, and
-classification jobs. All referenced original, resized, and thumbnail files are
+The SQLite snapshot contains photos, animals, taxonomy, Collections and their
+memberships, schema migrations, and classification jobs. All referenced original, resized, and thumbnail files are
 included for both active photos and Trash. Derived variants remain included so
 each backup is complete and immediately usable, even though they can now be
 regenerated from verified originals. Upload staging, purge journals, SQLite
@@ -403,6 +412,7 @@ Backup container compatibility and database recovery compatibility are separate:
 | Backup format | Database schema | Current support | Action |
 | --- | ---: | --- | --- |
 | v1 | 9 | Supported | Verify, then rehearse/migrate in isolated storage |
+| v1 | 10 | Supported | Verify and rehearse with exact Collection metadata and membership checks |
 | Other | Any | Unsupported | Reject before target writes |
 | v1 | Other | Not supported until explicitly tested | Reject before target writes |
 
@@ -467,7 +477,7 @@ To recover manually:
 4. Update `backend/.env` for those locations. Restore paths do not need to match the machine on which the backup was created.
 5. Do not copy staging, purge, sidecars, migration backups, or manifest warnings into runtime storage.
 6. Start the backend so normal migrations and startup recovery run. A restored `running` classification job becomes failed for explicit retry; queued jobs retain normal queue behavior.
-7. Inspect catalog and Trash counts, albums, and representative original/resized/thumbnail files.
+7. Inspect catalog and Trash counts, Albums, Collections and membership counts, and representative original/resized/thumbnail files.
 8. For an end-to-end post-restore integrity check, stop the backend and create a new verified backup of the restored archive in another safe destination.
 9. Retain the pre-restore fallback until recovery has been fully validated.
 

@@ -58,6 +58,8 @@ class DatabaseInventory:
     animals: int
     taxa: int
     job_counts: dict[str, int]
+    collections: int = 0
+    collection_memberships: int = 0
 
     @property
     def active_photos(self) -> int:
@@ -178,7 +180,26 @@ def _inspect_schema_9(
     )
 
 
-SCHEMA_INVENTORY_READERS = {9: _inspect_schema_9}
+def _inspect_schema_10(
+    connection: sqlite3.Connection, migrations: list[int]
+) -> DatabaseInventory:
+    inventory = _inspect_schema_9(connection, migrations)
+    return DatabaseInventory(
+        migrations=inventory.migrations,
+        photos=inventory.photos,
+        animals=inventory.animals,
+        taxa=inventory.taxa,
+        job_counts=inventory.job_counts,
+        collections=int(
+            connection.execute("SELECT COUNT(*) FROM collection").fetchone()[0]
+        ),
+        collection_memberships=int(
+            connection.execute("SELECT COUNT(*) FROM collection_photo").fetchone()[0]
+        ),
+    )
+
+
+SCHEMA_INVENTORY_READERS = {9: _inspect_schema_9, 10: _inspect_schema_10}
 
 
 def validate_database_connection(

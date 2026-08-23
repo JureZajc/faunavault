@@ -6,11 +6,11 @@ import {
   applyCatalogSortOption,
   CatalogLayout,
   CatalogSortOption,
-  CollectionView,
+  HomeView,
   parseCatalogState,
-  parseCollectionView,
+  parseHomeView,
   writeCatalogState,
-  writeCollectionView,
+  writeHomeView,
 } from "../lib/catalog-query";
 import { PhotoStatus } from "../lib/api";
 
@@ -24,8 +24,8 @@ export function useCatalogQueryState() {
     () => parseCatalogState(new URLSearchParams(paramsString)),
     [paramsString],
   );
-  const collectionView = useMemo(
-    () => parseCollectionView(new URLSearchParams(paramsString)),
+  const homeView = useMemo(
+    () => parseHomeView(new URLSearchParams(paramsString)),
     [paramsString],
   );
   const [searchInput, setSearchInputState] = useState(catalogState.search ?? "");
@@ -133,16 +133,16 @@ export function useCatalogQueryState() {
     );
   }
 
-  function setCollectionView(view: CollectionView) {
+  function setHomeView(view: HomeView) {
     navigate(
-      writeCollectionView(new URLSearchParams(paramsString), view),
+      writeHomeView(new URLSearchParams(paramsString), view),
       false,
     );
   }
 
   return {
     catalogState,
-    collectionView,
+    homeView,
     searchInput,
     paramsString,
     returnTo: paramsString ? `${pathname}?${paramsString}` : pathname,
@@ -155,6 +155,6 @@ export function useCatalogQueryState() {
     setPage,
     correctPage,
     clearFilters,
-    setCollectionView,
+    setHomeView,
   };
 }
