@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 
 from app.config import Settings
 from app.models import ClassificationJob, Photo, utc_now
-from app.ollama_client import CLASSIFICATION_PROMPT_VERSION
+from app.ollama_client import CLASSIFICATION_PROMPT_VERSION, OllamaClient
 from app.services.classification import (
     ClassificationOutcome,
     ClassificationServiceError,
@@ -162,6 +162,7 @@ def enqueue_classification_jobs(
 def retry_classification_job(
     session: Session,
     job_id: int,
+    settings: Settings,
     clock: Callable[[], datetime] = utc_now,
 ) -> ClassificationJob:
     job = session.get(ClassificationJob, job_id)
@@ -197,8 +198,15 @@ def retry_classification_job(
     job.started_at = None
     job.finished_at = None
     job.duration_ms = None
+    job.requested_model = settings.ai_primary_model
+    job.fallback_model = (
+        settings.ai_fallback_model
+        if settings.ai_fallback_model != settings.ai_primary_model
+        else None
+    )
     job.actual_model = None
     job.fallback_attempted = False
+    job.prompt_version = CLASSIFICATION_PROMPT_VERSION
     job.failure_code = None
     job.failure_message = None
     job.classification_status = None
@@ -284,13 +292,17 @@ class ClassificationWorker:
         self,
         engine: Engine,
         settings: Settings,
-        classifier: Classifier = classify_photo_image,
+        classifier: Classifier | None = None,
+        ollama_client: OllamaClient | None = None,
         clock: Callable[[], datetime] = utc_now,
+        sleeper: Callable[[float], None] = time.sleep,
     ):
         self.engine = engine
         self.settings = settings
         self.classifier = classifier
+        self.ollama_client = ollama_client
         self.clock = clock
+        self.sleeper = sleeper
         self._wake_event: asyncio.Event | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[None] | None = None
@@ -379,6 +391,7 @@ class ClassificationWorker:
                 return None, True
 
             job.status = "running"
+            job.prompt_version = CLASSIFICATION_PROMPT_VERSION
             job.started_at = self.clock()
             job.finished_at = None
             job.failure_code = None
@@ -386,6 +399,33 @@ class ClassificationWorker:
             session.add(job)
             session.commit()
             return job.id, True
+
+    def _ensure_followup_eligible(self, job_id: int) -> None:
+        with Session(self.engine) as session:
+            job = session.get(ClassificationJob, job_id)
+            if job is None:
+                raise ClassificationServiceError(
+                    "job_not_found", "Classification job no longer exists."
+                )
+            if job.status != "running":
+                raise ClassificationServiceError(
+                    job.failure_code or "job_not_running",
+                    job.failure_message
+                    or "Classification job is no longer eligible to continue.",
+                )
+            photo = session.get(Photo, job.photo_id)
+            if photo is None:
+                raise ClassificationServiceError("photo_not_found", "Photo not found.")
+            if photo.deleted_at is not None:
+                raise ClassificationServiceError(
+                    "photo_trashed",
+                    "The photo was moved to Trash during classification.",
+                )
+            if photo.updated_at != job.source_photo_updated_at:
+                raise ClassificationServiceError(
+                    "photo_changed",
+                    "Photo metadata changed while classification was running.",
+                )
 
     def run_once(self) -> bool:
         job_id, processed = self._claim_next()
@@ -404,7 +444,25 @@ class ClassificationWorker:
                         "photo_not_found", "Photo not found."
                     )
                 image_path = classification_image_path(photo, self.settings)
-            outcome = self.classifier(image_path, self.settings)
+                photo_id = photo.id or 0
+                primary_model = job.requested_model
+                fallback_model = job.fallback_model
+            if self.classifier is not None:
+                outcome = self.classifier(image_path, self.settings)
+            else:
+                if self.ollama_client is None:
+                    raise RuntimeError("Classification worker has no Ollama client")
+                outcome = classify_photo_image(
+                    image_path,
+                    self.settings,
+                    self.ollama_client,
+                    primary_model=primary_model,
+                    fallback_model=fallback_model,
+                    job_id=job_id,
+                    photo_id=photo_id,
+                    sleeper=self.sleeper,
+                    ensure_eligible=lambda: self._ensure_followup_eligible(job_id),
+                )
             duration_ms = max(0, int((time.monotonic() - started) * 1000))
 
             with Session(self.engine) as session:

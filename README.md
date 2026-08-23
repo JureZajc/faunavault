@@ -170,9 +170,13 @@ Normal deletion only sets a deleted timestamp. Trash continues to reference the 
 
 Classification requests are persisted in SQLite and processed serially by a lightweight worker inside the single FastAPI process. The browser does not need to stay open: queued and running state survives navigation and refresh, while completed and failed jobs remain visible with their model, duration, attempt count, and prompt version.
 
-Jobs use `queued`, `running`, `succeeded`, and `failed` execution states. A succeeded result may still set the photo to `needs_review` when confidence is low or the model requests review; that is not an execution failure. Failed jobs require an explicit retry. Retry reuses the job, increments its attempt count, and refreshes `queued_at`, which is the FIFO queue-order timestamp.
+Jobs use `queued`, `running`, `succeeded`, and `failed` execution states. A succeeded result may still set the photo to `needs_review` when confidence is low or the model requests review; that is not an execution failure. Failed jobs require an explicit retry. Retry reuses the job, increments its durable attempt count, refreshes `queued_at`, and snapshots the current model and prompt configuration. A short internal Ollama retry does not increment this user-visible count.
 
-The primary model runs first. The configured fallback runs once when the primary fails or produces low confidence; provenance identifies the actual accepted model. Connections time out after 10 seconds and classification requests after 120 seconds. Malformed model output and Ollama failures become safe failed jobs without overwriting photo metadata.
+Classification uses Ollama JSON-schema structured output with prompt contract `animal-photo-v2`, `think: false`, temperature zero, and a request-level keep-alive. For Qwen3-VL/Ollama combinations that return schema-valid metadata in `thinking` while leaving `response` empty, FaunaVault accepts that alternate channel only after the same strict validation and does not log its contents. The primary model receives one automatic retry after a two-second pause only for timeouts, connection interruptions, rate limiting, selected server failures, or malformed structured output. A distinct fallback runs after the primary retry is exhausted, immediately when the primary model is missing, or when a valid primary result has low confidence. The fallback has the same bounded retry policy. Identical primary and fallback models never create a fake fallback stage.
+
+Connections time out after 5 seconds and classification response reads after 180 seconds by default. With identical models, one pathological Photo can hold the worker for about 6 minutes; a distinct primary and fallback can take about 12 minutes in the worst case. Exhaustion marks only that job failed and the serial worker continues with the next queued Photo. Malformed output and Ollama failures remain safe failed jobs without overwriting Photo metadata.
+
+FaunaVault's HTTP read timeout is separate from an Ollama HTTP 500 reporting that its model or runner failed to load in time. FaunaVault logs Ollama's sanitized server detail and successful load/prompt/evaluation timing breakdown, but it does not modify Ollama, GPU, runner, or model-storage configuration. Detailed diagnostics remain console logs; only end-to-end job `duration_ms` is persisted.
 
 An unexpected backend stop marks any interrupted running job failed on restart with an explicit retry action; work is never silently repeated. Moving a photo to Trash fails queued/running work, and a delayed Ollama response cannot write metadata after Trash or a manual edit. Restoring the photo permits explicit retry but does not restart work automatically.
 
@@ -256,6 +260,9 @@ DATA_DIR=E:/FaunaVault/data
 IMAGE_DIR=E:/FaunaVault/data/images
 DATABASE_URL=sqlite:///./data/faunavault.db
 OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_CONNECT_TIMEOUT_SECONDS=5
+OLLAMA_REQUEST_TIMEOUT_SECONDS=180
+OLLAMA_KEEP_ALIVE=15m
 AI_PRIMARY_MODEL=qwen3-vl:8b
 AI_FALLBACK_MODEL=qwen3-vl:8b
 AI_CONFIDENCE_THRESHOLD=0.65
@@ -555,7 +562,9 @@ Before schema upgrades, FaunaVault creates timestamped SQLite backups next to th
 
 ## Troubleshooting
 
-- Ollama unavailable: verify `ollama list` and `curl http://localhost:11434/api/tags`, then retry the failed job.
+- Ollama unavailable: verify `ollama list` and `curl http://localhost:11434/api/tags`, then retry the failed job. Qwen3-VL requires Ollama 0.12.7 or newer.
+- Ollama timeout: the 180-second FaunaVault request timeout is configurable for slower hardware, but first inspect the timing log to distinguish model loading, prompt evaluation, and generation. Avoid extreme timeout values that let one Photo occupy the queue for many minutes.
+- Ollama runner/model failure: an HTTP 500 is an Ollama-side failure even when its message mentions a load timeout. Inspect the Ollama server log, hardware resources, and model installation; changing FaunaVault's HTTP timeout does not repair the runner.
 - Duplicate response: open the referenced catalog photo or use “View Trash” and restore the deleted copy.
 - Image rejected: confirm extension, MIME type, actual format, file size, and pixel dimensions agree with configured limits.
 - Possible visual duplicate: compare the previews and choose Keep both or Cancel upload; similarity is evidence, not proof of identity.

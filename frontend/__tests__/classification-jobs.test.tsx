@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import Home from "../app/page";
+import ClassificationJobsPanel from "../app/components/classification-jobs-panel";
 import {
   ClassificationEnqueueResponse,
   ClassificationJob,
@@ -155,19 +156,45 @@ test("recovers a failed job after remount and retries it explicitly", async () =
   expect(await screen.findAllByText("Queued")).toHaveLength(2);
 });
 
-test("shows successful low-confidence work as needs review", async () => {
-  api.getClassificationJobs.mockResolvedValue(
-    collection([
+test("shows successful low-confidence work as needs review", () => {
+  render(
+    <ClassificationJobsPanel
+      jobs={[
       job({
         status: "succeeded",
         actual_model: "fallback",
         classification_status: "needs_review",
       }),
+      ]}
+      onRetry={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("Needs review with fallback")).toBeTruthy();
+  expect(screen.getByText("Needs review")).toBeTruthy();
+});
+
+test("hides a stale successful batch when new pending photos exist", async () => {
+  api.getClassificationJobs.mockResolvedValue(
+    collection([
+      job({
+        status: "succeeded",
+        actual_model: "primary",
+        batch_kind: "reclassification",
+        photo_original_filename: "already-classified.jpg",
+      }),
     ]),
   );
+
   render(<Home />);
-  expect(await screen.findByText("Needs review with fallback")).toBeTruthy();
-  expect(screen.getAllByText("Needs review")).toHaveLength(2);
+
+  expect(await screen.findByText("1 pending photo")).toBeTruthy();
+  expect(screen.queryByText("already-classified.jpg")).toBeNull();
+  expect(screen.queryByText(/Total 1 .* 1 succeeded/)).toBeNull();
+  expect(
+    (screen.getByRole("button", {
+      name: "Classify pending photos",
+    }) as HTMLButtonElement).disabled,
+  ).toBe(false);
 });
 
 test("preserves long job filenames and provenance without hiding retry", async () => {
@@ -189,4 +216,43 @@ test("preserves long job filenames and provenance without hiding retry", async (
   expect((await screen.findByTitle(filename)).textContent).toBe(filename);
   expect(screen.getByText(`Failure from ${model}`)).toBeTruthy();
   expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+});
+
+test("renders stable reliability failures and mixed job states independently", async () => {
+  const onRetry = vi.fn();
+  render(
+    <ClassificationJobsPanel
+      jobs={[
+        job({
+          id: 21,
+          status: "failed",
+          failure_code: "ollama_timeout",
+          failure_message: "Ollama did not complete classification before the timeout.",
+          retryable: true,
+        }),
+        job({
+          id: 22,
+          status: "failed",
+          failure_code: "ollama_model_unavailable",
+          failure_message: "The configured Ollama model is unavailable.",
+          retryable: true,
+        }),
+        job({ id: 23, status: "running" }),
+        job({ id: 24, status: "succeeded", actual_model: "primary" }),
+        job({ id: 25, status: "queued" }),
+      ]}
+      onRetry={onRetry}
+    />,
+  );
+
+  expect(
+    screen.getByText("Ollama did not complete classification before the timeout."),
+  ).toBeTruthy();
+  expect(
+    screen.getByText("The configured Ollama model is unavailable."),
+  ).toBeTruthy();
+  expect(screen.getByText("Total 5 · 1 queued · 1 running · 1 succeeded · 2 failed"))
+    .toBeTruthy();
+  expect(screen.getAllByText("Classifying")).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2);
 });

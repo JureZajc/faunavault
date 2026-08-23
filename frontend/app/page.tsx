@@ -108,8 +108,15 @@ function HomeContent() {
   };
   const hasUnknownCategory = (catalog?.facets.uncategorized_count ?? 0) > 0;
   const pendingPhotoCount = catalogStats.pending;
+  const catalogClassificationJobs = useMemo(() => {
+    if (pendingPhotoCount === 0) return classificationJobs;
+    const hasUnfinishedOrFailedJob = classificationJobs.some(
+      (job) => job.status !== "succeeded",
+    );
+    return hasUnfinishedOrFailedJob ? classificationJobs : [];
+  }, [classificationJobs, pendingPhotoCount]);
   const showClassificationPanel =
-    pendingPhotoCount > 0 || classificationJobs.length > 0;
+    pendingPhotoCount > 0 || catalogClassificationJobs.length > 0;
   const statusFilter: StatusFilter = query.catalogState.status ?? "all";
   const categoryFilter = query.catalogState.uncategorized
     ? UNKNOWN_CATEGORY_VALUE
@@ -363,7 +370,7 @@ function HomeContent() {
             {showClassificationPanel ? (
               <CatalogClassificationPanel
                 pendingPhotoCount={pendingPhotoCount}
-                jobs={classificationJobs}
+                jobs={catalogClassificationJobs}
                 isClassifying={isClassifyingPending}
                 isCatalogLoading={isLoading}
                 error={classificationError}
