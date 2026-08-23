@@ -139,9 +139,9 @@ async function moveToTrash(title: string) {
   );
 }
 
-async function openCollectionView(name: "List" | "Trash") {
+async function openHomeView(name: "List" | "Trash") {
   await userEvent.click(
-    screen.getByRole("button", { name: new RegExp(`^${name}$`, "i") }),
+    screen.getByRole("link", { name }),
   );
 }
 
@@ -167,7 +167,7 @@ test("restored photo returns to List without remounting or refreshing", async ()
   render(<Home />);
 
   await moveToTrash("Red fox");
-  await openCollectionView("Trash");
+  await openHomeView("Trash");
   await restoreFromTrash("Red fox");
 
   await waitFor(() =>
@@ -178,7 +178,7 @@ test("restored photo returns to List without remounting or refreshing", async ()
     screen.getByText("Restored fox.jpg to the catalog."),
   ).toBeTruthy();
 
-  await openCollectionView("List");
+  await openHomeView("List");
   expect(
     await screen.findByRole("heading", { name: "Red fox" }),
   ).toBeTruthy();
@@ -205,10 +205,10 @@ test("restoring multiple photos keeps one catalog entry for each photo", async (
 
   await moveToTrash("Red fox");
   await moveToTrash("House sparrow");
-  await openCollectionView("Trash");
+  await openHomeView("Trash");
   await restoreFromTrash("Red fox");
   await restoreFromTrash("House sparrow");
-  await openCollectionView("List");
+  await openHomeView("List");
 
   expect(await screen.findAllByRole("heading", { name: "Red fox" })).toHaveLength(1);
   expect(
@@ -238,9 +238,9 @@ test("an active filter may keep a nonmatching restored photo hidden", async () =
 
   await moveToTrash("Red fox");
   await userEvent.selectOptions(screen.getByLabelText("Category"), "bird");
-  await openCollectionView("Trash");
+  await openHomeView("Trash");
   await restoreFromTrash("Red fox");
-  await openCollectionView("List");
+  await openHomeView("List");
 
   expect(screen.queryByRole("heading", { name: "Red fox" })).toBeNull();
   expect(

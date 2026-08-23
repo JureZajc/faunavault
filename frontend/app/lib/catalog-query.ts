@@ -6,7 +6,7 @@ import {
 } from "./api";
 
 export type CatalogLayout = "flat" | "grouped";
-export type CollectionView = "list" | "album" | "trash";
+export type HomeView = "list" | "album" | "trash";
 export type CatalogSortOption =
   | "newest"
   | "oldest"
@@ -116,14 +116,14 @@ export function writeCatalogState(
   return params;
 }
 
-export function parseCollectionView(params: URLSearchParams): CollectionView {
+export function parseHomeView(params: URLSearchParams): HomeView {
   const view = params.get("view");
   return view === "album" || view === "trash" ? view : "list";
 }
 
-export function writeCollectionView(
+export function writeHomeView(
   current: URLSearchParams,
-  view: CollectionView,
+  view: HomeView,
 ) {
   const params = new URLSearchParams(current.toString());
   if (view === "list") params.delete("view");

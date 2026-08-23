@@ -4,8 +4,10 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     Column,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -98,6 +100,49 @@ class Photo(SQLModel, table=True):
     deleted_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class Collection(SQLModel, table=True):
+    __tablename__ = "collection"
+    __table_args__ = (
+        CheckConstraint(
+            "length(name) BETWEEN 1 AND 100", name="ck_collection_name_length"
+        ),
+        CheckConstraint(
+            "length(name_key) >= 1", name="ck_collection_name_key_nonempty"
+        ),
+        UniqueConstraint("name_key", name="uq_collection_name_key"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    name_key: str = Field(exclude=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class CollectionPhoto(SQLModel, table=True):
+    __tablename__ = "collection_photo"
+    __table_args__ = (
+        Index("ix_collection_photo_photo_collection", "photo_id", "collection_id"),
+    )
+
+    collection_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("collection.id", ondelete="CASCADE"),
+            primary_key=True,
+            nullable=False,
+        )
+    )
+    photo_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("photo.id", ondelete="CASCADE"),
+            primary_key=True,
+            nullable=False,
+        )
+    )
 
 
 class ClassificationJob(SQLModel, table=True):

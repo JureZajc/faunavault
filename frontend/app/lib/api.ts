@@ -152,6 +152,40 @@ export type AlbumTaxonSelectionResponse = {
   taxon: TaxonCandidate;
 };
 
+export type CollectionSummary = {
+  id: number;
+  name: string;
+  active_photo_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CollectionPhotoPage = Paginated<Photo> & {
+  total_pages: number;
+};
+
+export type CollectionDetail = CollectionSummary & {
+  photos: CollectionPhotoPage;
+};
+
+export type CollectionCreateRequest = { name: string };
+export type CollectionRenameRequest = { name: string };
+export type CollectionMembershipRequest = { photo_ids: number[] };
+
+export type CollectionAddPhotosResponse = {
+  collection_id: number;
+  requested_count: number;
+  added_count: number;
+  already_present_count: number;
+};
+
+export type CollectionRemovePhotosResponse = {
+  collection_id: number;
+  requested_count: number;
+  removed_count: number;
+  already_absent_count: number;
+};
+
 export type PhotoUpdate = Partial<{
   display_title: string | null;
   common_name: string | null;
@@ -288,6 +322,8 @@ export type ApiErrorDetails = {
   photo_id?: number;
   photo_ids?: number[];
   max_photo_ids?: number;
+  max_length?: number;
+  collection_id?: number;
   location?: "catalog" | "trash";
   candidates?: VisualDuplicateCandidate[];
 };
@@ -387,6 +423,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
               typeof detail.max_photo_ids === "number"
                 ? detail.max_photo_ids
                 : undefined,
+            max_length:
+              typeof detail.max_length === "number"
+                ? detail.max_length
+                : undefined,
+            collection_id:
+              typeof detail.collection_id === "number"
+                ? detail.collection_id
+                : undefined,
             location:
               detail.location === "catalog" || detail.location === "trash"
                 ? detail.location
@@ -430,6 +474,70 @@ export function getTaxonomyFilters() {
 
 export function getSpeciesAlbums(params: URLSearchParams) {
   return request<Paginated<AlbumSummary>>(`/species-albums?${params}`);
+}
+
+export function getCollections(signal?: AbortSignal) {
+  return request<CollectionSummary[]>("/collections", { signal });
+}
+
+export function createCollection(requestBody: CollectionCreateRequest) {
+  return request<CollectionSummary>("/collections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function getCollection(
+  id: number,
+  page = 1,
+  pageSize = 48,
+  signal?: AbortSignal,
+) {
+  return request<CollectionDetail>(
+    `/collections/${id}?page=${page}&page_size=${pageSize}`,
+    { signal },
+  );
+}
+
+export function renameCollection(
+  id: number,
+  requestBody: CollectionRenameRequest,
+) {
+  return request<CollectionSummary>(`/collections/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function deleteCollection(id: number) {
+  return request<{ status: "deleted"; collection_id: number }>(
+    `/collections/${id}`,
+    { method: "DELETE" },
+  );
+}
+
+export function addPhotosToCollection(
+  id: number,
+  requestBody: CollectionMembershipRequest,
+) {
+  return request<CollectionAddPhotosResponse>(`/collections/${id}/photos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function removePhotosFromCollection(
+  id: number,
+  requestBody: CollectionMembershipRequest,
+) {
+  return request<CollectionRemovePhotosResponse>(`/collections/${id}/photos`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
 }
 
 export function getSpeciesAlbum(

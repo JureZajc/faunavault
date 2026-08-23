@@ -2,10 +2,12 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AlbumBrowser from "./components/album-browser";
+import ArchiveNavigation from "./components/archive-navigation";
 import BulkActionDialog from "./components/catalog/bulk-action-dialog";
 import BulkSelectionToolbar, {
   BulkDialogAction,
 } from "./components/catalog/bulk-selection-toolbar";
+import AddToCollectionDialog from "./components/collections/add-to-collection-dialog";
 import CatalogClassificationPanel from "./components/catalog/catalog-classification-panel";
 import CatalogResults from "./components/catalog/catalog-results";
 import CatalogToolbar, {
@@ -26,17 +28,14 @@ import {
   classifyPendingPhotos,
   Photo,
 } from "./lib/api";
-import {
-  catalogSortOption,
-  CollectionView,
-} from "./lib/catalog-query";
+import { catalogSortOption } from "./lib/catalog-query";
 
 function HomeContent() {
   const query = useCatalogQueryState();
   const selectionContextKey = useMemo(
     () =>
       JSON.stringify({
-        view: query.collectionView,
+        view: query.homeView,
         search: query.catalogState.search ?? null,
         status: query.catalogState.status ?? null,
         category: query.catalogState.category ?? null,
@@ -45,7 +44,7 @@ function HomeContent() {
         sort: query.catalogState.sort,
         order: query.catalogState.order,
       }),
-    [query.catalogState, query.collectionView],
+    [query.catalogState, query.homeView],
   );
   const selection = useCatalogSelection(selectionContextKey);
   const {
@@ -64,6 +63,7 @@ function HomeContent() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [bulkDialog, setBulkDialog] = useState<BulkDialogAction | null>(null);
+  const [addCollectionIds, setAddCollectionIds] = useState<number[] | null>(null);
   const refreshTimer = useRef<number | null>(null);
   const scheduleCatalogRefresh = useCallback(() => {
     if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
@@ -217,7 +217,7 @@ function HomeContent() {
             refreshCatalog={loadPhotos}
             onError={setActionError}
             returnTo={query.returnTo}
-            onViewTrash={() => query.setCollectionView("trash")}
+            onViewTrash={() => query.setHomeView("trash")}
           />
         </div>
       </section>
@@ -229,42 +229,37 @@ function HomeContent() {
             onDismiss={() => setSuccessNotice(null)}
             onViewTrash={() => {
               setSuccessNotice(null);
-              query.setCollectionView("trash");
+              query.setHomeView("trash");
             }}
           />
         ) : null}
         <div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="grid w-full grid-cols-3 rounded-lg border border-stone-200 bg-stone-100 p-1 sm:w-auto">
-            {(["list", "album", "trash"] as CollectionView[]).map((view) => (
-              <button
-                key={view}
-                type="button"
-                onClick={() => {
-                  if (query.collectionView !== view) selection.reset();
-                  query.setCollectionView(view);
-                }}
-                className={`min-h-11 min-w-0 rounded-md px-2 text-sm font-semibold capitalize transition sm:min-w-28 sm:px-4 ${
-                  query.collectionView === view
-                    ? "bg-white text-emerald-900 shadow-sm"
-                    : "text-stone-600 hover:text-stone-900"
-                }`}
-              >
-                {view}
-              </button>
-            ))}
-          </div>
+          <ArchiveNavigation
+            active={query.homeView}
+            onNavigate={(section, event) => {
+              if (section === "collections") {
+                selection.reset();
+                return;
+              }
+              event.preventDefault();
+              if (section !== query.homeView) {
+                selection.reset();
+                query.setHomeView(section);
+              }
+            }}
+          />
           <p className="text-sm text-stone-500 sm:text-right">
-            {query.collectionView === "list"
+            {query.homeView === "list"
               ? "Manage individual photo records"
-              : query.collectionView === "album"
+              : query.homeView === "album"
                 ? "Browse the collection by species"
                 : "Restore or permanently remove deleted photos"}
           </p>
         </div>
 
-        {query.collectionView === "album" ? (
+        {query.homeView === "album" ? (
           <AlbumBrowser />
-        ) : query.collectionView === "trash" ? (
+        ) : query.homeView === "trash" ? (
           <TrashBrowser
             onNotice={setSuccessNotice}
             onRestored={handlePhotoRestored}
@@ -331,7 +326,13 @@ function HomeContent() {
                 onExit={selection.reset}
                 onOpenAction={(action) => {
                   bulkActions.clearError();
-                  setBulkDialog(action);
+                  if (action === "add_to_collection") {
+                    setAddCollectionIds(
+                      Array.from(selection.selectedIds).sort((a, b) => a - b),
+                    );
+                  } else {
+                    setBulkDialog(action);
+                  }
                 }}
               />
             ) : null}
@@ -382,6 +383,22 @@ function HomeContent() {
                 if (!bulkActions.isBusy) setBulkDialog(null);
               }}
               onSubmit={bulkActions.execute}
+            />
+            <AddToCollectionDialog
+              key={addCollectionIds?.join("-") ?? "closed"}
+              photoIds={addCollectionIds}
+              onClose={() => setAddCollectionIds(null)}
+              onSuccess={(response) => {
+                setAddCollectionIds(null);
+                selection.reset();
+                const added = `${response.added_count} ${response.added_count === 1 ? "photo" : "photos"}`;
+                const present = `${response.already_present_count} ${response.already_present_count === 1 ? "was" : "were"}`;
+                setSuccessNotice(
+                  response.already_present_count
+                    ? `Added ${added} to the Collection; ${present} already present.`
+                    : `Added ${added} to the Collection.`,
+                );
+              }}
             />
           </>
         )}

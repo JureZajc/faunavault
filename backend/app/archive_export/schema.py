@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-EXPORT_FORMAT_VERSION = 1
+EXPORT_FORMAT_VERSION = 2
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 
@@ -47,6 +47,8 @@ class ExportCounts(StrictExportModel):
     trashed_photos: int = Field(ge=0)
     animals: int = Field(ge=0)
     taxa: int = Field(ge=0)
+    collections: int = Field(ge=0)
+    collection_memberships: int = Field(ge=0)
     original_bytes: int = Field(ge=0)
 
     @model_validator(mode="after")
@@ -149,6 +151,23 @@ class TaxonExport(StrictExportModel):
         return validate_export_timestamp(value)
 
 
+class CollectionExport(StrictExportModel):
+    id: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=100)
+    created_at: str
+    updated_at: str
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def validate_timestamp(cls, value: str) -> str:
+        return validate_export_timestamp(value)
+
+
+class CollectionPhotoExport(StrictExportModel):
+    collection_id: int = Field(ge=1)
+    photo_id: int = Field(ge=1)
+
+
 class ArchiveMetadataExport(StrictExportModel):
     format_version: Literal[EXPORT_FORMAT_VERSION]
     source_database_schema_version: int = Field(ge=1)
@@ -156,6 +175,8 @@ class ArchiveMetadataExport(StrictExportModel):
     photos: list[PhotoExport]
     animals: list[AnimalExport]
     taxa: list[TaxonExport]
+    collections: list[CollectionExport]
+    collection_photos: list[CollectionPhotoExport]
 
     @staticmethod
     def _validate_order(records: list[object], label: str) -> None:
@@ -170,6 +191,17 @@ class ArchiveMetadataExport(StrictExportModel):
         self._validate_order(self.photos, "photo")
         self._validate_order(self.animals, "animal")
         self._validate_order(self.taxa, "taxon")
+        self._validate_order(self.collections, "collection")
+
+        membership_keys = [
+            (item.collection_id, item.photo_id) for item in self.collection_photos
+        ]
+        if membership_keys != sorted(membership_keys) or len(membership_keys) != len(
+            set(membership_keys)
+        ):
+            raise ValueError(
+                "Collection memberships must be unique and strictly ordered"
+            )
 
         active = sum(photo.lifecycle_state == "active" for photo in self.photos)
         trashed = sum(photo.lifecycle_state == "trash" for photo in self.photos)
@@ -179,6 +211,8 @@ class ArchiveMetadataExport(StrictExportModel):
             "trashed_photos": trashed,
             "animals": len(self.animals),
             "taxa": len(self.taxa),
+            "collections": len(self.collections),
+            "collection_memberships": len(self.collection_photos),
             "original_bytes": sum(photo.original_size_bytes for photo in self.photos),
         }
         if self.counts.model_dump() != actual_counts:
@@ -186,6 +220,8 @@ class ArchiveMetadataExport(StrictExportModel):
 
         animal_ids = {animal.id for animal in self.animals}
         taxon_ids = {taxon.id for taxon in self.taxa}
+        collection_ids = {collection.id for collection in self.collections}
+        photo_ids = {photo.id for photo in self.photos}
         if any(
             photo.animal_id is not None and photo.animal_id not in animal_ids
             for photo in self.photos
@@ -196,6 +232,13 @@ class ArchiveMetadataExport(StrictExportModel):
             for animal in self.animals
         ):
             raise ValueError("Animal references a Taxon absent from the export")
+        if any(
+            item.collection_id not in collection_ids or item.photo_id not in photo_ids
+            for item in self.collection_photos
+        ):
+            raise ValueError(
+                "Collection membership references a record absent from the export"
+            )
 
         paths = [photo.archive_relative_original_path for photo in self.photos]
         if len(paths) != len(set(paths)) or len(paths) != len(

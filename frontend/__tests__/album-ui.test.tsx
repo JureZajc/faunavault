@@ -76,18 +76,18 @@ beforeEach(() => {
 test("switches between List and Album and renders an unverified card", async () => {
   render(<Home />);
   expect(await screen.findByText("Start your animal archive")).toBeTruthy();
-  await userEvent.click(screen.getByRole("button", { name: "album" }));
+  await userEvent.click(screen.getByRole("link", { name: "Albums" }));
   expect(await screen.findByText("Panthera leo")).toBeTruthy();
   expect(screen.getByText("Unverified")).toBeTruthy();
   expect(screen.getByText("No photograph available")).toBeTruthy();
   expect(window.location.search).toContain("view=album");
-  await userEvent.click(screen.getByRole("button", { name: "list" }));
+  await userEvent.click(screen.getByRole("link", { name: "List" }));
   expect(screen.getByText("Start your animal archive")).toBeTruthy();
 });
 
 test("album search updates results and URL state", async () => {
   render(<Home />);
-  await userEvent.click(await screen.findByRole("button", { name: "album" }));
+  await userEvent.click(await screen.findByRole("link", { name: "Albums" }));
   const search = screen.getByPlaceholderText("Common or scientific name");
   await userEvent.type(search, "lion");
   await waitFor(() => expect(api.getSpeciesAlbums).toHaveBeenCalled());

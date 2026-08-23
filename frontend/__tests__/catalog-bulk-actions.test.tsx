@@ -10,10 +10,12 @@ import {
 } from "../app/lib/api";
 
 const api = vi.hoisted(() => ({
+  addPhotosToCollection: vi.fn(),
   bulkUpdatePhotos: vi.fn(),
   getCatalogPhotos: vi.fn(),
   getCatalogTaxa: vi.fn(),
   getClassificationJobs: vi.fn(),
+  getCollections: vi.fn(),
 }));
 
 vi.mock("../app/lib/api", async (importOriginal) => ({
@@ -88,6 +90,21 @@ beforeEach(() => {
     jobs: [],
     summary: { total: 0, queued: 0, running: 0, succeeded: 0, failed: 0 },
   });
+  api.getCollections.mockResolvedValue([
+    {
+      id: 9,
+      name: "Favorites",
+      active_photo_count: 4,
+      created_at: "2026-08-23T08:00:00Z",
+      updated_at: "2026-08-23T08:00:00Z",
+    },
+  ]);
+  api.addPhotosToCollection.mockResolvedValue({
+    collection_id: 9,
+    requested_count: 2,
+    added_count: 1,
+    already_present_count: 1,
+  });
   api.bulkUpdatePhotos.mockImplementation(async (request: BulkPhotoRequest) => ({
     status: "completed",
     operation: request.operation,
@@ -142,7 +159,7 @@ test("selection spans pages and layouts but clears immediately for a new query",
 });
 
 test("selection resets for browser URL context changes and rejects oversized pages", async () => {
-  const { result } = renderHook(
+  const { result, rerender } = renderHook(
     ({ contextKey }) => useCatalogSelection(contextKey),
     { initialProps: { contextKey: "first" } },
   );
@@ -152,6 +169,9 @@ test("selection resets for browser URL context changes and rejects oversized pag
   expect(result.current.error).toContain("250");
   act(() => result.current.togglePage(Array.from({ length: 250 }, (_, index) => index + 1)));
   expect(result.current.selectedCount).toBe(250);
+  rerender({ contextKey: "second" });
+  await waitFor(() => expect(result.current.selectedCount).toBe(0));
+  expect(result.current.isSelecting).toBe(false);
 
   render(<Home />);
   await screen.findByRole("heading", { name: "First fox" });
@@ -270,4 +290,56 @@ test("a successful mutation clears selection even when the refresh fails", async
   expect(screen.queryByRole("region", { name: "Bulk photo actions" })).toBeNull();
   expect(await screen.findByText(/action succeeded.*catalog could not refresh/i)).toBeTruthy();
   expect(api.bulkUpdatePhotos).toHaveBeenCalledTimes(1);
+});
+
+test("Add to Collection sends the exact selected IDs and clears only after success", async () => {
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  await userEvent.click(screen.getByRole("button", { name: "Add to Collection" }));
+  const dialog = screen.getByRole("dialog", { name: "Add 2 photos to Collection" });
+  const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+  await waitFor(() => expect(document.activeElement).toBe(cancel));
+  await userEvent.click(await within(dialog).findByRole("radio", { name: /Favorites/ }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Add to Collection" }));
+
+  await waitFor(() =>
+    expect(api.addPhotosToCollection).toHaveBeenCalledWith(9, { photo_ids: [1, 2] }),
+  );
+  expect(screen.queryByRole("region", { name: "Bulk photo actions" })).toBeNull();
+  expect(screen.getByRole("status").textContent).toContain(
+    "Added 1 photo to the Collection; 1 was already present.",
+  );
+  expect(api.getCatalogPhotos).toHaveBeenCalledTimes(1);
+});
+
+test("Add to Collection failure preserves the dialog and selection", async () => {
+  api.addPhotosToCollection.mockRejectedValueOnce(new Error("Collection unavailable"));
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  await userEvent.click(screen.getByRole("button", { name: "Add to Collection" }));
+  const dialog = screen.getByRole("dialog", { name: "Add 2 photos to Collection" });
+  await userEvent.click(await within(dialog).findByRole("radio", { name: /Favorites/ }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Add to Collection" }));
+
+  expect((await within(dialog).findByRole("alert")).textContent).toContain(
+    "Collection unavailable",
+  );
+  expect(screen.getByText("2 selected")).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "Add 2 photos to Collection" })).toBeTruthy();
+});
+
+test("Add to Collection explains that an existing Collection is required", async () => {
+  api.getCollections.mockResolvedValueOnce([]);
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  await userEvent.click(screen.getByRole("button", { name: "Add to Collection" }));
+  const dialog = screen.getByRole("dialog", { name: "Add 2 photos to Collection" });
+  const createLink = await within(dialog).findByRole("link", {
+    name: "Create a Collection first",
+  });
+  expect(createLink.getAttribute("href")).toBe("/collections");
+  expect(within(dialog).queryByRole("radio")).toBeNull();
 });

@@ -7,6 +7,7 @@ const RECOMPRESSED_FILENAME = "faunavault-e2e-recompressed.jpg";
 const UPDATED_TITLE = "FaunaVault E2E specimen";
 const BULK_FIRST_FILENAME = "faunavault-e2e-bulk-first.jpg";
 const BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg";
+const COLLECTION_NAME = "FaunaVault E2E bulk collection";
 
 function testRoot() {
   const root = process.env.FAUNAVAULT_E2E_ROOT;
@@ -163,7 +164,7 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
       page.getByRole("heading", { name: "Start your animal archive" }),
     ).toBeVisible();
 
-    await page.getByRole("button", { name: "trash", exact: true }).click();
+    await page.getByRole("link", { name: "Trash", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Trash", exact: true })).toBeVisible();
     const firstTrashCard = catalogCard(page, UPDATED_TITLE);
     await expect(firstTrashCard).toHaveCount(1);
@@ -171,7 +172,7 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
     await firstTrashCard.getByRole("button", { name: "Restore" }).click();
     await expect(page.getByText("Trash is empty.")).toBeVisible();
 
-    await page.getByRole("button", { name: "list", exact: true }).click();
+    await page.getByRole("link", { name: "List", exact: true }).click();
     const restoredCard = catalogCard(page, UPDATED_TITLE);
     await expect(restoredCard).toHaveCount(1);
     await restoredCard.getByRole("button", { name: "Move to Trash" }).click();
@@ -183,7 +184,7 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
       page.getByRole("heading", { name: "Start your animal archive" }),
     ).toBeVisible();
 
-    await page.getByRole("button", { name: "trash", exact: true }).click();
+    await page.getByRole("link", { name: "Trash", exact: true }).click();
     const finalTrashCard = catalogCard(page, UPDATED_TITLE);
     await expect(finalTrashCard).toHaveCount(1);
     await finalTrashCard
@@ -227,7 +228,7 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
     }
   });
 
-  await test.step("explicit bulk selection moves exactly two photos to Trash", async () => {
+  await test.step("Collections preserve photos before bulk Trash", async () => {
     await page.goto("/");
     await expect(
       page.getByRole("heading", { name: "Start your animal archive" }),
@@ -239,6 +240,14 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
     await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
     await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(1);
 
+    await page.getByRole("link", { name: "Collections", exact: true }).click();
+    await page.getByRole("button", { name: "Create Collection" }).click();
+    const nameDialog = page.getByRole("dialog", { name: "Create Collection" });
+    await nameDialog.getByRole("textbox", { name: "Collection name" }).fill(COLLECTION_NAME);
+    await nameDialog.getByRole("button", { name: "Create Collection" }).click();
+    await expect(page.getByRole("heading", { name: COLLECTION_NAME })).toBeVisible();
+
+    await page.getByRole("link", { name: "List", exact: true }).click();
     await page.getByRole("button", { name: "Select photos" }).click();
     const photoCheckboxes = page.getByRole("checkbox", {
       name: /Select photo \d+: Unclassified/,
@@ -246,6 +255,30 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
     await expect(photoCheckboxes).toHaveCount(2);
     await photoCheckboxes.nth(0).check();
     await photoCheckboxes.nth(1).check();
+    await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Add to Collection", exact: true }).click();
+    const addDialog = page.getByRole("dialog", { name: "Add 2 photos to Collection" });
+    await addDialog.getByRole("radio", { name: new RegExp(COLLECTION_NAME) }).check();
+    await addDialog.getByRole("button", { name: "Add to Collection" }).click();
+    await expect(page.getByText("Added 2 photos to the Collection.")).toBeVisible();
+
+    await page.getByRole("link", { name: "Collections", exact: true }).click();
+    await page.getByRole("link", { name: new RegExp(COLLECTION_NAME) }).click();
+    await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
+    await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(1);
+    await page.getByRole("button", { name: "Delete Collection" }).click();
+    const deleteDialog = page.getByRole("dialog", {
+      name: `Delete collection “${COLLECTION_NAME}”?`,
+    });
+    await expect(deleteDialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+    await deleteDialog.getByRole("button", { name: "Delete Collection" }).click();
+    await expect(page).toHaveURL(/\/collections$/);
+
+    await page.getByRole("link", { name: "List", exact: true }).click();
+    await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
+    await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(1);
+    await page.getByRole("button", { name: "Select photos" }).click();
+    await page.getByRole("checkbox", { name: "Select page" }).check();
     await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Move to Trash" }).click();
     const bulkDialog = page.getByRole("dialog", {
@@ -255,7 +288,7 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
 
     await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(0);
     await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(0);
-    await page.getByRole("button", { name: "trash", exact: true }).click();
+    await page.getByRole("link", { name: "Trash", exact: true }).click();
     await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
     await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(1);
   });

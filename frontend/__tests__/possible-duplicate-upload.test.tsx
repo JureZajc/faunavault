@@ -206,7 +206,7 @@ test("cancels one flagged batch item without blocking successful files", async (
   ]);
   await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
 
-  expect(await screen.findByText("Trash")).toBeTruthy();
+  expect((await screen.findAllByText("Trash")).length).toBeGreaterThan(0);
   expect(screen.getByRole("status").textContent).toMatch(/1 file needs review/i);
   expect(screen.getByText("Uploaded")).toBeTruthy();
   expect(screen.getByText("Failed")).toBeTruthy();

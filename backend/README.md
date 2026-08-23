@@ -37,8 +37,9 @@ and ignores unrelated database commits after the snapshot. A concurrent
 permanent deletion may cause a safe failure and retry; no locking is added.
 
 `archive-metadata.json` is authoritative and includes all active/Trash Photos,
-Animals, and local Taxa. `photos.csv` is optional. Neither contains media,
-derivative paths, albums, perceptual hashes, classification jobs, absolute source
+Animals, local Taxa, Collections, and Collection memberships (including Trash
+memberships). `photos.csv` is optional. Neither contains media,
+derivative paths, derived albums, perceptual hashes, classification jobs, absolute source
 paths, secrets, or a generation timestamp. The destination must not exist;
 same-parent staging is atomically renamed only after JSON and optional CSV
 round-trip validation. Exit `0` means complete, `1` means source/artifact
@@ -46,7 +47,7 @@ integrity failure, and `2` means usage, configuration, destination, permission,
 disk, or publication failure.
 
 See the root README for the user workflow and
-[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v1
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v2
 field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
 does not replace a verified backup and is not an import or restore mechanism.
 
@@ -108,7 +109,9 @@ recoverability failure and exit `2` means usage, target, permission, disk, or
 other setup failure.
 
 Backup format v1 and database recovery versions are independent. This version
-explicitly supports schema 9 backups. A later application schema must retain the
+explicitly supports schema 9 and schema 10 backups. Schema-9 rehearsals migrate
+to empty Collection tables; schema-10 rehearsals compare Collection metadata and
+membership exactly. A later application schema must retain the
 frozen schema-9 verifier and migration rehearsal unless compatibility is
 intentionally removed and documented. The root README contains the compatibility
 table, target layout, limitations, and unchanged manual production-restore

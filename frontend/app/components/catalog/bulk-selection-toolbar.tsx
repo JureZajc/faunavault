@@ -7,6 +7,7 @@ export type BulkDialogAction =
   | "remove_tags"
   | "category"
   | "move_to_trash";
+export type BulkToolbarAction = BulkDialogAction | "add_to_collection";
 
 type BulkSelectionToolbarProps = {
   selectedIds: ReadonlySet<number>;
@@ -16,7 +17,7 @@ type BulkSelectionToolbarProps = {
   onTogglePage: (photoIds: number[]) => void;
   onClear: () => void;
   onExit: () => void;
-  onOpenAction: (action: BulkDialogAction) => void;
+  onOpenAction: (action: BulkToolbarAction) => void;
 };
 
 export default function BulkSelectionToolbar({
@@ -87,6 +88,7 @@ export default function BulkSelectionToolbar({
         </div>
         <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
           {[
+            ["add_to_collection", "Add to Collection"],
             ["add_tags", "Add tags"],
             ["remove_tags", "Remove tags"],
             ["category", "Set category"],
@@ -96,7 +98,7 @@ export default function BulkSelectionToolbar({
               key={action}
               type="button"
               disabled={isBusy || !hasSelection}
-              onClick={() => onOpenAction(action as BulkDialogAction)}
+              onClick={() => onOpenAction(action as BulkToolbarAction)}
               className={`min-h-11 min-w-0 rounded-md px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
                 action === "move_to_trash"
                   ? "border border-red-200 bg-red-50 text-red-700"

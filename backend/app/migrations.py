@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 9
+LATEST_SCHEMA_VERSION = 10
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -350,6 +350,44 @@ def _migration_9(connection) -> None:
         )
 
 
+def _migration_10(connection) -> None:
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS collection (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
+                name_key TEXT NOT NULL CHECK (length(name_key) >= 1),
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                CONSTRAINT uq_collection_name_key UNIQUE (name_key)
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS collection_photo (
+                collection_id INTEGER NOT NULL,
+                photo_id INTEGER NOT NULL,
+                PRIMARY KEY (collection_id, photo_id),
+                FOREIGN KEY(collection_id) REFERENCES collection(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY(photo_id) REFERENCES photo(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_collection_photo_photo_collection "
+            "ON collection_photo (photo_id, collection_id)"
+        )
+    )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -403,6 +441,8 @@ def run_migrations(
                 _migration_8(connection)
             elif version == 9:
                 _migration_9(connection)
+            elif version == 10:
+                _migration_10(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "
