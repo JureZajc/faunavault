@@ -6,12 +6,20 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from app.db import SessionDep
-from app.schemas import CatalogPhotoPage, CatalogTaxonPage
-from app.services.catalog import list_catalog_photos, list_catalog_taxa
+from app.schemas import CatalogPhotoPage, CatalogTaxonPage, PhotoMapPoint
+from app.services.catalog import (
+    list_catalog_photos,
+    list_catalog_taxa,
+    list_photo_map_points,
+)
 
 
 def create_catalog_router() -> APIRouter:
     router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+    @router.get("/map", response_model=list[PhotoMapPoint])
+    def get_photo_map_points(session: SessionDep) -> list[PhotoMapPoint]:
+        return list_photo_map_points(session)
 
     @router.get("/photos", response_model=CatalogPhotoPage)
     def get_catalog_photos(

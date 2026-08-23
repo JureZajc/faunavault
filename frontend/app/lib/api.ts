@@ -33,6 +33,18 @@ export type Photo = {
   updated_at: string;
 };
 
+export type PhotoMapPoint = {
+  id: number;
+  latitude: number;
+  longitude: number;
+  thumbnail_filename: string;
+  original_filename: string;
+  display_title: string | null;
+  common_name: string | null;
+  species_guess: string | null;
+  captured_at: string | null;
+};
+
 export type TaxonCandidate = {
   provider: "gbif";
   external_taxon_id: number;
@@ -633,6 +645,10 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
   params.set("sort", query.sort);
   params.set("order", query.order);
   return request<CatalogPhotoPage>(`/catalog/photos?${params}`, { signal });
+}
+
+export function getPhotoMapPoints(signal?: AbortSignal) {
+  return request<PhotoMapPoint[]>("/catalog/map", { signal });
 }
 
 export function getCatalogTaxa(

@@ -101,6 +101,18 @@ class BatchUploadResponse(SQLModel):
     failed: list[BatchUploadFailure]
 
 
+class PhotoMapPoint(SQLModel):
+    id: int
+    latitude: float
+    longitude: float
+    thumbnail_filename: str
+    original_filename: str
+    display_title: str | None
+    common_name: str | None
+    species_guess: str | None
+    captured_at: datetime | None
+
+
 class ClassifyPendingRequest(SQLModel):
     limit: int | None = None
     photo_ids: list[int] | None = None

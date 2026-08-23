@@ -133,6 +133,95 @@ def test_catalog_empty_validation_and_legacy_contract(catalog_app):
         assert client.get("/catalog/photos", params=params).status_code == 422
 
 
+def test_photo_map_points_are_lightweight_active_and_lifecycle_aware(catalog_app):
+    client, engine = catalog_app
+    deleted_at = datetime(2026, 2, 1, tzinfo=UTC)
+    with Session(engine) as session:
+        first = add_photo(
+            session,
+            60,
+            latitude=46.12345,
+            longitude=14.54321,
+            display_title="Woodland visitor",
+            common_name="Roe deer",
+            species_guess="Capreolus capreolus",
+            captured_at=datetime(2024, 5, 24, 18, 42),
+        )
+        same_location = add_photo(
+            session,
+            61,
+            latitude=46.12345,
+            longitude=14.54321,
+        )
+        add_photo(session, 62)
+        trashed = add_photo(
+            session,
+            63,
+            latitude=-33.8688,
+            longitude=151.2093,
+            deleted_at=deleted_at,
+        )
+        session.commit()
+        first_id = first.id
+        same_location_id = same_location.id
+        trashed_id = trashed.id
+
+    response = client.get("/catalog/map")
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": first_id,
+            "latitude": 46.12345,
+            "longitude": 14.54321,
+            "thumbnail_filename": "photo-60-thumb.jpg",
+            "original_filename": "photo-60.jpg",
+            "display_title": "Woodland visitor",
+            "common_name": "Roe deer",
+            "species_guess": "Capreolus capreolus",
+            "captured_at": "2024-05-24T18:42:00",
+        },
+        {
+            "id": same_location_id,
+            "latitude": 46.12345,
+            "longitude": 14.54321,
+            "thumbnail_filename": "photo-61-thumb.jpg",
+            "original_filename": "photo-61.jpg",
+            "display_title": None,
+            "common_name": None,
+            "species_guess": None,
+            "captured_at": None,
+        },
+    ]
+    assert set(response.json()[0]) == {
+        "id",
+        "latitude",
+        "longitude",
+        "thumbnail_filename",
+        "original_filename",
+        "display_title",
+        "common_name",
+        "species_guess",
+        "captured_at",
+    }
+
+    assert client.post(f"/trash/photos/{trashed_id}/restore").status_code == 200
+    restored = client.get("/catalog/map").json()
+    assert [point["id"] for point in restored] == [
+        first_id,
+        same_location_id,
+        trashed_id,
+    ]
+    assert restored[-1]["latitude"] == -33.8688
+    assert restored[-1]["longitude"] == 151.2093
+
+    assert client.delete(f"/photos/{first_id}").status_code == 200
+    after_trash = client.get("/catalog/map").json()
+    assert [point["id"] for point in after_trash] == [
+        same_location_id,
+        trashed_id,
+    ]
+
+
 def test_catalog_paginates_filters_sorts_and_reports_global_facets(catalog_app):
     client, engine = catalog_app
     shared_time = datetime(2026, 2, 1, tzinfo=UTC)

@@ -1,8 +1,8 @@
 # FaunaVault frontend
 
-The Next.js 16 App Router frontend provides the photo catalog, species Albums,
-manually managed Collections, metadata review, persistent local-AI job controls,
-and Trash workflows.
+The Next.js 16 App Router frontend provides the photo catalog, clustered archive
+Map, species Albums, manually managed Collections, metadata review, persistent
+local-AI job controls, and Trash workflows.
 Project-wide setup, storage, backup, and backend behavior are documented in the
 [root README](../README.md).
 
@@ -25,12 +25,30 @@ sidebar, and the Move to Trash confirmation. State remains in focused React
 hooks and route clients; the frontend does not use a global state or
 data-fetching library.
 
+The dedicated `/map` route loads one typed `GET /catalog/map` projection after
+mount and renders loading, error, empty, and loaded states. Leaflet and
+Leaflet.markercluster are imported only by dynamically loaded client modules
+with SSR disabled; route and detail modules never evaluate browser-only map code
+on the server. One shared imperative core owns tiles, custom asset-free markers,
+responsive resize handling, and Strict Mode-safe cleanup. The archive runtime
+adds chunked clustering and exact-coordinate spiderfying, while Photo detail uses
+the same core for one non-clustered marker and coordinates already in its Photo
+response.
+
 Photo cards explicitly label their display date as `Taken` when capture metadata
 exists and `Added` otherwise. Detail metadata formats capture timestamps as
 camera-local wall time without passing them through JavaScript timezone
 conversion, shows a recorded `UTC±HH:MM` offset or states that the timezone was
 not recorded, and conditionally shows camera, lens, dimensions, and plain local
-coordinates. These extracted fields are read-only and never enter PATCH bodies.
+coordinates. Complete coordinates also render a compact detail map and a
+`/map?photo=<id>` deep link. Photos without GPS omit the map cleanly. These
+extracted fields are read-only and never enter PATCH bodies.
+
+The basemap uses standard remote OpenStreetMap raster tiles with visible
+attribution. Photo metadata and preview images continue to come only from the
+local FaunaVault API; the tile host receives ordinary visible-viewport tile
+requests, not Photo records. There is no geocoding, coordinate editing, analytics,
+offline tile downloader, or claim that the remote basemap works offline.
 
 Durable classification state is restored from the backend after refresh. The
 frontend polls only while queued or running work exists and keeps low-confidence
@@ -138,8 +156,9 @@ and a uniquely named archive beneath the OS temporary directory. Occupied ports
 fail the run instead of reusing an existing server. Temporary fixtures, the
 database, and all generated images are removed after success or failure. The
 smoke journey covers upload and duplicate safety, catalog/detail navigation and
-metadata persistence, real backend image loading, Collection creation/add/delete
-without Photo loss, Trash restore/permanent deletion, and one explicit two-photo
-bulk Move to Trash contract. It makes no
-Ollama or GBIF request. Playwright traces and screenshots
+metadata persistence, a GPS-backed archive marker/popup/detail-map path, real
+backend image loading, Collection creation/add/delete without Photo loss, Trash
+restore/permanent deletion, and one explicit two-photo bulk Move to Trash
+contract. Tile requests are fulfilled inside Playwright, so the smoke has no
+external map dependency. It makes no Ollama or GBIF request. Playwright traces and screenshots
 are retained only for failures; they are ignored by Git.

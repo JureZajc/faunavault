@@ -151,4 +151,11 @@ test("preserves catalog parameters while switching collection views", async () =
   await userEvent.click(screen.getByRole("link", { name: "List" }));
   expect(window.location.search).not.toContain("view=");
   expect(window.location.search).toContain("catalog_page=2");
+
+  const navigation = screen.getByRole("navigation", { name: "Archive views" });
+  expect(
+    Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
+  ).toEqual(["List", "Map", "Albums", "Collections", "Trash"]);
+  expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))
+    .toBe("/map");
 });
