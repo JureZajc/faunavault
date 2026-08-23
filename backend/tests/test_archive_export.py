@@ -352,6 +352,35 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
     assert _decode_csv(rows[2]["animal_id"]) is None
 
 
+def test_metadata_export_preserves_heic_source_identity_without_version_bump(
+    archive: ArchiveFixture, tmp_path: Path
+):
+    original_dir = archive.settings.image_dirs["original"]
+    (original_dir / "three.webp").rename(original_dir / "three.heic")
+    with sqlite3.connect(archive.settings.database_path) as connection:
+        connection.execute(
+            "UPDATE photo SET original_filename = ?, stored_filename = ?, "
+            "resized_filename = ?, thumbnail_filename = ?, media_type = ? "
+            "WHERE id = 3",
+            (
+                "iPhone.HEIC",
+                "three.heic",
+                "three_resized.jpeg",
+                "three_thumb.jpeg",
+                "image/heic",
+            ),
+        )
+
+    result = create_metadata_export(tmp_path / "heic export", archive.settings)
+    payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    photo = next(item for item in payload["photos"] if item["id"] == 3)
+
+    assert payload["format_version"] == 3
+    assert photo["original_filename"] == "iPhone.HEIC"
+    assert photo["archive_relative_original_path"] == "images/original/three.heic"
+    assert photo["media_type"] == "image/heic"
+
+
 def test_empty_archive_exports_valid_json_and_header_only_csv(tmp_path: Path):
     archive = _create_archive(tmp_path, populated=False)
     result = create_metadata_export(

@@ -14,6 +14,10 @@ from app.ollama_client import (
     OllamaClassificationError,
     classify_image,
 )
+from app.services.image_variants import (
+    normalized_extension,
+    source_format_for_extension,
+)
 
 DOMESTIC_SPECIES_BY_COMMON_NAME = {
     "dog": "Canis lupus familiaris",
@@ -160,9 +164,25 @@ def normalize_existing_domestic_metadata(engine: Engine) -> None:
 
 
 def classification_image_path(photo: Photo, settings: Settings) -> Path:
+    source_policy = source_format_for_extension(photo.stored_filename)
     resized_path = settings.image_dirs["resized"] / Path(photo.resized_filename).name
-    if resized_path.is_file():
+    derivative_name_is_valid = (
+        source_policy is None
+        or normalized_extension(photo.resized_filename)
+        == source_policy.derivative.extension
+    )
+    if derivative_name_is_valid and resized_path.is_file():
         return resized_path
+
+    if source_policy is not None and source_policy.source.extension in {
+        "heic",
+        "heif",
+    }:
+        raise ClassificationServiceError(
+            "image_unavailable",
+            "A JPEG derivative is required for HEIC/HEIF classification; "
+            "run repair-derived and retry.",
+        )
 
     original_path = settings.image_dirs["original"] / Path(photo.stored_filename).name
     if original_path.is_file():

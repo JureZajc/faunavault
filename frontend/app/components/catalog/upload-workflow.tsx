@@ -62,7 +62,7 @@ export default function UploadWorkflow({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+              accept=".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif"
               onChange={(event) =>
                 upload.actions.selectFiles(Array.from(event.target.files ?? []))
               }
@@ -78,6 +78,9 @@ export default function UploadWorkflow({
             </span>
           </span>
         </label>
+        <p className="mt-2 text-xs text-stone-500">
+          JPEG, PNG, WebP, HEIC, or HEIF.
+        </p>
         {selectedCount > 0 ? (
           <p className="mt-2 text-xs text-stone-500">
             {selectedCount} {selectedCount === 1 ? "file" : "files"} ready to

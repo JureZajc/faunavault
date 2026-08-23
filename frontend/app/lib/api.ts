@@ -714,9 +714,26 @@ export function bulkUpdatePhotos(requestBody: BulkPhotoRequest) {
   });
 }
 
+function fileWithRegisteredHeifMediaType(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const mediaType =
+    extension === "heic"
+      ? "image/heic"
+      : extension === "heif"
+        ? "image/heif"
+        : null;
+  if (mediaType === null || file.type.toLowerCase() === mediaType) {
+    return file;
+  }
+  return new File([file], file.name, {
+    type: mediaType,
+    lastModified: file.lastModified,
+  });
+}
+
 export function uploadPhoto(file: File, allowVisualDuplicate = false) {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", fileWithRegisteredHeifMediaType(file));
   if (allowVisualDuplicate) {
     formData.append("allow_visual_duplicate", "true");
   }
@@ -729,7 +746,9 @@ export function uploadPhoto(file: File, allowVisualDuplicate = false) {
 
 export function uploadPhotoBatch(files: File[]) {
   const formData = new FormData();
-  files.forEach((file) => formData.append("files", file));
+  files.forEach((file) =>
+    formData.append("files", fileWithRegisteredHeifMediaType(file)),
+  );
 
   return request<BatchUploadResponse>("/photos/upload-batch", {
     method: "POST",

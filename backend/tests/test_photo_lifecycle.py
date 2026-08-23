@@ -15,6 +15,7 @@ from app.config import Settings
 from app.migrations import run_migrations
 from app.models import Animal, Photo
 from app.services.photo_lifecycle import reconcile_purge_journal
+from tests.heic_fixtures import heic_bytes, multi_image_heic_bytes
 
 
 def jpeg_bytes(color: str = "green", size: tuple[int, int] = (48, 32)) -> bytes:
@@ -197,6 +198,192 @@ def test_upload_variant_formats_remain_semantically_stable(
             assert variant.format == image_format
             assert variant.size == (64, 32)
             assert variant.width <= bound[0] and variant.height <= bound[1]
+
+
+@pytest.mark.parametrize(
+    ("filename", "media_type", "source_extension"),
+    [
+        ("iphone.heic", "image/heic", ".heic"),
+        ("iphone.HEIC", "image/heic", ".heic"),
+        ("archive.heif", "image/heif", ".heif"),
+    ],
+)
+def test_heic_upload_preserves_source_and_generates_jpeg_derivatives(
+    lifecycle, filename, media_type, source_extension
+):
+    client, _, settings = lifecycle
+    payload = heic_bytes()
+
+    response = client.post(
+        "/photos/upload", files={"file": (filename, payload, media_type)}
+    )
+
+    assert response.status_code == 200
+    photo = response.json()
+    assert photo["original_filename"] == filename
+    assert photo["media_type"] == media_type
+    assert photo["stored_filename"].endswith(source_extension)
+    assert photo["resized_filename"].endswith("_resized.jpeg")
+    assert photo["thumbnail_filename"].endswith("_thumb.jpeg")
+    assert (
+        settings.image_dirs["original"] / photo["stored_filename"]
+    ).read_bytes() == payload
+
+    for role, field in (
+        ("resized", "resized_filename"),
+        ("thumbs", "thumbnail_filename"),
+    ):
+        with Image.open(settings.image_dirs[role] / photo[field]) as derivative:
+            assert derivative.format == "JPEG"
+            assert derivative.size == (64, 32)
+
+    original_response = client.get(f"/images/original/{photo['stored_filename']}")
+    assert original_response.status_code == 200
+    assert original_response.headers["content-type"] == media_type
+    assert original_response.content == payload
+    thumbnail_response = client.get(f"/photos/{photo['id']}/thumbnail")
+    assert thumbnail_response.status_code == 200
+    assert thumbnail_response.headers["content-type"] == "image/jpeg"
+
+
+def test_heic_metadata_orientation_primary_image_and_map_lifecycle(lifecycle):
+    client, _, settings = lifecycle
+    payload = heic_bytes(metadata=True, orientation=6, size=(64, 32))
+    response = client.post(
+        "/photos/upload",
+        files={"file": ("oriented.HEIC", payload, "image/heic")},
+    )
+
+    assert response.status_code == 200
+    photo = response.json()
+    assert photo["captured_at"] == "2024-05-24T18:42:00"
+    assert photo["captured_at_offset_minutes"] == 120
+    assert photo["camera_make"] == "Apple"
+    assert photo["camera_model"] == "iPhone Test"
+    assert photo["lens_model"] == "Synthetic 26mm"
+    assert (photo["image_width"], photo["image_height"]) == (32, 64)
+    assert photo["latitude"] == pytest.approx(46.12345)
+    assert photo["longitude"] == pytest.approx(14.5432111111)
+    for role, field in (
+        ("resized", "resized_filename"),
+        ("thumbs", "thumbnail_filename"),
+    ):
+        with Image.open(settings.image_dirs[role] / photo[field]) as derivative:
+            assert derivative.size == (32, 64)
+
+    points = client.get("/catalog/map").json()
+    assert [point["id"] for point in points] == [photo["id"]]
+    assert client.delete(f"/photos/{photo['id']}").status_code == 200
+    assert client.get("/catalog/map").json() == []
+    assert client.post(f"/trash/photos/{photo['id']}/restore").status_code == 200
+    assert [point["id"] for point in client.get("/catalog/map").json()] == [photo["id"]]
+
+
+def test_multi_image_heic_uses_only_the_primary_image(lifecycle):
+    client, _, settings = lifecycle
+    payload = multi_image_heic_bytes()
+
+    response = client.post(
+        "/photos/upload",
+        files={"file": ("container.heic", payload, "image/heic")},
+    )
+
+    assert response.status_code == 200
+    photo = response.json()
+    assert (photo["image_width"], photo["image_height"]) == (24, 40)
+    with Image.open(
+        settings.image_dirs["resized"] / photo["resized_filename"]
+    ) as derivative:
+        assert derivative.size == (24, 40)
+        red, green, blue = derivative.convert("RGB").getpixel((12, 20))
+        assert blue > red + green
+
+
+def test_icc_profile_heic_decodes_without_color_pipeline_failure(lifecycle):
+    client, _, _ = lifecycle
+    response = client.post(
+        "/photos/upload",
+        files={
+            "file": (
+                "profile.heic",
+                heic_bytes(icc_profile=True),
+                "image/heic",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["resized_filename"].endswith(".jpeg")
+
+
+@pytest.mark.parametrize(
+    ("filename", "payload", "media_type", "status"),
+    [
+        ("bad.heic", b"not an image", "image/heic", 400),
+        ("renamed.heic", jpeg_bytes(), "image/heic", 415),
+        ("renamed.jpg", heic_bytes(), "image/jpeg", 415),
+        ("mismatch.heic", heic_bytes(), "image/heif", 415),
+        ("mismatch.heif", heic_bytes(), "image/heic", 415),
+        ("sequence.heic", heic_bytes(), "image/heic-sequence", 415),
+        ("unknown.heic", heic_bytes(), "application/octet-stream", 415),
+        ("truncated.heic", heic_bytes()[:100], "image/heic", 400),
+    ],
+)
+def test_heic_security_validation_is_a_controlled_client_error(
+    lifecycle, filename, payload, media_type, status
+):
+    client, _, settings = lifecycle
+
+    response = client.post(
+        "/photos/upload", files={"file": (filename, payload, media_type)}
+    )
+
+    assert response.status_code == status
+    assert_no_lifecycle_files(settings)
+
+
+def test_heic_uses_existing_upload_byte_and_pixel_limits(lifecycle):
+    client, _, settings = lifecycle
+    payload = heic_bytes(size=(20, 20))
+    settings.max_upload_bytes = len(payload) - 1
+    too_large = client.post(
+        "/photos/upload", files={"file": ("large.heic", payload, "image/heic")}
+    )
+    assert too_large.status_code == 413
+    assert too_large.json()["detail"] == "Uploaded image is too large"
+    assert_no_lifecycle_files(settings)
+
+    settings.max_upload_bytes = 1024 * 1024
+    settings.max_image_pixels = 399
+    too_many_pixels = client.post(
+        "/photos/upload", files={"file": ("pixels.heic", payload, "image/heic")}
+    )
+    assert too_many_pixels.status_code == 413
+    assert too_many_pixels.json()["detail"] == "Image dimensions are too large"
+    assert_no_lifecycle_files(settings)
+
+
+def test_heic_exact_duplicate_and_permanent_delete_remove_all_files(lifecycle):
+    client, _, settings = lifecycle
+    payload = heic_bytes("purple")
+    first = client.post(
+        "/photos/upload", files={"file": ("first.heic", payload, "image/heic")}
+    ).json()
+
+    duplicate = client.post(
+        "/photos/upload", files={"file": ("SECOND.HEIC", payload, "image/heic")}
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"]["code"] == "duplicate_photo"
+
+    assert client.delete(f"/photos/{first['id']}").status_code == 200
+    assert client.delete(f"/trash/photos/{first['id']}").status_code == 200
+    for role, field in (
+        ("original", "stored_filename"),
+        ("resized", "resized_filename"),
+        ("thumbs", "thumbnail_filename"),
+    ):
+        assert not (settings.image_dirs[role] / first[field]).exists()
 
 
 def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecycle):

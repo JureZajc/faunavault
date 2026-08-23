@@ -12,6 +12,7 @@ import app.main as main
 import app.services.photo_lifecycle as lifecycle_service
 from app.config import Settings
 from app.models import Photo, utc_now
+from app.services.image_codecs import open_image
 from app.services.perceptual_duplicates import (
     find_visual_duplicate_candidates,
     hamming_distance,
@@ -138,6 +139,32 @@ def test_phash_normalizes_exif_orientation_and_transparency():
     transparent = base.convert("RGBA")
     transparent.putalpha(255)
     assert perceptual_hash(transparent) == perceptual_hash(base)
+
+
+def test_heic_and_jpeg_of_same_scene_share_perceptual_duplicate_path(
+    perceptual_lifecycle,
+):
+    client, _, _ = perceptual_lifecycle
+    heic = encoded(scene(), "HEIF", quality=90)
+    jpeg = encoded(scene(), "JPEG", quality=90)
+    with open_image(BytesIO(heic)) as decoded_heic:
+        decoded_heic.load()
+        assert (
+            hamming_distance(perceptual_hash(scene()), perceptual_hash(decoded_heic))
+            <= 4
+        )
+
+    first = client.post(
+        "/photos/upload",
+        files={"file": ("scene.heic", heic, "image/heic")},
+    )
+    assert first.status_code == 200
+    possible = client.post(
+        "/photos/upload",
+        files={"file": ("scene.jpeg", jpeg, "image/jpeg")},
+    )
+    assert possible.status_code == 409
+    assert possible.json()["detail"]["code"] == "possible_visual_duplicate"
 
 
 def test_candidate_scan_is_bounded_ordered_and_skips_malformed_hashes(tmp_path, caplog):
@@ -297,3 +324,43 @@ def test_backfill_is_batched_yields_and_leaves_missing_original_null(tmp_path):
         missing = session.get(Photo, 2)
         assert present is not None and present.perceptual_hash is not None
         assert missing is not None and missing.perceptual_hash is None
+
+
+def test_perceptual_hash_backfill_decodes_heic_original(tmp_path):
+    settings = Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        image_dir=tmp_path / "images",
+        database_url=f"sqlite:///{tmp_path / 'heic-backfill.db'}",
+        max_image_pixels=2_000_000,
+    )
+    engine = create_engine(settings.resolved_database_url)
+    SQLModel.metadata.create_all(engine)
+    settings.image_dirs["original"].mkdir(parents=True)
+    payload = encoded(scene(), "HEIF", quality=90)
+    (settings.image_dirs["original"] / "source.heic").write_bytes(payload)
+    with Session(engine) as session:
+        session.add(
+            Photo(
+                original_filename="source.heic",
+                stored_filename="source.heic",
+                resized_filename="source_resized.jpeg",
+                thumbnail_filename="source_thumb.jpeg",
+                media_type="image/heic",
+            )
+        )
+        session.commit()
+
+    processed, skipped = asyncio.run(
+        run_perceptual_hash_backfill(
+            engine,
+            settings,
+            pause_seconds=0,
+            pause=lambda _delay: asyncio.sleep(0),
+        )
+    )
+
+    assert (processed, skipped) == (1, 0)
+    with Session(engine) as session:
+        photo = session.get(Photo, 1)
+        assert photo is not None and photo.perceptual_hash is not None

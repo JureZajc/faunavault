@@ -5,6 +5,26 @@ on:
   pull_request:
 
 jobs:
+  heic-codec:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Decode committed HEIC fixture
+        run: uv run --no-sync python -c "from pathlib import Path; from app.services.image_codecs import open_image; image = open_image(Path('tests/fixtures/heic/reference.heic')); image.load(); assert image.format == 'HEIF' and image.size == (29, 100)"
+
   backend:
     runs-on: ubuntu-latest
     defaults:

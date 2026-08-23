@@ -56,7 +56,7 @@ Do not include markdown, code fences, or explanatory text.
 """.strip()
 CLASSIFICATION_PROMPT_VERSION = "animal-photo-v1"
 OLLAMA_CONNECT_TIMEOUT_SECONDS = 10.0
-OLLAMA_REQUEST_TIMEOUT_SECONDS = 120.0
+OLLAMA_REQUEST_TIMEOUT_SECONDS = 180.0
 
 
 class OllamaClassificationError(RuntimeError):
@@ -195,12 +195,16 @@ def validate_classification(data: dict[str, Any], model: str) -> ClassificationR
     display_title = optional_string(data, "display_title")
     common_name = require_string(data, "common_name")
     breed_guess = optional_string(data, "breed_guess")
-    species_guess = require_string(data, "species_guess")
+    species_guess = optional_string(data, "species_guess")
     category = require_string(data, "category").lower()
     confidence = require_number(data, "confidence")
     description = require_string(data, "description")
     tags = require_string_list(data, "tags")
     needs_review = require_bool(data, "needs_review")
+
+    if not species_guess or species_guess.casefold() == "unknown":
+        species_guess = "unknown"
+        needs_review = True
 
     if category not in ALLOWED_CATEGORIES:
         raise OllamaClassificationError(
@@ -216,7 +220,6 @@ def validate_classification(data: dict[str, Any], model: str) -> ClassificationR
         display_title = display_title or "Not an animal"
         common_name = common_name or "Not an animal"
         breed_guess = None
-        species_guess = species_guess or "unknown"
         category = "unknown"
         needs_review = True
 

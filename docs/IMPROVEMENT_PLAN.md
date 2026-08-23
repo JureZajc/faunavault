@@ -124,6 +124,27 @@ with attribution, and are intercepted in browser smoke coverage so CI has no liv
 tile dependency. Reverse geocoding, search, GPS editing, viewport APIs, spatial
 indexes, alternate layers, and offline tile downloads remain explicitly deferred.
 
+## Current product feature: native HEIC/HEIF ingestion
+
+FaunaVault accepts ordinary still `.heic` and `.heif` uploads with exact source
+MIME validation. The original container remains authoritative and byte-identical;
+the primary image is decoded locally into JPEG resized and thumbnail derivatives
+for browser display and Ollama classification. JPEG, PNG, and WebP behavior is
+unchanged. A shared immutable format policy now drives upload validation,
+serving MIME types, doctor, repair, metadata and perceptual-hash backfills, and
+classification fallback rules, so mixed `.heic`/`.jpeg` records are healthy by
+design rather than legacy exceptions.
+
+The HEIF opener disables embedded thumbnail, depth, and auxiliary decoding and
+uses the container-designated primary image. Existing EXIF extraction supplies
+capture, camera/lens, orientation-normalized dimensions, and GPS when present;
+no source is guaranteed to carry those fields. Display derivatives use the
+codec's 8-bit RGB/RGBA decode without a new color-management promise, while HDR,
+wide-gamut, gain-map, higher-bit-depth, and other source information remains in
+the original. HEIC editing/re-encoding, HEIC derivatives, browser decoding,
+AVIF, HIF/sequence formats, auxiliary/depth browsing, HDR/gain-map processing,
+and conversion UI remain deferred.
+
 ## Recommended next (in order)
 
 ### R1 - Isolated restore rehearsal and backup compatibility — Complete

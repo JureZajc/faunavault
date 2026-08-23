@@ -14,6 +14,7 @@ import app.main as main
 from app.config import Settings
 from app.models import ClassificationJob, Photo
 from app.ollama_client import (
+    OLLAMA_REQUEST_TIMEOUT_SECONDS,
     ClassificationResult,
     OllamaClassificationError,
     validate_classification,
@@ -21,6 +22,7 @@ from app.ollama_client import (
 from app.services.classification import (
     ClassificationOutcome,
     ClassificationServiceError,
+    classification_image_path,
     classify_with_fallback,
 )
 from app.services.classification_jobs import (
@@ -63,6 +65,52 @@ class ManualWorker(ClassificationWorker):
 
     def notify(self) -> None:
         return None
+
+
+def test_heic_classification_requires_policy_compliant_jpeg_derivative(tmp_path):
+    settings = Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        image_dir=tmp_path / "images",
+        database_url="sqlite://",
+    )
+    for directory in settings.image_dirs.values():
+        directory.mkdir(parents=True)
+    original = settings.image_dirs["original"] / "source.heic"
+    original.write_bytes(b"authoritative HEIC bytes")
+    photo = Photo(
+        original_filename="source.HEIC",
+        stored_filename="source.heic",
+        resized_filename="source_resized.jpeg",
+        thumbnail_filename="source_thumb.jpeg",
+        media_type="image/heic",
+    )
+
+    with pytest.raises(ClassificationServiceError) as missing:
+        classification_image_path(photo, settings)
+    assert missing.value.code == "image_unavailable"
+    assert "repair-derived" in missing.value.message
+
+    photo.resized_filename = "source_resized.heic"
+    (settings.image_dirs["resized"] / photo.resized_filename).write_bytes(b"bad")
+    with pytest.raises(ClassificationServiceError):
+        classification_image_path(photo, settings)
+
+    photo.resized_filename = "source_resized.jpeg"
+    derivative = settings.image_dirs["resized"] / photo.resized_filename
+    derivative.write_bytes(b"jpeg")
+    assert classification_image_path(photo, settings) == derivative
+
+    jpeg = Photo(
+        original_filename="legacy.jpg",
+        stored_filename="legacy.jpeg",
+        resized_filename="missing.jpeg",
+        thumbnail_filename="missing-thumb.jpeg",
+        media_type="image/jpeg",
+    )
+    jpeg_original = settings.image_dirs["original"] / jpeg.stored_filename
+    jpeg_original.write_bytes(b"jpeg")
+    assert classification_image_path(jpeg, settings) == jpeg_original
 
 
 @pytest.fixture()
@@ -123,6 +171,75 @@ def upload(client: TestClient, filename: str, color: str = "green") -> dict:
 def test_malformed_model_output_is_not_accepted_as_metadata():
     with pytest.raises(OllamaClassificationError, match="must be a boolean"):
         validate_classification({"is_animal": "yes"}, "local-model")
+
+
+def test_classification_request_timeout_is_three_minutes():
+    assert OLLAMA_REQUEST_TIMEOUT_SECONDS == 180.0
+
+
+@pytest.mark.parametrize("species_guess", [None, "", "   ", "Unknown"])
+def test_missing_species_guess_is_normalized_for_review(species_guess):
+    classification = validate_classification(
+        {
+            "is_animal": True,
+            "display_title": "Unknown animal",
+            "common_name": "animal",
+            "breed_guess": None,
+            "species_guess": species_guess,
+            "category": "unknown",
+            "confidence": 0.5,
+            "description": "An animal requiring review.",
+            "tags": ["animal"],
+            "needs_review": False,
+        },
+        "qwen3-vl:8b",
+    )
+
+    assert classification.species_guess == "unknown"
+    assert classification.needs_review is True
+
+
+def test_default_models_are_qwen_only():
+    settings = Settings(_env_file=None)
+
+    assert settings.ai_primary_model == "qwen3-vl:8b"
+    assert settings.ai_fallback_model == "qwen3-vl:8b"
+
+
+def test_matching_fallback_retains_low_confidence_qwen_result():
+    calls: list[str] = []
+    qwen_result = result("qwen3-vl:8b", confidence=0.4)
+
+    def classify(_path: Path, model: str):
+        calls.append(model)
+        return qwen_result
+
+    outcome = classify_with_fallback(
+        Path("unused.jpg"), 0.65, "qwen3-vl:8b", "qwen3-vl:8b", classify
+    )
+
+    assert outcome.result is qwen_result
+    assert outcome.fallback_attempted is False
+    assert calls == ["qwen3-vl:8b"]
+
+
+def test_matching_fallback_does_not_retry_qwen_error():
+    calls: list[str] = []
+
+    def classify(_path: Path, model: str):
+        calls.append(model)
+        raise OllamaClassificationError(
+            "Could not connect to Ollama.", "ollama_unavailable"
+        )
+
+    with pytest.raises(ClassificationServiceError) as captured:
+        classify_with_fallback(
+            Path("unused.jpg"), 0.65, "qwen3-vl:8b", "qwen3-vl:8b", classify
+        )
+
+    assert captured.value.code == "ollama_unavailable"
+    assert captured.value.fallback_attempted is False
+    assert calls == ["qwen3-vl:8b"]
 
 
 def test_fallback_behavior_and_provenance():

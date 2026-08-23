@@ -28,6 +28,9 @@ from app.models import (
     Taxon,
     utc_now,
 )
+from app.services.image_codecs import open_image
+from app.services.image_variants import JPEG, save_variant
+from tests.heic_fixtures import heic_bytes
 
 
 def digest(payload: bytes) -> str:
@@ -169,6 +172,66 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert settings.database_path.read_bytes() == database_before
     for path, payload in source_payloads.items():
         assert path.read_bytes() == payload
+
+
+def test_heic_original_and_jpeg_derivatives_verify_and_rehearse(archive, tmp_path):
+    settings, destination, _ = archive
+    payload = heic_bytes(metadata=True)
+    original_name = "photo-3.heic"
+    resized_name = "photo-3_resized.jpeg"
+    thumbnail_name = "photo-3_thumb.jpeg"
+    (settings.image_dirs["original"] / original_name).write_bytes(payload)
+    with open_image(BytesIO(payload)) as image:
+        image.load()
+        save_variant(
+            image,
+            settings.image_dirs["resized"] / resized_name,
+            JPEG,
+            (1600, 1600),
+        )
+        save_variant(
+            image,
+            settings.image_dirs["thumbs"] / thumbnail_name,
+            JPEG,
+            (480, 480),
+        )
+    engine = create_database_engine(settings)
+    with Session(engine) as session:
+        animal = Animal(identifier="FV-TEST-HEIC")
+        session.add(animal)
+        session.flush()
+        session.add(
+            Photo(
+                original_filename="iPhone.HEIC",
+                stored_filename=original_name,
+                resized_filename=resized_name,
+                thumbnail_filename=thumbnail_name,
+                animal_id=animal.id,
+                content_sha256=digest(payload),
+                original_size_bytes=len(payload),
+                media_type="image/heic",
+                image_width=64,
+                image_height=32,
+            )
+        )
+        session.commit()
+    engine.dispose()
+
+    backup_path, verification = create_backup(destination, settings)
+
+    assert verification.valid
+    paths = {entry.path for entry in read_manifest(backup_path / "manifest.json").files}
+    assert {
+        f"images/original/{original_name}",
+        f"images/resized/{resized_name}",
+        f"images/thumbs/{thumbnail_name}",
+    } <= paths
+    rehearsal_target = tmp_path / "heic-rehearsal"
+    rehearsal = rehearse_backup(backup_path, rehearsal_target)
+    assert rehearsal.doctor_status == "HEALTHY"
+    assert (
+        rehearsal_target / "images" / "original" / original_name
+    ).read_bytes() == payload
 
 
 def test_schema10_backup_rehearsal_preserves_collections(archive):

@@ -96,6 +96,30 @@ async function selectFiles(files: File[]) {
   return input;
 }
 
+test("accepts HEIC and HEIF selections without a separate upload flow", async () => {
+  api.uploadPhoto
+    .mockResolvedValueOnce(photo(1, "iphone.HEIC"))
+    .mockResolvedValueOnce(photo(2, "archive.heif"));
+  render(<Home />);
+  const files = [
+    new File(["heic"], "iphone.HEIC", { type: "image/heic" }),
+    new File(["heif"], "archive.heif", { type: "image/heif" }),
+  ];
+
+  const input = await selectFiles(files);
+
+  expect(input.accept).toBe(
+    ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif",
+  );
+  expect(screen.getByText("JPEG, PNG, WebP, HEIC, or HEIF.")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
+  await waitFor(() => expect(api.uploadPhoto).toHaveBeenCalledTimes(2));
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(1, files[0]);
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(2, files[1]);
+  expect(await row("iphone.HEIC").findByText("Uploaded")).toBeTruthy();
+  expect(row("archive.heif").getByText("Uploaded")).toBeTruthy();
+});
+
 function row(filename: string, occurrence = 0) {
   const filenameNode = screen.getAllByTitle(filename)[occurrence];
   const item = filenameNode.closest("li");

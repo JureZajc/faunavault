@@ -7,6 +7,7 @@ const RECOMPRESSED_FILENAME = "faunavault-e2e-recompressed.jpg";
 const UPDATED_TITLE = "FaunaVault E2E specimen";
 const BULK_FIRST_FILENAME = "faunavault-e2e-bulk-first.jpg";
 const BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg";
+const HEIC_FILENAME = "faunavault-e2e-iphone.heic";
 const COLLECTION_NAME = "FaunaVault E2E bulk collection";
 const TRANSPARENT_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -341,4 +342,29 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
     await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
     await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(1);
   });
+});
+
+test("HEIC upload produces browser-safe JPEG previews", async ({ page }) => {
+  await page.goto("/");
+  await uploadFile(page, HEIC_FILENAME);
+  await expect(uploadRow(page, HEIC_FILENAME)).toContainText("Uploaded");
+
+  const card = catalogCard(page, HEIC_FILENAME);
+  await expect(card).toHaveCount(1);
+  const thumbnail = card.getByRole("img", { name: "Unclassified" });
+  await expectDecodedImage(thumbnail);
+  const thumbnailUrl = await thumbnail.getAttribute("src");
+  expect(thumbnailUrl).toBeTruthy();
+  const thumbnailResponse = await page.request.get(
+    new URL(thumbnailUrl!, page.url()).toString(),
+  );
+  expect(thumbnailResponse.ok()).toBe(true);
+  expect(thumbnailResponse.headers()["content-type"]).toContain("image/jpeg");
+
+  await card.getByRole("link").first().click();
+  await expect(page).toHaveURL(/\/photos\/\d+/);
+  await expect(page.getByText(HEIC_FILENAME, { exact: true })).toBeVisible();
+  await expect(page.getByText("Apple iPhone Test", { exact: true })).toBeVisible();
+  await expect(page.getByText("Synthetic HEIC Lens", { exact: true })).toBeVisible();
+  await expectDecodedImage(page.getByRole("img", { name: "Unclassified" }));
 });

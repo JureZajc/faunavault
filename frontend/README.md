@@ -95,6 +95,13 @@ confirmation leaves that review open, and remaining reviews and completed files
 retain their state. Pending reviews live only in the current page and do not
 survive refresh.
 
+The picker accepts JPEG, PNG, WebP, HEIC, and HEIF. It does not decode or
+convert files in the browser: the same `FormData` queue sends the selected
+source to the local backend. HEIC/HEIF originals remain byte-identical in local
+storage while the UI uses backend-generated JPEG resized images and thumbnails.
+Container metadata is not guaranteed; capture time, camera/lens, dimensions,
+and GPS appear only when the source exposes valid values.
+
 ## Modal and lightbox accessibility
 
 Duplicate review, Move to Trash, permanent deletion, photo-detail deletion, and
@@ -155,7 +162,8 @@ The runner owns frontend port `3001`, backend port `8001`, both child processes,
 and a uniquely named archive beneath the OS temporary directory. Occupied ports
 fail the run instead of reusing an existing server. Temporary fixtures, the
 database, and all generated images are removed after success or failure. The
-smoke journey covers upload and duplicate safety, catalog/detail navigation and
+smoke journey covers upload and duplicate safety, a real HEIC upload with a
+JPEG thumbnail and extracted camera metadata, catalog/detail navigation and
 metadata persistence, a GPS-backed archive marker/popup/detail-map path, real
 backend image loading, Collection creation/add/delete without Photo loss, Trash
 restore/permanent deletion, and one explicit two-photo bulk Move to Trash
