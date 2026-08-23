@@ -12,6 +12,11 @@ from app.services.archive_maintenance import (
     doctor,
     repair_derived,
 )
+from app.services.photo_metadata_backfill import (
+    MetadataBackfillResult,
+    MetadataBackfillSetupError,
+    backfill_photo_metadata,
+)
 
 ORPHAN_EXAMPLE_LIMIT = 10
 ORPHAN_CODES = {"orphan_file", "orphan_directory", "maintenance_temp"}
@@ -91,6 +96,23 @@ def _print_repair(result: RepairResult) -> None:
         print("No files were changed. Re-run with --apply to perform these repairs.")
 
 
+def _print_metadata_backfill(result: MetadataBackfillResult) -> None:
+    for error in result.errors:
+        print(
+            f"ERROR photo={error.photo_id} {error.message}",
+            file=sys.stderr,
+        )
+    mode = "APPLY" if result.applied else "DRY RUN"
+    updated_label = "updated" if result.applied else "would update"
+    print(
+        f"Metadata backfill {mode}: {result.processed} processed, "
+        f"{result.updated} {updated_label}, {result.skipped} skipped, "
+        f"{len(result.errors)} errors"
+    )
+    if not result.applied and result.updated:
+        print("No metadata was changed. Re-run with --apply to save these values.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="faunavault-maintenance",
@@ -107,6 +129,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="perform atomic repairs (default: dry run)",
     )
+    metadata = commands.add_parser(
+        "backfill-photo-metadata",
+        help="inspect or populate missing capture metadata from original photos",
+    )
+    metadata.add_argument(
+        "--apply",
+        action="store_true",
+        help="write missing metadata (default: dry run)",
+    )
     return parser
 
 
@@ -118,10 +149,19 @@ def main(argv: list[str] | None = None) -> int:
             result = doctor(settings, progress=_progress)
             _print_health(result)
             return 0 if result.status == "HEALTHY" else 1
-        result = repair_derived(settings, apply=args.apply, progress=_progress)
-        _print_repair(result)
-        return 0 if result.health.status == "HEALTHY" and result.failed == 0 else 1
-    except (MaintenanceSetupError, ValueError, OSError) as exc:
+        if args.command == "repair-derived":
+            result = repair_derived(settings, apply=args.apply, progress=_progress)
+            _print_repair(result)
+            return 0 if result.health.status == "HEALTHY" and result.failed == 0 else 1
+        backfill = backfill_photo_metadata(settings, apply=args.apply)
+        _print_metadata_backfill(backfill)
+        return 0 if not backfill.errors else 1
+    except (
+        MaintenanceSetupError,
+        MetadataBackfillSetupError,
+        ValueError,
+        OSError,
+    ) as exc:
         print(f"Maintenance could not start: {exc}", file=sys.stderr)
         return 2
 

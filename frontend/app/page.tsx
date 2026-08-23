@@ -41,6 +41,8 @@ function HomeContent() {
         category: query.catalogState.category ?? null,
         uncategorized: query.catalogState.uncategorized ?? false,
         taxonId: query.catalogState.taxon_id ?? null,
+        takenFrom: query.catalogState.taken_from ?? null,
+        takenTo: query.catalogState.taken_to ?? null,
         sort: query.catalogState.sort,
         order: query.catalogState.order,
       }),
@@ -117,7 +119,9 @@ function HomeContent() {
     query.searchInput.trim() !== "" ||
     statusFilter !== "all" ||
     categoryFilter !== "all" ||
-    query.catalogState.taxon_id !== undefined;
+    query.catalogState.taxon_id !== undefined ||
+    query.catalogState.taken_from !== undefined ||
+    query.catalogState.taken_to !== undefined;
   const error = actionError ?? catalogError;
   const visiblePhotoIds = useMemo(() => photos.map((photo) => photo.id), [photos]);
 
@@ -270,6 +274,8 @@ function HomeContent() {
               searchQuery={query.searchInput}
               statusFilter={statusFilter}
               categoryFilter={categoryFilter}
+              takenFrom={query.catalogState.taken_from}
+              takenTo={query.catalogState.taken_to}
               sortOption={sortOption}
               viewMode={query.catalogState.layout}
               categoryOptions={categoryOptions}
@@ -281,6 +287,7 @@ function HomeContent() {
               hasMoreTaxa={taxa.hasMore}
               resultCount={photos.length}
               totalCount={catalog?.total ?? 0}
+              hasActiveFilters={hasActiveViewFilters}
               isSelectionMode={selection.isSelecting}
               onSearchChange={(value) => {
                 selection.reset();
@@ -299,6 +306,14 @@ function HomeContent() {
                   value === UNKNOWN_CATEGORY_VALUE,
                 );
               }}
+              onTakenFromChange={(value) => {
+                selection.reset();
+                query.setTakenFrom(value);
+              }}
+              onTakenToChange={(value) => {
+                selection.reset();
+                query.setTakenTo(value);
+              }}
               onSortChange={(value) => {
                 selection.reset();
                 query.setSort(value);
@@ -312,6 +327,10 @@ function HomeContent() {
                 query.setTaxon(value);
               }}
               onLoadMoreTaxa={() => void taxa.loadMore()}
+              onResetFilters={() => {
+                selection.reset();
+                query.clearFilters();
+              }}
               onEnterSelectionMode={selection.enter}
             />
 
@@ -373,7 +392,7 @@ function HomeContent() {
               onToggleSelection={selection.toggle}
             />
             <BulkActionDialog
-              key={bulkDialog ?? "closed"}
+              key={bulkDialog ?? "bulk-closed"}
               action={bulkDialog}
               selectedCount={selection.selectedCount}
               categoryOptions={categoryOptions}
@@ -385,7 +404,7 @@ function HomeContent() {
               onSubmit={bulkActions.execute}
             />
             <AddToCollectionDialog
-              key={addCollectionIds?.join("-") ?? "closed"}
+              key={addCollectionIds?.join("-") ?? "collection-closed"}
               photoIds={addCollectionIds}
               onClose={() => setAddCollectionIds(null)}
               onSuccess={(response) => {

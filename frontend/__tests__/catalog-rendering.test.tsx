@@ -22,7 +22,11 @@ function photo(id: number, title: string, category: string | null): Photo {
     display_title: title, common_name: null, breed_guess: null,
     species_guess: null, category, confidence: null, description: null, tags: [],
     status: "classified", animal_id: id, content_sha256: null,
-    original_size_bytes: null, media_type: "image/jpeg", deleted_at: null,
+    original_size_bytes: null, media_type: "image/jpeg",
+    captured_at: null, captured_at_offset_minutes: null,
+    camera_make: null, camera_model: null, lens_model: null,
+    image_width: null, image_height: null, latitude: null, longitude: null,
+    deleted_at: null,
     created_at: "2026-08-12T08:00:00Z", updated_at: "2026-08-12T08:00:00Z",
   };
 }

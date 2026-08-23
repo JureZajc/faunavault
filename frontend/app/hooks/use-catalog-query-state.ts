@@ -106,6 +106,14 @@ export function useCatalogQueryState() {
     updateCatalog({ ...catalogState, taxon_id: taxonId, page: 1 });
   }
 
+  function setTakenFrom(takenFrom?: string) {
+    updateCatalog({ ...catalogState, taken_from: takenFrom, page: 1 });
+  }
+
+  function setTakenTo(takenTo?: string) {
+    updateCatalog({ ...catalogState, taken_to: takenTo, page: 1 });
+  }
+
   function setPage(page: number) {
     updateCatalog({ ...catalogState, page });
   }
@@ -128,6 +136,8 @@ export function useCatalogQueryState() {
         category: undefined,
         uncategorized: undefined,
         taxon_id: undefined,
+        taken_from: undefined,
+        taken_to: undefined,
       },
       true,
     );
@@ -152,6 +162,8 @@ export function useCatalogQueryState() {
     setSort,
     setLayout,
     setTaxon,
+    setTakenFrom,
+    setTakenTo,
     setPage,
     correctPage,
     clearFilters,

@@ -31,8 +31,9 @@ from app.services.image_variants import (
 )
 from app.services.perceptual_duplicates import (
     find_visual_duplicate_candidates,
-    perceptual_hash_for_path,
+    perceptual_hash,
 )
+from app.services.photo_metadata import ExtractedPhotoMetadata, extract_photo_metadata
 
 logger = logging.getLogger(__name__)
 UPLOAD_LOCK = asyncio.Lock()
@@ -51,6 +52,8 @@ class PreparedUpload:
     stored_filename: str
     resized_filename: str
     thumbnail_filename: str
+    metadata: ExtractedPhotoMetadata
+    perceptual_hash: str
 
 
 def ensure_storage(settings: Settings) -> None:
@@ -148,6 +151,8 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
                     probe.verify()
                 with Image.open(staged_original) as image:
                     image.load()
+                    metadata = extract_photo_metadata(image)
+                    uploaded_perceptual_hash = perceptual_hash(image)
                     save_variant(image, staged_resized, extension, RESIZED_MAX_SIZE)
                     save_variant(image, staged_thumbnail, extension, THUMBNAIL_MAX_SIZE)
         except HTTPException:
@@ -177,6 +182,8 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
         stored_filename=f"{safe_id}.{extension}",
         resized_filename=f"{safe_id}_resized.{extension}",
         thumbnail_filename=f"{safe_id}_thumb.{extension}",
+        metadata=metadata,
+        perceptual_hash=uploaded_perceptual_hash,
     )
 
 
@@ -231,23 +238,8 @@ async def create_photo_from_upload(
 
         promoted: list[Path] = []
         try:
-            try:
-                uploaded_perceptual_hash = perceptual_hash_for_path(
-                    prepared.staged_original, settings.max_image_pixels
-                )
-            except (
-                Image.DecompressionBombError,
-                Image.DecompressionBombWarning,
-                UnidentifiedImageError,
-                OSError,
-                ValueError,
-            ) as exc:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Uploaded file could not be processed as an image",
-                ) from exc
             visual_candidates = find_visual_duplicate_candidates(
-                session, uploaded_perceptual_hash
+                session, prepared.perceptual_hash
             )
             if visual_candidates and not allow_visual_duplicate:
                 raise _visual_duplicate_error(visual_candidates)
@@ -268,9 +260,20 @@ async def create_photo_from_upload(
                 thumbnail_filename=prepared.thumbnail_filename,
                 animal_id=animal.id,
                 content_sha256=prepared.digest,
-                perceptual_hash=uploaded_perceptual_hash,
+                perceptual_hash=prepared.perceptual_hash,
                 original_size_bytes=prepared.size,
                 media_type=prepared.media_type,
+                captured_at=prepared.metadata.captured_at,
+                captured_at_offset_minutes=(
+                    prepared.metadata.captured_at_offset_minutes
+                ),
+                camera_make=prepared.metadata.camera_make,
+                camera_model=prepared.metadata.camera_model,
+                lens_model=prepared.metadata.lens_model,
+                image_width=prepared.metadata.image_width,
+                image_height=prepared.metadata.image_height,
+                latitude=prepared.metadata.latitude,
+                longitude=prepared.metadata.longitude,
             )
             session.add(photo)
             session.commit()

@@ -212,6 +212,54 @@ def test_catalog_paginates_filters_sorts_and_reports_global_facets(catalog_app):
     assert confidence["items"][-1]["confidence"] is None
 
 
+def test_catalog_capture_sort_filter_nulls_and_stable_ties(catalog_app):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        first = add_photo(session, 40, captured_at=datetime(2024, 5, 24, 10, 0))
+        second = add_photo(session, 41, captured_at=datetime(2024, 5, 24, 10, 0))
+        third = add_photo(session, 42, captured_at=datetime(2024, 5, 25, 9, 0))
+        unknown = add_photo(session, 43)
+        session.commit()
+        identifiers = first.id, second.id, third.id, unknown.id
+
+    newest = client.get(
+        "/catalog/photos", params={"sort": "captured_at", "order": "desc"}
+    ).json()
+    oldest = client.get(
+        "/catalog/photos", params={"sort": "captured_at", "order": "asc"}
+    ).json()
+    assert [item["id"] for item in newest["items"]] == [
+        identifiers[2],
+        identifiers[1],
+        identifiers[0],
+        identifiers[3],
+    ]
+    assert [item["id"] for item in oldest["items"]] == [
+        identifiers[0],
+        identifiers[1],
+        identifiers[2],
+        identifiers[3],
+    ]
+
+    one_day = client.get(
+        "/catalog/photos",
+        params={"taken_from": "2024-05-24", "taken_to": "2024-05-24"},
+    ).json()
+    assert [item["id"] for item in one_day["items"]] == [
+        identifiers[1],
+        identifiers[0],
+    ]
+    through_next = client.get(
+        "/catalog/photos", params={"taken_to": "2024-05-25"}
+    ).json()
+    assert {item["id"] for item in through_next["items"]} == set(identifiers[:3])
+    invalid = client.get(
+        "/catalog/photos",
+        params={"taken_from": "2024-05-26", "taken_to": "2024-05-25"},
+    )
+    assert invalid.status_code == 422
+
+
 def test_catalog_search_taxonomy_filter_and_lifecycle_refresh(catalog_app):
     client, engine = catalog_app
     with Session(engine) as session:

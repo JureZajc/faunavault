@@ -14,7 +14,7 @@ options, classification-job polling, and upload state. Components under
 `app/components/catalog/` own the toolbar, results, classification panel, upload
 form, and per-file progress presentation. The List fetches one backend-filtered
 page at a time, debounces search, and stores page, search, filters, sorting,
-verified taxon, layout, and home view in the URL. Category grouping is
+verified taxon, inclusive Taken-from/Taken-to dates, layout, and home view in the URL. Category grouping is
 intentionally limited to the current page.
 
 The photo-detail route follows the same boundary: `photo-detail.tsx` coordinates
@@ -24,6 +24,13 @@ editing, linked-animal/taxonomy presentation, classification controls, the
 sidebar, and the Move to Trash confirmation. State remains in focused React
 hooks and route clients; the frontend does not use a global state or
 data-fetching library.
+
+Photo cards explicitly label their display date as `Taken` when capture metadata
+exists and `Added` otherwise. Detail metadata formats capture timestamps as
+camera-local wall time without passing them through JavaScript timezone
+conversion, shows a recorded `UTC±HH:MM` offset or states that the timezone was
+not recorded, and conditionally shows camera, lens, dimensions, and plain local
+coordinates. These extracted fields are read-only and never enter PATCH bodies.
 
 Durable classification state is restored from the backend after refresh. The
 frontend polls only while queued or running work exists and keeps low-confidence

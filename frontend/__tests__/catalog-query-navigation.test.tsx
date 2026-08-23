@@ -37,6 +37,9 @@ function photo(title: string): Photo {
     content_sha256: null,
     original_size_bytes: null,
     media_type: "image/jpeg",
+    captured_at: null, captured_at_offset_minutes: null,
+    camera_make: null, camera_model: null, lens_model: null,
+    image_width: null, image_height: null, latitude: null, longitude: null,
     deleted_at: null,
     created_at: "2026-08-12T08:00:00Z",
     updated_at: "2026-08-12T08:00:00Z",
@@ -86,7 +89,7 @@ test("restores the complete catalog query and resynchronizes after popstate", as
   window.history.replaceState(
     null,
     "",
-    "/?catalog_page=2&catalog_search=fox&catalog_status=classified&catalog_category=mammal&catalog_taxon=7&catalog_sort=name&catalog_order=asc&catalog_layout=grouped",
+    "/?catalog_page=2&catalog_search=fox&catalog_status=classified&catalog_category=mammal&catalog_taxon=7&catalog_taken_from=2024-05-01&catalog_taken_to=2024-05-31&catalog_sort=name&catalog_order=asc&catalog_layout=grouped",
   );
   render(<Home />);
 
@@ -94,6 +97,8 @@ test("restores the complete catalog query and resynchronizes after popstate", as
   expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Status" }).value).toBe("classified");
   expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Category" }).value).toBe("mammal");
   expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Sort" }).value).toBe("name_asc");
+  expect(screen.getByLabelText<HTMLInputElement>("Taken from").value).toBe("2024-05-01");
+  expect(screen.getByLabelText<HTMLInputElement>("Taken to").value).toBe("2024-05-31");
   expect(screen.getByRole("button", { name: "Group by category" }).className).toContain("bg-white");
 
   window.history.pushState(null, "", "/?catalog_search=owl");
@@ -107,6 +112,30 @@ test("restores the complete catalog query and resynchronizes after popstate", as
       expect.any(AbortSignal),
     ),
   );
+});
+
+test("writes capture dates to the URL and reset clears both", async () => {
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+
+  await userEvent.type(screen.getByLabelText("Taken from"), "2024-05-01");
+  await waitFor(() =>
+    expect(window.location.search).toContain("catalog_taken_from=2024-05-01"),
+  );
+  await userEvent.type(screen.getByLabelText("Taken to"), "2024-05-31");
+  await waitFor(() =>
+    expect(window.location.search).toContain("catalog_taken_to=2024-05-31"),
+  );
+  expect(api.getCatalogPhotos).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      taken_from: "2024-05-01",
+      taken_to: "2024-05-31",
+    }),
+    expect.any(AbortSignal),
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+  await waitFor(() => expect(window.location.search).not.toContain("catalog_taken_"));
 });
 
 test("preserves catalog parameters while switching collection views", async () => {

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import ExifTags, Image
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -28,6 +28,18 @@ def oriented_jpeg_bytes() -> bytes:
     exif = Image.Exif()
     exif[274] = 6
     Image.new("RGB", (40, 20), "purple").save(output, format="JPEG", exif=exif)
+    return output.getvalue()
+
+
+def metadata_jpeg_bytes() -> bytes:
+    output = BytesIO()
+    exif = Image.Exif()
+    exif[int(ExifTags.Base.DateTimeOriginal)] = "2024:05:24 18:42:00"
+    exif[int(ExifTags.Base.OffsetTimeOriginal)] = "+02:00"
+    exif[int(ExifTags.Base.Make)] = "SONY"
+    exif[int(ExifTags.Base.Model)] = "ILCE-7M4"
+    exif[int(ExifTags.Base.LensModel)] = "FE 200-600mm"
+    Image.new("RGB", (64, 32), "teal").save(output, format="JPEG", exif=exif)
     return output.getvalue()
 
 
@@ -196,7 +208,7 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
                 "SELECT version FROM schema_migration ORDER BY version"
             )
         ]
-    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     with engine.connect() as connection:
         indexes = {
             row[1] for row in connection.exec_driver_sql("PRAGMA index_list(photo)")
@@ -205,6 +217,7 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
         "ix_photo_catalog_active_created",
         "ix_photo_catalog_active_status_created",
         "ix_photo_catalog_active_category_created",
+        "ix_photo_catalog_active_captured",
     } <= indexes
     with engine.connect() as connection:
         animal_indexes = {
@@ -247,8 +260,8 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         calls += 1
         main.normalize_existing_domestic_metadata()
 
-    assert run_migrations(engine, settings, normalize) == [5, 6, 7, 8, 9, 10]
-    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert run_migrations(engine, settings, normalize) == [5, 6, 7, 8, 9, 10, 11]
+    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
         assert photo is not None
@@ -285,8 +298,8 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
 
     assert run_migrations(
         engine, settings, main.normalize_existing_domestic_metadata
-    ) == [5, 6, 7, 8, 9, 10]
-    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    ) == [5, 6, 7, 8, 9, 10, 11]
+    assert migration_versions(engine) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
         assert photo is not None
@@ -303,7 +316,9 @@ def test_migration_8_backfills_normalized_album_group_and_is_idempotent(tmp_path
     )
     engine = create_engine(settings.resolved_database_url)
     with engine.begin() as connection:
-        connection.exec_driver_sql("CREATE TABLE photo (id INTEGER PRIMARY KEY)")
+        connection.exec_driver_sql(
+            "CREATE TABLE photo (id INTEGER PRIMARY KEY, deleted_at DATETIME)"
+        )
         connection.exec_driver_sql(
             "CREATE TABLE animal (id INTEGER PRIMARY KEY, legacy_species_name TEXT)"
         )
@@ -321,7 +336,7 @@ def test_migration_8_backfills_normalized_album_group_and_is_idempotent(tmp_path
             "(1, '  ČRNA   Štorklja '), (2, NULL), (3, '   ')"
         )
 
-    assert run_migrations(engine, settings) == [8, 9, 10]
+    assert run_migrations(engine, settings) == [8, 9, 10, 11]
     with engine.connect() as connection:
         rows = connection.exec_driver_sql(
             "SELECT id, legacy_species_group FROM animal ORDER BY id"
@@ -344,7 +359,9 @@ def test_migration_9_adds_nullable_perceptual_hash_without_backfill(tmp_path):
     )
     engine = create_engine(settings.resolved_database_url)
     with engine.begin() as connection:
-        connection.exec_driver_sql("CREATE TABLE photo (id INTEGER PRIMARY KEY)")
+        connection.exec_driver_sql(
+            "CREATE TABLE photo (id INTEGER PRIMARY KEY, deleted_at DATETIME)"
+        )
         connection.exec_driver_sql(
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
@@ -356,7 +373,7 @@ def test_migration_9_adds_nullable_perceptual_hash_without_backfill(tmp_path):
             )
         connection.exec_driver_sql("INSERT INTO photo(id) VALUES (1)")
 
-    assert run_migrations(engine, settings) == [9, 10]
+    assert run_migrations(engine, settings) == [9, 10, 11]
     with engine.connect() as connection:
         columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(photo)")
@@ -379,7 +396,9 @@ def test_migration_10_creates_collection_relations_with_cascades(tmp_path):
     )
     engine = create_engine(settings.resolved_database_url)
     with engine.begin() as connection:
-        connection.exec_driver_sql("CREATE TABLE photo (id INTEGER PRIMARY KEY)")
+        connection.exec_driver_sql(
+            "CREATE TABLE photo (id INTEGER PRIMARY KEY, deleted_at DATETIME)"
+        )
         connection.exec_driver_sql("INSERT INTO photo(id) VALUES (7)")
         connection.exec_driver_sql(
             "CREATE TABLE schema_migration "
@@ -391,7 +410,7 @@ def test_migration_10_creates_collection_relations_with_cascades(tmp_path):
                 (version,),
             )
 
-    assert run_migrations(engine, settings) == [10]
+    assert run_migrations(engine, settings) == [10, 11]
     with engine.begin() as connection:
         connection.exec_driver_sql(
             "INSERT INTO collection(name, name_key, created_at, updated_at) "
@@ -503,6 +522,7 @@ def test_exif_orientation_preserves_original_and_orients_variants(lifecycle):
     photo = response.json()
     original = settings.image_dirs["original"] / photo["stored_filename"]
     assert original.read_bytes() == payload
+    assert (photo["image_width"], photo["image_height"]) == (20, 40)
 
     for image_type, field in (
         ("resized", "resized_filename"),
@@ -510,6 +530,30 @@ def test_exif_orientation_preserves_original_and_orients_variants(lifecycle):
     ):
         with Image.open(settings.image_dirs[image_type] / photo[field]) as variant:
             assert variant.size == (20, 40)
+
+
+def test_upload_persists_capture_metadata_without_rewriting_original(lifecycle):
+    client, engine, settings = lifecycle
+    payload = metadata_jpeg_bytes()
+
+    response = upload(client, payload, filename="metadata.jpg")
+
+    assert response.status_code == 200
+    photo = response.json()
+    assert photo["captured_at"] == "2024-05-24T18:42:00"
+    assert photo["captured_at_offset_minutes"] == 120
+    assert photo["camera_make"] == "SONY"
+    assert photo["camera_model"] == "ILCE-7M4"
+    assert photo["lens_model"] == "FE 200-600mm"
+    assert (photo["image_width"], photo["image_height"]) == (64, 32)
+    assert (photo["latitude"], photo["longitude"]) == (None, None)
+    assert (
+        settings.image_dirs["original"] / photo["stored_filename"]
+    ).read_bytes() == payload
+    with Session(engine) as session:
+        stored = session.get(Photo, photo["id"])
+        assert stored is not None
+        assert stored.captured_at.isoformat() == "2024-05-24T18:42:00"
 
 
 def test_upload_flush_failure_rolls_back_and_removes_all_files(lifecycle, monkeypatch):

@@ -26,6 +26,7 @@ from app.services.image_variants import (
     THUMBNAIL_MAX_SIZE,
     save_variant,
 )
+from app.services.photo_metadata_backfill import backfill_photo_metadata
 
 
 def image_bytes(
@@ -113,7 +114,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for version in range(1, 11):
+        for version in range(1, 12):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (version,),
@@ -549,6 +550,48 @@ def test_cli_exit_codes_and_output(archive, monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(maintenance_cli, "get_settings", lambda: missing)
     assert maintenance_cli.main(["doctor"]) == 2
     assert "could not start" in capsys.readouterr().err
+
+
+def test_photo_metadata_backfill_dry_run_apply_and_preserves_values(archive):
+    settings, engine, active_id, trashed_id = archive
+    with Session(engine) as session:
+        active = session.get(Photo, active_id)
+        active.camera_make = "Manual value"
+        session.add(active)
+        session.commit()
+
+    dry_run = backfill_photo_metadata(settings)
+
+    assert dry_run.processed == 2
+    assert dry_run.updated == 2
+    assert dry_run.skipped == 0
+    assert dry_run.errors == ()
+    with Session(engine) as session:
+        assert session.get(Photo, active_id).image_width is None
+
+    applied = backfill_photo_metadata(settings, apply=True, batch_size=1)
+
+    assert applied.updated == 2
+    with Session(engine) as session:
+        active = session.get(Photo, active_id)
+        trashed = session.get(Photo, trashed_id)
+        assert (active.image_width, active.image_height) == (80, 60)
+        assert (trashed.image_width, trashed.image_height) == (80, 60)
+        assert active.camera_make == "Manual value"
+    repeated = backfill_photo_metadata(settings, apply=True)
+    assert repeated.updated == 0
+    assert repeated.skipped == 2
+
+
+def test_photo_metadata_backfill_isolates_missing_original(archive):
+    settings, _, active_id, _ = archive
+    (settings.image_dirs["original"] / "photo-1.jpeg").unlink()
+
+    result = backfill_photo_metadata(settings, apply=True)
+
+    assert result.processed == 2
+    assert result.updated == 1
+    assert [error.photo_id for error in result.errors] == [active_id]
 
 
 def test_configured_storage_links_are_rejected_when_supported(archive, tmp_path):

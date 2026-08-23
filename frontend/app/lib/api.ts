@@ -19,6 +19,15 @@ export type Photo = {
   content_sha256: string | null;
   original_size_bytes: number | null;
   media_type: string | null;
+  captured_at: string | null;
+  captured_at_offset_minutes: number | null;
+  camera_make: string | null;
+  camera_model: string | null;
+  lens_model: string | null;
+  image_width: number | null;
+  image_height: number | null;
+  latitude: number | null;
+  longitude: number | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -83,6 +92,7 @@ export type Paginated<T> = {
 
 export type CatalogSort =
   | "created_at"
+  | "captured_at"
   | "name"
   | "species"
   | "confidence"
@@ -99,6 +109,8 @@ export type CatalogQuery = {
   category?: string;
   uncategorized?: boolean;
   taxon_id?: number;
+  taken_from?: string;
+  taken_to?: string;
   sort: CatalogSort;
   order: CatalogOrder;
 };
@@ -616,6 +628,8 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
   if (query.category) params.set("category", query.category);
   if (query.uncategorized) params.set("uncategorized", "true");
   if (query.taxon_id) params.set("taxon_id", String(query.taxon_id));
+  if (query.taken_from) params.set("taken_from", query.taken_from);
+  if (query.taken_to) params.set("taken_to", query.taken_to);
   params.set("sort", query.sort);
   params.set("order", query.order);
   return request<CatalogPhotoPage>(`/catalog/photos?${params}`, { signal });

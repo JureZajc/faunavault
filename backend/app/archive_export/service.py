@@ -50,6 +50,15 @@ CSV_COLUMNS = (
     "media_type",
     "original_size_bytes",
     "original_sha256",
+    "captured_at",
+    "captured_at_offset_minutes",
+    "camera_make",
+    "camera_model",
+    "lens_model",
+    "image_width",
+    "image_height",
+    "latitude",
+    "longitude",
     "display_title",
     "common_name",
     "breed_guess",
@@ -121,6 +130,15 @@ class SnapshotPhoto:
     content_sha256: str | None
     original_size_bytes: int | None
     media_type: str | None
+    captured_at: str | None
+    captured_at_offset_minutes: int | None
+    camera_make: str | None
+    camera_model: str | None
+    lens_model: str | None
+    image_width: int | None
+    image_height: int | None
+    latitude: float | None
+    longitude: float | None
     deleted_at: str | None
     created_at: str
     updated_at: str
@@ -198,6 +216,20 @@ def _timestamp(value: object, field: str, *, optional: bool = False) -> str | No
     except (OverflowError, ValueError) as exc:
         raise ArchiveExportIntegrityError(f"Invalid timestamp for {field}") from exc
     return parsed.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def _capture_timestamp(value: object, field: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ArchiveExportIntegrityError(f"Invalid timestamp for {field}")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (OverflowError, ValueError) as exc:
+        raise ArchiveExportIntegrityError(f"Invalid timestamp for {field}") from exc
+    if parsed.tzinfo is not None:
+        raise ArchiveExportIntegrityError(f"Timezone is not allowed for {field}")
+    return parsed.isoformat(timespec="microseconds")
 
 
 def _tags(value: object, photo_id: int) -> list[str]:
@@ -331,7 +363,10 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             "SELECT id, original_filename, stored_filename, display_title, "
             "common_name, breed_guess, species_guess, category, confidence, "
             "description, tags, status, animal_id, content_sha256, "
-            "original_size_bytes, media_type, deleted_at, created_at, updated_at "
+            "original_size_bytes, media_type, captured_at, "
+            "captured_at_offset_minutes, camera_make, camera_model, lens_model, "
+            "image_width, image_height, latitude, longitude, deleted_at, "
+            "created_at, updated_at "
             "FROM photo ORDER BY id"
         ).fetchall()
         photos: list[SnapshotPhoto] = []
@@ -381,6 +416,34 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                     ),
                     media_type=_optional_text(
                         row["media_type"], f"photo {photo_id} media_type"
+                    ),
+                    captured_at=_capture_timestamp(
+                        row["captured_at"], f"photo {photo_id} captured_at"
+                    ),
+                    captured_at_offset_minutes=_optional_integer(
+                        row["captured_at_offset_minutes"],
+                        f"photo {photo_id} captured_at_offset_minutes",
+                    ),
+                    camera_make=_optional_text(
+                        row["camera_make"], f"photo {photo_id} camera_make"
+                    ),
+                    camera_model=_optional_text(
+                        row["camera_model"], f"photo {photo_id} camera_model"
+                    ),
+                    lens_model=_optional_text(
+                        row["lens_model"], f"photo {photo_id} lens_model"
+                    ),
+                    image_width=_optional_integer(
+                        row["image_width"], f"photo {photo_id} image_width"
+                    ),
+                    image_height=_optional_integer(
+                        row["image_height"], f"photo {photo_id} image_height"
+                    ),
+                    latitude=_optional_float(
+                        row["latitude"], f"photo {photo_id} latitude"
+                    ),
+                    longitude=_optional_float(
+                        row["longitude"], f"photo {photo_id} longitude"
                     ),
                     deleted_at=_timestamp(
                         row["deleted_at"],
@@ -568,6 +631,15 @@ def _inventory_photos(
                 media_type=photo.media_type,
                 original_size_bytes=size,
                 original_sha256=digest,
+                captured_at=photo.captured_at,
+                captured_at_offset_minutes=photo.captured_at_offset_minutes,
+                camera_make=photo.camera_make,
+                camera_model=photo.camera_model,
+                lens_model=photo.lens_model,
+                image_width=photo.image_width,
+                image_height=photo.image_height,
+                latitude=photo.latitude,
+                longitude=photo.longitude,
                 display_title=photo.display_title,
                 common_name=photo.common_name,
                 breed_guess=photo.breed_guess,
@@ -658,6 +730,15 @@ def _csv_rows(document: ArchiveMetadataExport) -> list[list[str]]:
             photo.media_type,
             photo.original_size_bytes,
             photo.original_sha256,
+            photo.captured_at,
+            photo.captured_at_offset_minutes,
+            photo.camera_make,
+            photo.camera_model,
+            photo.lens_model,
+            photo.image_width,
+            photo.image_height,
+            photo.latitude,
+            photo.longitude,
             photo.display_title,
             photo.common_name,
             photo.breed_guess,

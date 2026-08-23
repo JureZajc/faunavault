@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -36,6 +38,15 @@ class PhotoRecord:
     original_size_bytes: int | None
     perceptual_hash: str | None
     media_type: str | None
+    captured_at: str | None = None
+    captured_at_offset_minutes: int | None = None
+    camera_make: str | None = None
+    camera_model: str | None = None
+    lens_model: str | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
     def signature(self) -> tuple[object, ...]:
         return (
@@ -48,6 +59,15 @@ class PhotoRecord:
             self.original_size_bytes,
             self.media_type,
             self.perceptual_hash,
+            self.captured_at,
+            self.captured_at_offset_minutes,
+            self.camera_make,
+            self.camera_model,
+            self.lens_model,
+            self.image_width,
+            self.image_height,
+            self.latitude,
+            self.longitude,
         )
 
 
@@ -199,7 +219,114 @@ def _inspect_schema_10(
     )
 
 
-SCHEMA_INVENTORY_READERS = {9: _inspect_schema_9, 10: _inspect_schema_10}
+def _photo_from_schema_11_row(row) -> PhotoRecord:
+    return PhotoRecord(
+        id=int(row[0]),
+        stored_filename=str(row[1]),
+        resized_filename=str(row[2]),
+        thumbnail_filename=str(row[3]),
+        deleted=row[4] is not None,
+        content_sha256=row[5],
+        original_size_bytes=row[6],
+        perceptual_hash=row[7],
+        media_type=row[8],
+        captured_at=row[9],
+        captured_at_offset_minutes=row[10],
+        camera_make=row[11],
+        camera_model=row[12],
+        lens_model=row[13],
+        image_width=row[14],
+        image_height=row[15],
+        latitude=row[16],
+        longitude=row[17],
+    )
+
+
+def _validate_capture_metadata(photos: list[PhotoRecord]) -> None:
+    invalid: list[int] = []
+    for photo in photos:
+        dimensions_valid = (photo.image_width is None) == (
+            photo.image_height is None
+        ) and (
+            photo.image_width is None
+            or (
+                photo.image_width > 0
+                and photo.image_height is not None
+                and photo.image_height > 0
+            )
+        )
+        location_valid = (photo.latitude is None) == (photo.longitude is None)
+        if photo.latitude is not None and photo.longitude is not None:
+            location_valid = (
+                math.isfinite(photo.latitude)
+                and math.isfinite(photo.longitude)
+                and -90 <= photo.latitude <= 90
+                and -180 <= photo.longitude <= 180
+            )
+        offset_valid = photo.captured_at_offset_minutes is None or (
+            photo.captured_at is not None
+            and -1439 <= photo.captured_at_offset_minutes <= 1439
+        )
+        timestamp_valid = True
+        if photo.captured_at is not None:
+            try:
+                timestamp_valid = (
+                    datetime.fromisoformat(photo.captured_at).tzinfo is None
+                )
+            except (TypeError, ValueError):
+                timestamp_valid = False
+        text_valid = all(
+            value is None or len(value) <= 200
+            for value in (photo.camera_make, photo.camera_model, photo.lens_model)
+        )
+        if not all(
+            (
+                dimensions_valid,
+                location_valid,
+                offset_valid,
+                timestamp_valid,
+                text_valid,
+            )
+        ):
+            invalid.append(photo.id)
+    if invalid:
+        identifiers = ", ".join(str(photo_id) for photo_id in invalid)
+        raise ArchiveIntegrityError(
+            f"Invalid capture metadata for photo id(s): {identifiers}"
+        )
+
+
+def _inspect_schema_11(
+    connection: sqlite3.Connection, migrations: list[int]
+) -> DatabaseInventory:
+    base = _inspect_schema_10(connection, migrations)
+    photos = [
+        _photo_from_schema_11_row(row)
+        for row in connection.execute(
+            "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
+            "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
+            "media_type, captured_at, captured_at_offset_minutes, camera_make, "
+            "camera_model, lens_model, image_width, image_height, latitude, "
+            "longitude FROM photo ORDER BY id"
+        )
+    ]
+    _validate_capture_metadata(photos)
+    return DatabaseInventory(
+        migrations=base.migrations,
+        photos=photos,
+        animals=base.animals,
+        taxa=base.taxa,
+        job_counts=base.job_counts,
+        collections=base.collections,
+        collection_memberships=base.collection_memberships,
+    )
+
+
+SCHEMA_INVENTORY_READERS = {
+    9: _inspect_schema_9,
+    10: _inspect_schema_10,
+    11: _inspect_schema_11,
+}
 
 
 def validate_database_connection(
@@ -257,9 +384,11 @@ def read_photo_signature(path: Path) -> tuple[tuple[object, ...], ...]:
         rows = connection.execute(
             "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
             "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
-            "media_type FROM photo ORDER BY id"
+            "media_type, captured_at, captured_at_offset_minutes, camera_make, "
+            "camera_model, lens_model, image_width, image_height, latitude, "
+            "longitude FROM photo ORDER BY id"
         ).fetchall()
-        return tuple(_photo_from_row(row).signature() for row in rows)
+        return tuple(_photo_from_schema_11_row(row).signature() for row in rows)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check live archive state: {exc}"
@@ -275,10 +404,12 @@ def read_photo_record(path: Path, photo_id: int) -> PhotoRecord | None:
         row = connection.execute(
             "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
             "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
-            "media_type FROM photo WHERE id = ?",
+            "media_type, captured_at, captured_at_offset_minutes, camera_make, "
+            "camera_model, lens_model, image_width, image_height, latitude, "
+            "longitude FROM photo WHERE id = ?",
             (photo_id,),
         ).fetchone()
-        return None if row is None else _photo_from_row(row)
+        return None if row is None else _photo_from_schema_11_row(row)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check photo {photo_id}: {exc}"

@@ -47,7 +47,7 @@ integrity failure, and `2` means usage, configuration, destination, permission,
 disk, or publication failure.
 
 See the root README for the user workflow and
-[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v2
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v3
 field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
 does not replace a verified backup and is not an import or restore mechanism.
 
@@ -109,9 +109,10 @@ recoverability failure and exit `2` means usage, target, permission, disk, or
 other setup failure.
 
 Backup format v1 and database recovery versions are independent. This version
-explicitly supports schema 9 and schema 10 backups. Schema-9 rehearsals migrate
-to empty Collection tables; schema-10 rehearsals compare Collection metadata and
-membership exactly. A later application schema must retain the
+explicitly supports schema 9, schema 10, and schema 11 backups. Schema-9
+rehearsals migrate to empty Collection tables; schema-10 rehearsals compare
+Collection metadata and membership exactly; schema-11 rehearsals additionally
+compare all persisted Photo capture metadata. A later application schema must retain the
 frozen schema-9 verifier and migration rehearsal unless compatibility is
 intentionally removed and documented. The root README contains the compatibility
 table, target layout, limitations, and unchanged manual production-restore
@@ -125,6 +126,8 @@ Stop the backend before operating on the configured live archive:
 uv run faunavault-maintenance doctor
 uv run faunavault-maintenance repair-derived
 uv run faunavault-maintenance repair-derived --apply
+uv run faunavault-maintenance backfill-photo-metadata
+uv run faunavault-maintenance backfill-photo-metadata --apply
 ```
 
 `doctor` is read-only and covers SQLite/schema integrity, active and Trash
@@ -138,6 +141,12 @@ taxonomy, jobs, or Trash state, and it never deletes orphans. Non-empty
 temporary files and the exact upload variant generator, then performs a complete
 doctor pass.
 
+`backfill-photo-metadata` uses the same side-effect-free Pillow extractor as
+upload ingestion. It defaults to dry-run, includes active and Trash rows, fills
+only null fields without an overwrite mode, treats capture/offset, dimensions,
+and GPS as atomic groups, and commits `--apply` work in batches of 25. Missing or
+unreadable originals are isolated row errors. Stop the backend for the scan.
+
 Exit `0` means healthy with optional warnings, `1` means integrity errors or
 repairable defects remain, and `2` means usage/configuration/startup failure.
 Missing or damaged originals require recovery from a verified backup; the
@@ -149,7 +158,9 @@ Classification is asynchronous and local-first. One lifespan-owned in-process wo
 `POST /classification-jobs`, `GET /classification-jobs`, `GET /classification-jobs/{id}`, and `POST /classification-jobs/{id}/retry` are the canonical API. The retained `/photos/{id}/classify` and `/photos/classify-pending` URLs now return HTTP 202 job resources and no longer provide synchronous response contracts.
 
 The scalable catalog API is `GET /catalog/photos`. It performs pagination,
-search, status/category/verified-taxon filtering, deterministic sorting, total
+search (including camera/lens text), status/category/verified-taxon and inclusive
+camera-local capture-date filtering, deterministic sorting including null-last
+`captured_at`, total
 counting, and small status/category facets in SQLite. Page size defaults to 48
 and is capped at 100. `GET /catalog/taxa` provides bounded pages of stable local
 taxon IDs with labels and active-photo counts for the List selector. The legacy

@@ -88,11 +88,23 @@ Photos, and remove one or many memberships without changing Photo files or
 metadata. Recoverable Trash preserves membership, while permanent Photo deletion
 cascades only the join rows.
 
-Backup format v1 now explicitly verifies and rehearses database schemas 9 and
-10. Schema-9 archives migrate to empty Collection tables; schema-10 rehearsals
-compare Collection metadata and membership exactly. Portable metadata export v2
-includes deterministic Collection records and memberships, including those to
-Trash Photos.
+Backup format v1 now explicitly verifies and rehearses database schemas 9, 10,
+and 11. Schema-9 archives migrate to empty Collection tables; schema-10
+rehearsals compare Collection metadata and membership exactly; schema-11 also
+compares durable capture metadata. Portable metadata export v3 includes those
+capture fields after original identity fields while retaining deterministic
+Collection records and Trash memberships.
+
+## Current product feature: Photo capture metadata / EXIF
+
+Schema 11 extracts supported EXIF data during the existing loaded-image upload
+pass: camera-local capture time and paired offset, camera/lens strings, oriented
+dimensions, and complete validated GPS coordinates. Originals remain byte
+identical. Capture data is read-only, survives Trash/restore, appears in every
+Photo response, supports null-last capture sorting and inclusive local-date
+catalog filters, and can be safely filled for existing active/Trash rows with
+the dry-run-by-default stopped-archive maintenance command. Maps, geocoding,
+arbitrary EXIF blobs, inference, editing, and cloud integrations remain deferred.
 
 ## Recommended next (in order)
 

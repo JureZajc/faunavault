@@ -10,6 +10,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Exact duplicate detection using SHA-256, including duplicates currently in Trash
 - Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
+- Read-only EXIF capture time, camera/lens, oriented dimensions, and local-only GPS metadata
 - Searchable/filterable photo catalog, derived species Albums, persistent manual Collections, animals, and GBIF taxonomy linking
 - Explicit cross-page catalog selection with atomic bulk tag, category, Add to Collection, and Move to Trash actions
 - Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
@@ -45,7 +46,9 @@ to provide these per-file states and retries.
 The main List view uses `GET /catalog/photos`, a backend-paginated and
 backend-filtered API with 48 items by default and a maximum page size of 100. It
 supports `page`, `page_size`, `search`, `status`, `category`, `uncategorized`, `taxon_id`,
-`sort`, and `order`. Responses include the filtered `total`, `total_pages`, and
+`taken_from`, `taken_to`, `sort`, and `order`. Capture-date bounds are inclusive
+camera-local dates, and `sort=captured_at` keeps unknown capture dates last.
+Responses include the filtered `total`, `total_pages`, and
 small global status/category facets. Search is a case-insensitive SQLite
 substring search across photo metadata, tags, animal names, and locally stored
 taxonomy; whitespace-separated terms must all match somewhere in the record.
@@ -111,6 +114,14 @@ filenames.
 - AI: local Ollama (`qwen3-vl:8b`, with `gemma4:e4b` fallback by default)
 
 The default Windows configuration stores image files under `E:/FaunaVault/data/images` and SQLite metadata under `backend/data/faunavault.db`. Existing `.env` values take precedence; upgrades do not relocate data. Originals are preserved byte-for-byte. Resized and thumbnail files are reproducible derivatives.
+
+On upload, schema 11 stores supported image-stated metadata without rewriting
+the original: EXIF capture time and its separately recorded offset, camera make
+and model, lens model, oriented dimensions, and a complete valid GPS pair. A
+missing or malformed optional tag remains null and does not reject a valid
+image. `created_at` continues to mean when FaunaVault added the record; capture
+time never falls back to it. GPS stays on the local machine and is displayed as
+plain coordinates without maps, geocoding, external links, or telemetry.
 
 Normal deletion only sets a deleted timestamp. Trash continues to reference the same local files. A photo must be moved to Trash before it can be permanently deleted. Permanent deletion stages variants in a private journal, commits the row deletion, and cleans the staged files; interrupted work is reconciled on the next backend startup.
 
@@ -299,7 +310,8 @@ artifact passes internal validation.
 
 The directory contains `archive-metadata.json` and, with `--csv`, `photos.csv`.
 JSON is UTF-8 with visible Unicode, explicit nulls, deterministic ID ordering,
-canonical UTC timestamps, LF newlines, and no volatile generation timestamp.
+canonical UTC archive timestamps, zone-free camera-local capture timestamps, LF
+newlines, and no volatile generation timestamp.
 For example:
 
 ```powershell
@@ -308,7 +320,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v2](docs/METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v3](docs/METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -413,6 +425,7 @@ Backup container compatibility and database recovery compatibility are separate:
 | --- | ---: | --- | --- |
 | v1 | 9 | Supported | Verify, then rehearse/migrate in isolated storage |
 | v1 | 10 | Supported | Verify and rehearse with exact Collection metadata and membership checks |
+| v1 | 11 | Supported | Verify and rehearse with exact capture-metadata checks |
 | Other | Any | Unsupported | Reject before target writes |
 | v1 | Other | Not supported until explicitly tested | Reject before target writes |
 
@@ -433,6 +446,8 @@ SQLite database and image root with:
 uv run faunavault-maintenance doctor
 uv run faunavault-maintenance repair-derived
 uv run faunavault-maintenance repair-derived --apply
+uv run faunavault-maintenance backfill-photo-metadata
+uv run faunavault-maintenance backfill-photo-metadata --apply
 ```
 
 `doctor` is read-only. It checks SQLite integrity, foreign keys and migrations;
@@ -441,6 +456,15 @@ SHA-256, size, format, decodability and pixel limits; resized/thumbnail format
 and dimensions; perceptual-hash format; and unowned files. It uses a temporary
 SQLite snapshot and verifies that the live inventory did not change during the
 scan. Ordinary orphan files and directories are warnings and are never deleted.
+For schema 11 it also reports partial/invalid dimensions or GPS and a capture
+offset without a capture timestamp; it does not compare stored values to EXIF.
+
+`backfill-photo-metadata` is also a stopped-archive operation and defaults to a
+dry run. It scans active and Trash Photos by ID, opens authoritative originals
+read-only, and fills only null capture metadata using the upload extractor.
+Capture time/offset, dimensions, and GPS are handled as atomic groups; populated
+values are never overwritten. `--apply` commits in bounded 25-photo batches and
+continues after missing or corrupt originals while reporting their IDs.
 
 `repair-derived` performs the same inspection and defaults to a dry run. It
 lists only missing or invalid resized/thumbnail files whose originals pass the
@@ -451,7 +475,7 @@ filesystem. On Windows, a sharing or permission failure leaves the prior target
 in place and is reported for retry. Healthy variants and their mtimes remain
 untouched; active and Trash photos receive identical protection.
 
-Maintenance never changes originals, SQLite rows, original checksums,
+Doctor and derived-image repair never change originals, SQLite rows, original checksums,
 perceptual hashes, metadata, taxonomy, classification jobs, or Trash state. A
 missing, corrupt, or checksum-mismatched original is not repairable by this tool;
 recover it from a separately verified backup. Non-empty `.staging` or `.purge`

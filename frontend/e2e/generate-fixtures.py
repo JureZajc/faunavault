@@ -4,7 +4,7 @@ import hashlib
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import ExifTags, Image, ImageDraw
 
 from app.services.perceptual_duplicates import (
     PHASH_DISTANCE_THRESHOLD,
@@ -74,7 +74,9 @@ def generate(test_root: Path) -> None:
     bulk_first = fixtures / BULK_FIRST_FILENAME
     bulk_second = fixtures / BULK_SECOND_FILENAME
 
-    scene().save(temporary_original, format="JPEG", quality=95)
+    exif = Image.Exif()
+    exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:22 14:30:00"
+    scene().save(temporary_original, format="JPEG", quality=95, exif=exif)
     with Image.open(temporary_original) as decoded:
         decoded.load()
         decoded.save(temporary_recompressed, format="JPEG", quality=55)

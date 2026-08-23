@@ -4,7 +4,7 @@ import json
 import re
 import shutil
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -74,6 +74,15 @@ class PhotoRecoveryRecord:
     original_size_bytes: int | None
     media_type: str | None
     deleted: bool
+    captured_at: str | None = None
+    captured_at_offset_minutes: int | None = None
+    camera_make: str | None = None
+    camera_model: str | None = None
+    lens_model: str | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 @dataclass(frozen=True)
@@ -307,18 +316,56 @@ def _read_schema_10_snapshot(database_path: Path) -> RecoverySnapshot:
             connection.close()
 
 
+def _read_schema_11_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_10_snapshot(database_path)
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = open_read_only_database(database_path)
+        capture_by_id = {
+            int(row[0]): row[1:]
+            for row in connection.execute(
+                "SELECT id, captured_at, captured_at_offset_minutes, camera_make, "
+                "camera_model, lens_model, image_width, image_height, latitude, "
+                "longitude FROM photo ORDER BY id"
+            )
+        }
+        photos = tuple(
+            replace(
+                photo,
+                captured_at=capture_by_id[photo.id][0],
+                captured_at_offset_minutes=capture_by_id[photo.id][1],
+                camera_make=capture_by_id[photo.id][2],
+                camera_model=capture_by_id[photo.id][3],
+                lens_model=capture_by_id[photo.id][4],
+                image_width=capture_by_id[photo.id][5],
+                image_height=capture_by_id[photo.id][6],
+                latitude=capture_by_id[photo.id][7],
+                longitude=capture_by_id[photo.id][8],
+            )
+            for photo in base.photos
+        )
+        return replace(base, photos=photos)
+    except (KeyError, sqlite3.Error, TypeError, ValueError) as exc:
+        raise ArchiveIntegrityError(f"Could not read capture metadata: {exc}") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
     if schema_version == 9:
         return _read_schema_9_snapshot(database_path)
     if schema_version == 10:
         return _read_schema_10_snapshot(database_path)
+    if schema_version == 11:
+        return _read_schema_11_snapshot(database_path)
     raise ArchiveIntegrityError(
         f"No recovery metadata reader for schema {schema_version}"
     )
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_10_snapshot(database_path)
+    return _read_schema_11_snapshot(database_path)
 
 
 def _verify_source(backup_path: Path) -> tuple[VerificationResult, str]:

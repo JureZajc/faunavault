@@ -10,6 +10,8 @@ export type HomeView = "list" | "album" | "trash";
 export type CatalogSortOption =
   | "newest"
   | "oldest"
+  | "taken_newest"
+  | "taken_oldest"
   | "confidence_desc"
   | "confidence_asc"
   | "name_asc"
@@ -36,6 +38,7 @@ const statuses = new Set<PhotoStatus>([
 ]);
 const sorts = new Set<CatalogSort>([
   "created_at",
+  "captured_at",
   "name",
   "species",
   "confidence",
@@ -50,6 +53,8 @@ const sortOptionMap: Record<
 > = {
   newest: { sort: "created_at", order: "desc" },
   oldest: { sort: "created_at", order: "asc" },
+  taken_newest: { sort: "captured_at", order: "desc" },
+  taken_oldest: { sort: "captured_at", order: "asc" },
   confidence_desc: { sort: "confidence", order: "desc" },
   confidence_asc: { sort: "confidence", order: "asc" },
   name_asc: { sort: "name", order: "asc" },
@@ -64,6 +69,14 @@ function positiveInteger(value: string | null) {
   if (!value || !/^\d+$/.test(value)) return undefined;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function isoDate(value: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+    ? value
+    : undefined;
 }
 
 export function parseCatalogState(params: URLSearchParams): CatalogState {
@@ -83,6 +96,8 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
     category,
     uncategorized: uncategorized || undefined,
     taxon_id: positiveInteger(params.get("catalog_taxon")),
+    taken_from: isoDate(params.get("catalog_taken_from")),
+    taken_to: isoDate(params.get("catalog_taken_to")),
     sort: sort && sorts.has(sort as CatalogSort) ? (sort as CatalogSort) : "created_at",
     order: order && orders.has(order as CatalogOrder) ? (order as CatalogOrder) : "desc",
     layout: params.get("catalog_layout") === "grouped" ? "grouped" : "flat",
@@ -104,6 +119,8 @@ export function writeCatalogState(
   setOrDelete("catalog_category", state.category);
   setOrDelete("catalog_uncategorized", state.uncategorized ? "1" : undefined);
   setOrDelete("catalog_taxon", state.taxon_id ? String(state.taxon_id) : undefined);
+  setOrDelete("catalog_taken_from", state.taken_from);
+  setOrDelete("catalog_taken_to", state.taken_to);
   setOrDelete(
     "catalog_sort",
     state.sort !== "created_at" ? state.sort : undefined,
