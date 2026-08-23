@@ -61,7 +61,10 @@ offline tile downloader, or claim that the remote basemap works offline.
 
 Durable classification state is restored from the backend after refresh. The
 frontend polls only while queued or running work exists and keeps low-confidence
-`needs_review` results distinct from failed job execution.
+`needs_review` results distinct from failed job execution. Bounded internal
+Ollama retries remain a backend detail: the durable job stays `running`, mixed
+batch counts remain independent, and exhausted failures retain the existing
+manual Retry action with a stable backend message.
 
 Catalog Select mode follows the same route-local boundary. A focused selection
 hook stores only explicit photo IDs, preserves them across pages and flat/grouped

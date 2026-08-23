@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -9,6 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+OLLAMA_KEEP_ALIVE_PATTERN = re.compile(
+    r"(?P<amount>(?:\d+(?:\.\d*)?|\.\d+))(?P<unit>ms|s|m|h)"
+)
 
 
 def _default_image_root() -> Path:
@@ -28,6 +33,9 @@ class Settings(BaseSettings):
     image_dir: Path = Field(default_factory=_default_image_root)
     database_url: str = "sqlite:///./data/faunavault.db"
     ollama_base_url: str = "http://localhost:11434"
+    ollama_connect_timeout_seconds: float = Field(default=5.0, gt=0)
+    ollama_request_timeout_seconds: float = Field(default=180.0, gt=0)
+    ollama_keep_alive: str = "15m"
     ai_primary_model: str = "qwen3-vl:8b"
     ai_fallback_model: str = "qwen3-vl:8b"
     ai_confidence_threshold: float = Field(default=0.65, ge=0, le=1)
@@ -39,6 +47,35 @@ class Settings(BaseSettings):
     @classmethod
     def expand_path(cls, value: Path) -> Path:
         return value.expanduser()
+
+    @field_validator(
+        "ollama_connect_timeout_seconds",
+        "ollama_request_timeout_seconds",
+        mode="after",
+    )
+    @classmethod
+    def finite_ollama_timeout(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("Ollama timeout values must be finite")
+        return value
+
+    @field_validator("ollama_keep_alive", mode="after")
+    @classmethod
+    def validate_ollama_keep_alive(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized == "0":
+            return normalized
+        match = OLLAMA_KEEP_ALIVE_PATTERN.fullmatch(normalized)
+        if match is None:
+            raise ValueError(
+                "ollama_keep_alive must be 0 or a positive duration such as 15m"
+            )
+        amount = float(match.group("amount"))
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError(
+                "ollama_keep_alive must be 0 or a positive finite duration"
+            )
+        return normalized
 
     @property
     def resolved_database_url(self) -> str:

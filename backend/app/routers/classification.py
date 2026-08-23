@@ -199,7 +199,7 @@ def create_classification_router(settings_provider) -> APIRouter:
         job_id: int, request: Request, session: SessionDep
     ) -> ClassificationJobRead:
         try:
-            job = retry_classification_job(session, job_id)
+            job = retry_classification_job(session, job_id, settings_provider())
         except ClassificationServiceError as exc:
             raise service_error(exc) from exc
         notify_worker(request)

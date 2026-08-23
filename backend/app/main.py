@@ -14,6 +14,7 @@ from app.config import BACKEND_DIR, get_settings
 from app.db import engine, get_session
 from app.migrations import migrate_animals_and_taxonomy
 from app.models import Animal, Photo, Taxon, utc_now
+from app.ollama_client import OllamaClient
 from app.routers.albums import create_albums_router
 from app.routers.animals import create_animals_router
 from app.routers.bulk_photos import create_bulk_photos_router
@@ -75,7 +76,22 @@ async def lifespan(application: FastAPI):
     managed_worker = False
     worker_started = False
     backfill_task = None
+    ollama_client = None
     try:
+        ollama_client_factory = getattr(
+            application.state, "ollama_client_factory", None
+        )
+        ollama_client = (
+            ollama_client_factory()
+            if ollama_client_factory is not None
+            else OllamaClient(
+                settings.ollama_base_url,
+                connect_timeout_seconds=settings.ollama_connect_timeout_seconds,
+                request_timeout_seconds=settings.ollama_request_timeout_seconds,
+                keep_alive=settings.ollama_keep_alive,
+            )
+        )
+        application.state.ollama_client = ollama_client
         recover_interrupted_jobs(engine)
         backfill_task = asyncio.create_task(
             _run_perceptual_hash_backfill(),
@@ -84,7 +100,7 @@ async def lifespan(application: FastAPI):
         worker = getattr(application.state, "classification_worker", None)
         managed_worker = worker is None
         if worker is None:
-            worker = ClassificationWorker(engine, settings)
+            worker = ClassificationWorker(engine, settings, ollama_client=ollama_client)
             application.state.classification_worker = worker
         await worker.start()
         worker_started = True
@@ -107,10 +123,23 @@ async def lifespan(application: FastAPI):
                 ):
                     del application.state.classification_worker
                 try:
-                    gbif_client.close()
+                    if ollama_client is not None:
+                        ollama_client.close()
                 finally:
-                    if getattr(application.state, "gbif_client", None) is gbif_client:
-                        del application.state.gbif_client
+                    if (
+                        ollama_client is not None
+                        and getattr(application.state, "ollama_client", None)
+                        is ollama_client
+                    ):
+                        del application.state.ollama_client
+                    try:
+                        gbif_client.close()
+                    finally:
+                        if (
+                            getattr(application.state, "gbif_client", None)
+                            is gbif_client
+                        ):
+                            del application.state.gbif_client
 
 
 app = FastAPI(title="FaunaVault API", lifespan=lifespan)

@@ -83,6 +83,7 @@ export default function ArchivePhotoMap({
     if (!container) return;
     let destroyed = false;
     let focusApplied = false;
+    let focusTimer: number | null = null;
     const map = createLeafletMap(container, { scrollWheelZoom: true });
     const markersById = new Map<number, L.Marker>();
     const removeMarkerLabels: Array<() => void> = [];
@@ -97,11 +98,23 @@ export default function ArchivePhotoMap({
         const focused = markersById.get(focusPhotoId);
         if (!focused) return;
         focusApplied = true;
-        cluster.zoomToShowLayer(focused, () => {
-          if (destroyed) return;
-          map.setView(focused.getLatLng(), FOCUSED_PHOTO_ZOOM);
-          focused.openPopup();
-        });
+        // markercluster reports the final chunk before recalculating cluster bounds.
+        // Defer focus so zoomToShowLayer never observes that incomplete state.
+        focusTimer = window.setTimeout(() => {
+          focusTimer = null;
+          if (
+            destroyed ||
+            !map.hasLayer(cluster) ||
+            !cluster.hasLayer(focused)
+          ) {
+            return;
+          }
+          cluster.zoomToShowLayer(focused, () => {
+            if (destroyed || !map.hasLayer(cluster)) return;
+            map.setView(focused.getLatLng(), FOCUSED_PHOTO_ZOOM);
+            focused.openPopup();
+          });
+        }, 0);
       },
     });
 
@@ -145,6 +158,9 @@ export default function ArchivePhotoMap({
 
     return () => {
       destroyed = true;
+      if (focusTimer !== null) {
+        window.clearTimeout(focusTimer);
+      }
       stopObserving();
       removeMarkerLabels.forEach((removeLabel) => removeLabel());
       markers.forEach((marker) => marker.off());

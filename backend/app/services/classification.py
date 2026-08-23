@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,9 +12,14 @@ from sqlmodel import Session, select
 from app.config import Settings
 from app.models import Photo, utc_now
 from app.ollama_client import (
+    AUTOMATIC_REQUEST_ATTEMPTS,
+    AUTOMATIC_RETRY_BACKOFF_SECONDS,
     ClassificationResult,
+    OllamaAttemptContext,
     OllamaClassificationError,
-    classify_image,
+    OllamaClient,
+    OllamaModelRole,
+    encode_classification_image,
 )
 from app.services.image_variants import (
     normalized_extension,
@@ -48,6 +55,7 @@ DOG_BREED_GUESSES = {
     "siberian husky",
     "yorkshire terrier",
 }
+logger = logging.getLogger(__name__)
 
 
 class ClassificationServiceError(RuntimeError):
@@ -193,34 +201,84 @@ def classification_image_path(photo: Photo, settings: Settings) -> Path:
     )
 
 
+RequestClassifier = Callable[[str, str, OllamaAttemptContext], ClassificationResult]
+EligibilityCheck = Callable[[], None]
+
+
 def classify_with_fallback(
-    image_path: Path,
+    image_base64: str,
     threshold: float,
     primary_model: str,
-    fallback_model: str,
-    classifier: Callable[[Path, str], ClassificationResult] = classify_image,
+    fallback_model: str | None,
+    classifier: RequestClassifier,
+    *,
+    job_id: int,
+    photo_id: int,
+    sleeper: Callable[[float], None] = time.sleep,
+    ensure_eligible: EligibilityCheck | None = None,
 ) -> ClassificationOutcome:
-    primary_result: ClassificationResult | None = None
-    primary_error: OllamaClassificationError | None = None
-
-    try:
-        primary_result = classifier(image_path, primary_model)
-    except OllamaClassificationError as exc:
-        primary_error = exc
-
-    should_try_fallback = (
-        primary_result is None or primary_result.confidence < threshold
-    )
-    fallback_attempted = should_try_fallback and fallback_model != primary_model
-    fallback_error: OllamaClassificationError | None = None
-    if fallback_attempted:
+    def check_eligibility(*, fallback_was_attempted: bool) -> None:
+        if ensure_eligible is None:
+            return
         try:
+            ensure_eligible()
+        except ClassificationServiceError as exc:
+            if fallback_was_attempted:
+                raise ClassificationServiceError(exc.code, exc.message, True) from exc
+            raise
+
+    def run_model(
+        model: str, role: OllamaModelRole
+    ) -> tuple[ClassificationResult | None, OllamaClassificationError | None]:
+        for request_attempt in range(1, AUTOMATIC_REQUEST_ATTEMPTS + 1):
+            context = OllamaAttemptContext(
+                job_id=job_id,
+                photo_id=photo_id,
+                role=role,
+                request_attempt=request_attempt,
+            )
+            try:
+                return classifier(image_base64, model, context), None
+            except OllamaClassificationError as exc:
+                will_retry = (
+                    exc.retryable and request_attempt < AUTOMATIC_REQUEST_ATTEMPTS
+                )
+                logger.warning(
+                    "Ollama classification attempt decision "
+                    "job_id=%s photo_id=%s role=%s model=%s request_attempt=%s "
+                    "category=%s code=%s will_retry=%s stage_exhausted=%s",
+                    job_id,
+                    photo_id,
+                    role,
+                    model,
+                    request_attempt,
+                    exc.category,
+                    exc.code,
+                    will_retry,
+                    exc.retryable and not will_retry,
+                )
+                if not will_retry:
+                    return None, exc
+                sleeper(AUTOMATIC_RETRY_BACKOFF_SECONDS)
+                check_eligibility(fallback_was_attempted=role == "fallback")
+        raise AssertionError("bounded Ollama retry loop exhausted unexpectedly")
+
+    primary_result, primary_error = run_model(primary_model, "primary")
+    should_try_fallback = (
+        primary_result is not None and primary_result.confidence < threshold
+    ) or (primary_error is not None and primary_error.fallback_eligible)
+    distinct_fallback = fallback_model is not None and fallback_model != primary_model
+    fallback_attempted = False
+    fallback_error: OllamaClassificationError | None = None
+    if should_try_fallback and distinct_fallback and fallback_model is not None:
+        check_eligibility(fallback_was_attempted=False)
+        fallback_attempted = True
+        fallback_result, fallback_error = run_model(fallback_model, "fallback")
+        if fallback_result is not None:
             return ClassificationOutcome(
-                result=classifier(image_path, fallback_model),
+                result=fallback_result,
                 fallback_attempted=True,
             )
-        except OllamaClassificationError as exc:
-            fallback_error = exc
 
     if primary_result is not None:
         return ClassificationOutcome(
@@ -241,14 +299,29 @@ def classify_with_fallback(
 def classify_photo_image(
     image_path: Path,
     settings: Settings,
-    classifier: Callable[[Path, str], ClassificationResult] = classify_image,
+    ollama_client: OllamaClient,
+    *,
+    primary_model: str,
+    fallback_model: str | None,
+    job_id: int,
+    photo_id: int,
+    sleeper: Callable[[float], None] = time.sleep,
+    ensure_eligible: EligibilityCheck | None = None,
 ) -> ClassificationOutcome:
+    try:
+        image_base64 = encode_classification_image(image_path)
+    except OllamaClassificationError as exc:
+        raise ClassificationServiceError(exc.code, str(exc)) from exc
     return classify_with_fallback(
-        image_path,
+        image_base64,
         settings.ai_confidence_threshold,
-        settings.ai_primary_model,
-        settings.ai_fallback_model,
-        classifier,
+        primary_model,
+        fallback_model,
+        ollama_client.classify_image,
+        job_id=job_id,
+        photo_id=photo_id,
+        sleeper=sleeper,
+        ensure_eligible=ensure_eligible,
     )
 
 

@@ -66,6 +66,37 @@ and [dependency security review](DEPENDENCY_SECURITY_REVIEW.md).
   from the backend; transient browser-only upload and dialog state is not treated
   as persistent application state.
 
+## Current product feature: Classification Reliability v2
+
+Local Ollama classification remains one serial, durable SQLite-backed worker,
+but every model request now has an explicit runtime boundary. Settings provide a
+5-second connect timeout, 180-second response timeout, and finite `15m`
+request-level keep-alive. The lifespan owns and closes one reusable synchronous
+HTTP client without contacting Ollama during startup or warming a model.
+
+Prompt contract `animal-photo-v2` uses one Pydantic response model for Ollama's
+JSON-schema `format` and incoming validation, with `think: false` and temperature
+zero. Existing confidence, review, category, unknown-species, and domestic-animal
+normalization remains authoritative after shape validation. The normal resized
+derivative remains the model input, and HEIC/HEIF still require their JPEG
+derivative.
+
+Each primary or distinct fallback stage has at most one automatic retry after a
+fixed two-second pause for explicitly transient timeouts, connection failures,
+rate limiting, selected server failures, or malformed structured output. Model
+404s skip the same-model retry, request/data/business failures are not retried
+blindly, a distinct fallback follows exhausted primary transport retries, and
+equal model names never claim fallback provenance. Internal HTTP attempts do not
+change durable `attempt_count`; manual Retry still increments it and snapshots
+current model/prompt provenance.
+
+Successful load, prompt-evaluation, and generation timing plus sanitized failure
+context are console diagnostics only. Existing end-to-end `duration_ms` remains
+the durable metric, so Classification Reliability v2 adds no schema, backup,
+export, restore, Timeline, Map, Album, or Collection change. FaunaVault reports
+Ollama runner/model HTTP failures accurately and never edits Ollama, GPU, or model
+configuration.
+
 ## Current product feature: explicit catalog bulk actions
 
 The active List catalog now supports transient, ID-based selection across visited
