@@ -45,6 +45,30 @@ export type PhotoMapPoint = {
   captured_at: string | null;
 };
 
+export type TimelinePhotoPreview = {
+  id: number;
+  thumbnail_filename: string;
+  original_filename: string;
+  display_title: string | null;
+};
+
+export type TimelineMonth = {
+  month: number;
+  photo_count: number;
+  previews: TimelinePhotoPreview[];
+};
+
+export type TimelineYear = {
+  year: number;
+  photo_count: number;
+  months: TimelineMonth[];
+};
+
+export type TimelineResponse = {
+  years: TimelineYear[];
+  unknown_capture_count: number;
+};
+
 export type TaxonCandidate = {
   provider: "gbif";
   external_taxon_id: number;
@@ -649,6 +673,10 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
 
 export function getPhotoMapPoints(signal?: AbortSignal) {
   return request<PhotoMapPoint[]>("/catalog/map", { signal });
+}
+
+export function getPhotoTimeline(signal?: AbortSignal) {
+  return request<TimelineResponse>("/catalog/timeline", { signal });
 }
 
 export function getCatalogTaxa(

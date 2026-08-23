@@ -237,11 +237,15 @@ function HomeContent() {
             }}
           />
         ) : null}
-        <div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-5 flex flex-col items-stretch gap-3 lg:flex-row lg:items-center lg:justify-between">
           <ArchiveNavigation
             active={query.homeView}
             onNavigate={(section, event) => {
-              if (section === "collections" || section === "map") {
+              if (
+                section === "collections" ||
+                section === "map" ||
+                section === "timeline"
+              ) {
                 selection.reset();
                 return;
               }
@@ -252,7 +256,7 @@ function HomeContent() {
               }
             }}
           />
-          <p className="text-sm text-stone-500 sm:text-right">
+          <p className="text-sm text-stone-500 lg:text-right">
             {query.homeView === "list"
               ? "Manage individual photo records"
               : query.homeView === "album"

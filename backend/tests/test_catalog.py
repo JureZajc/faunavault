@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine
 
 import app.main as main
@@ -102,6 +103,10 @@ def add_photo(
 
 def test_catalog_empty_validation_and_legacy_contract(catalog_app):
     client, _ = catalog_app
+    assert client.get("/catalog/timeline").json() == {
+        "years": [],
+        "unknown_capture_count": 0,
+    }
     body = client.get("/catalog/photos").json()
     assert body == {
         "items": [],
@@ -347,6 +352,128 @@ def test_catalog_capture_sort_filter_nulls_and_stable_ties(catalog_app):
         params={"taken_from": "2024-05-26", "taken_to": "2024-05-25"},
     )
     assert invalid.status_code == 422
+
+
+def test_timeline_groups_counts_previews_and_camera_local_offsets(catalog_app):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        august_photos = [
+            add_photo(
+                session,
+                100 + index,
+                captured_at=datetime(2026, 8, 20 + index, 10, 0),
+                display_title=f"August {index}",
+            )
+            for index in range(5)
+        ]
+        tied_first = add_photo(
+            session,
+            110,
+            captured_at=datetime(2026, 9, 1, 8, 0),
+            captured_at_offset_minutes=-600,
+        )
+        tied_second = add_photo(
+            session,
+            111,
+            captured_at=datetime(2026, 9, 1, 8, 0),
+            captured_at_offset_minutes=600,
+        )
+        august_boundary = add_photo(
+            session,
+            112,
+            captured_at=datetime(2026, 8, 31, 23, 45),
+            captured_at_offset_minutes=120,
+        )
+        older = add_photo(
+            session,
+            113,
+            captured_at=datetime(2025, 12, 15, 12, 0),
+        )
+        add_photo(session, 114)
+        add_photo(
+            session,
+            115,
+            deleted_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        trashed_known = add_photo(
+            session,
+            116,
+            captured_at=datetime(2024, 3, 10, 9, 0),
+            deleted_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        session.commit()
+        august_ids = [photo.id for photo in august_photos]
+        tied_ids = [tied_first.id, tied_second.id]
+        august_boundary_id = august_boundary.id
+        older_id = older.id
+        trashed_known_id = trashed_known.id
+
+    statements: list[str] = []
+
+    def record_select(_connection, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record_select)
+    try:
+        response = client.get("/catalog/timeline")
+    finally:
+        event.remove(engine, "before_cursor_execute", record_select)
+
+    assert response.status_code == 200
+    assert len(statements) == 3
+    body = response.json()
+    assert body["unknown_capture_count"] == 1
+    assert [year["year"] for year in body["years"]] == [2026, 2025]
+    assert body["years"][0]["photo_count"] == 8
+    assert [month["month"] for month in body["years"][0]["months"]] == [9, 8]
+    september, august = body["years"][0]["months"]
+    assert september["photo_count"] == 2
+    assert [preview["id"] for preview in september["previews"]] == list(
+        reversed(tied_ids)
+    )
+    assert august["photo_count"] == 6
+    assert [preview["id"] for preview in august["previews"]] == [
+        august_boundary_id,
+        *reversed(august_ids[-3:]),
+    ]
+    assert set(august["previews"][0]) == {
+        "id",
+        "thumbnail_filename",
+        "original_filename",
+        "display_title",
+    }
+    assert body["years"][1] == {
+        "year": 2025,
+        "photo_count": 1,
+        "months": [
+            {
+                "month": 12,
+                "photo_count": 1,
+                "previews": [
+                    {
+                        "id": older_id,
+                        "thumbnail_filename": "photo-113-thumb.jpg",
+                        "original_filename": "photo-113.jpg",
+                        "display_title": None,
+                    }
+                ],
+            }
+        ],
+    }
+
+    assert client.post(f"/trash/photos/{trashed_known_id}/restore").status_code == 200
+    restored = client.get("/catalog/timeline").json()
+    assert [year["year"] for year in restored["years"]] == [2026, 2025, 2024]
+    assert restored["years"][-1]["months"][0]["month"] == 3
+
+    assert client.delete(f"/photos/{august_boundary_id}").status_code == 200
+    after_trash = client.get("/catalog/timeline").json()
+    august_after_trash = after_trash["years"][0]["months"][1]
+    assert august_after_trash["photo_count"] == 5
+    assert august_boundary_id not in [
+        preview["id"] for preview in august_after_trash["previews"]
+    ]
 
 
 def test_catalog_search_taxonomy_filter_and_lifecycle_refresh(catalog_app):

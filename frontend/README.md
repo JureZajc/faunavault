@@ -1,8 +1,8 @@
 # FaunaVault frontend
 
-The Next.js 16 App Router frontend provides the photo catalog, clustered archive
-Map, species Albums, manually managed Collections, metadata review, persistent
-local-AI job controls, and Trash workflows.
+The Next.js 16 App Router frontend provides the photo catalog, capture-date
+Timeline, clustered archive Map, species Albums, manually managed Collections,
+metadata review, persistent local-AI job controls, and Trash workflows.
 Project-wide setup, storage, backup, and backend behavior are documented in the
 [root README](../README.md).
 
@@ -34,6 +34,15 @@ responsive resize handling, and Strict Mode-safe cleanup. The archive runtime
 adds chunked clustering and exact-coordinate spiderfying, while Photo detail uses
 the same core for one non-clustered marker and coordinates already in its Photo
 response.
+
+The dedicated `/timeline` route follows the same focused client-data boundary:
+an abortable hook loads one typed `GET /catalog/timeline` projection and the
+route renders loading, error, empty, unknown-date, year, and month states. Month
+links start from fresh URL parameters and open the existing List with
+`catalog_taken_from`, `catalog_taken_to`, `catalog_sort=captured_at`, and
+`catalog_order=desc`; they never inherit a previous List search or filter.
+Timeline previews use existing thumbnail derivatives and remain non-interactive,
+leaving detail navigation, pagination, search, selection, and actions to List.
 
 Photo cards explicitly label their display date as `Taken` when capture metadata
 exists and `Added` otherwise. Detail metadata formats capture timestamps as

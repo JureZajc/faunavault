@@ -17,6 +17,8 @@ RECOMPRESSED_FILENAME = "faunavault-e2e-recompressed.jpg"
 BULK_FIRST_FILENAME = "faunavault-e2e-bulk-first.jpg"
 BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg"
 HEIC_FILENAME = "faunavault-e2e-iphone.heic"
+TIMELINE_JANUARY_FILENAME = "faunavault-e2e-timeline-january.jpg"
+TIMELINE_FEBRUARY_FILENAME = "faunavault-e2e-timeline-february.jpg"
 
 
 def scene() -> Image.Image:
@@ -66,6 +68,26 @@ def heic_scene() -> Image.Image:
     return image
 
 
+def timeline_scene(variant: int) -> Image.Image:
+    image = Image.new("RGB", (640, 480), (228, 238, 244))
+    draw = ImageDraw.Draw(image)
+    if variant == 1:
+        draw.rectangle((0, 270, 640, 480), fill=(75, 116, 152))
+        draw.polygon([(50, 270), (240, 45), (420, 270)], fill=(236, 154, 62))
+        draw.ellipse((430, 75, 570, 215), fill=(118, 62, 142))
+    else:
+        draw.rectangle((0, 0, 640, 480), fill=(226, 184, 205))
+        for offset in range(30, 640, 100):
+            draw.ellipse(
+                (offset, 80, offset + 70, 400),
+                fill=(46, 132, 104),
+                outline=(20, 65, 52),
+                width=6,
+            )
+        draw.rectangle((90, 195, 550, 285), fill=(248, 220, 92))
+    return image
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -104,6 +126,8 @@ def generate(test_root: Path) -> None:
     bulk_first = fixtures / BULK_FIRST_FILENAME
     bulk_second = fixtures / BULK_SECOND_FILENAME
     heic = fixtures / HEIC_FILENAME
+    timeline_january = fixtures / TIMELINE_JANUARY_FILENAME
+    timeline_february = fixtures / TIMELINE_FEBRUARY_FILENAME
 
     exif = Image.Exif()
     exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:22 14:30:00"
@@ -137,8 +161,33 @@ def generate(test_root: Path) -> None:
     heic_exif[int(ExifTags.Base.LensModel)] = "Synthetic HEIC Lens"
     heic_scene().save(heic, format="HEIF", quality=90, exif=heic_exif)
 
+    january_exif = Image.Exif()
+    january_exif[int(ExifTags.Base.DateTimeOriginal)] = "2023:01:14 11:20:00"
+    timeline_scene(1).save(
+        timeline_january,
+        format="JPEG",
+        quality=92,
+        exif=january_exif,
+    )
+    february_exif = Image.Exif()
+    february_exif[int(ExifTags.Base.DateTimeOriginal)] = "2024:02:29 23:50:00"
+    timeline_scene(2).save(
+        timeline_february,
+        format="JPEG",
+        quality=92,
+        exif=february_exif,
+    )
+
     fixture_hashes = [
-        image_hash(path) for path in (original, bulk_first, bulk_second, heic)
+        image_hash(path)
+        for path in (
+            original,
+            bulk_first,
+            bulk_second,
+            heic,
+            timeline_january,
+            timeline_february,
+        )
     ]
     for first_index, first_hash in enumerate(fixture_hashes):
         for second_hash in fixture_hashes[first_index + 1 :]:

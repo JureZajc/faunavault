@@ -6,8 +6,14 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from app.db import SessionDep
-from app.schemas import CatalogPhotoPage, CatalogTaxonPage, PhotoMapPoint
+from app.schemas import (
+    CatalogPhotoPage,
+    CatalogTaxonPage,
+    PhotoMapPoint,
+    TimelineResponse,
+)
 from app.services.catalog import (
+    get_photo_timeline,
     list_catalog_photos,
     list_catalog_taxa,
     list_photo_map_points,
@@ -16,6 +22,10 @@ from app.services.catalog import (
 
 def create_catalog_router() -> APIRouter:
     router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+    @router.get("/timeline", response_model=TimelineResponse)
+    def get_timeline(session: SessionDep) -> TimelineResponse:
+        return get_photo_timeline(session)
 
     @router.get("/map", response_model=list[PhotoMapPoint])
     def get_photo_map_points(session: SessionDep) -> list[PhotoMapPoint]:

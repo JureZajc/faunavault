@@ -166,6 +166,15 @@ and is capped at 100. `GET /catalog/taxa` provides bounded pages of stable local
 taxon IDs with labels and active-photo counts for the List selector. The legacy
 `GET /photos` response and semantics remain unchanged.
 
+`GET /catalog/timeline` is a compact active-Photo projection grouped by the
+camera-local year and month already stored in `captured_at`. It returns month and
+year counts, four deterministic newest-captured thumbnail identities per month,
+and a separate count of active Photos with no capture date. Grouping never uses
+`created_at` or applies `captured_at_offset_minutes`; Trash Photos are excluded.
+The implementation uses a constant three set-based SQLite queries and the
+existing `(deleted_at, captured_at, id)` catalog index, with no new schema or
+cache tables.
+
 Schema migration 7 supplies the three catalog indexes justified by generated
 archive query plans: active created-time order, active status plus created-time
 order, and active category plus created-time order. Existing relationship

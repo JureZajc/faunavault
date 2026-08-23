@@ -15,9 +15,9 @@ export default function MapBrowser({
   return (
     <main className="min-h-screen min-w-0 overflow-x-hidden bg-[#f7f8f4] text-stone-950">
       <div className="mx-auto max-w-7xl px-3 py-8 sm:px-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <ArchiveNavigation active="map" />
-          <p className="text-sm text-stone-500 sm:text-right">
+          <p className="text-sm text-stone-500 lg:text-right">
             Browse active photos by capture location
           </p>
         </div>
