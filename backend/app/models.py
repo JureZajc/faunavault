@@ -156,6 +156,7 @@ class Photo(SQLModel, table=True):
         ),
     )
     deleted_at: datetime | None = Field(default=None, index=True)
+    reviewed_at: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

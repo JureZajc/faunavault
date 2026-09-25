@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 11
+LATEST_SCHEMA_VERSION = 12
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -414,6 +414,11 @@ def _migration_11(connection) -> None:
     )
 
 
+def _migration_12(connection) -> None:
+    if "reviewed_at" not in _columns(connection, "photo"):
+        connection.execute(text("ALTER TABLE photo ADD COLUMN reviewed_at DATETIME"))
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -471,6 +476,8 @@ def run_migrations(
                 _migration_10(connection)
             elif version == 11:
                 _migration_11(connection)
+            elif version == 12:
+                _migration_12(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

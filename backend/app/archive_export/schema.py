@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-EXPORT_FORMAT_VERSION = 3
+EXPORT_FORMAT_VERSION = 4
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -99,6 +99,7 @@ class PhotoExport(StrictExportModel):
     animal_id: int | None = Field(default=None, ge=1)
     lifecycle_state: Literal["active", "trash"]
     deleted_at: str | None
+    reviewed_at: str | None
     created_at: str
     updated_at: str
 
@@ -113,7 +114,7 @@ class PhotoExport(StrictExportModel):
             raise ValueError("SHA-256 must contain 64 lowercase hexadecimal characters")
         return value
 
-    @field_validator("deleted_at")
+    @field_validator("deleted_at", "reviewed_at")
     @classmethod
     def validate_optional_timestamp(cls, value: str | None) -> str | None:
         return validate_export_timestamp(value) if value is not None else None

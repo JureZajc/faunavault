@@ -18,6 +18,7 @@ from app.schemas import (
 )
 from app.services.classification import normalize_metadata_text, normalize_tags
 from app.services.photo_lifecycle import mark_photos_trashed
+from app.services.review import record_manual_photo_change
 
 logger = logging.getLogger(__name__)
 MAX_BULK_PHOTO_IDS = 250
@@ -131,29 +132,35 @@ def apply_bulk_photo_action(
 
         if isinstance(request, BulkAddTagsRequest):
             for photo in photos:
-                photo.tags = normalize_tags(
+                tags = normalize_tags(
                     [*normalize_tags(photo.tags), *(request_tags or [])]
                 )
-                photo.updated_at = now
-                session.add(photo)
+                if tags != photo.tags:
+                    photo.tags = tags
+                    record_manual_photo_change(photo, now)
+                    session.add(photo)
         elif isinstance(request, BulkRemoveTagsRequest):
             removals = set(request_tags or [])
             for photo in photos:
-                photo.tags = [
+                tags = [
                     tag for tag in normalize_tags(photo.tags) if tag not in removals
                 ]
-                photo.updated_at = now
-                session.add(photo)
+                if tags != photo.tags:
+                    photo.tags = tags
+                    record_manual_photo_change(photo, now)
+                    session.add(photo)
         elif isinstance(request, BulkSetCategoryRequest):
             for photo in photos:
-                photo.category = category
-                photo.updated_at = now
-                session.add(photo)
+                if photo.category != category:
+                    photo.category = category
+                    record_manual_photo_change(photo, now)
+                    session.add(photo)
         elif isinstance(request, BulkClearCategoryRequest):
             for photo in photos:
-                photo.category = None
-                photo.updated_at = now
-                session.add(photo)
+                if photo.category is not None:
+                    photo.category = None
+                    record_manual_photo_change(photo, now)
+                    session.add(photo)
         elif isinstance(request, BulkMoveToTrashRequest):
             mark_photos_trashed(photos, session)
 

@@ -326,6 +326,7 @@ SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
     11: _inspect_schema_11,
+    12: _inspect_schema_11,
 }
 
 

@@ -41,6 +41,7 @@ function photo(title: string): Photo {
     camera_make: null, camera_model: null, lens_model: null,
     image_width: null, image_height: null, latitude: null, longitude: null,
     deleted_at: null,
+    reviewed_at: null,
     created_at: "2026-08-12T08:00:00Z",
     updated_at: "2026-08-12T08:00:00Z",
   };
@@ -155,7 +156,7 @@ test("preserves catalog parameters while switching collection views", async () =
   const navigation = screen.getByRole("navigation", { name: "Archive views" });
   expect(
     Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Trash"]);
+  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Trash"]);
   expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("href"))
     .toBe("/timeline");
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))

@@ -61,6 +61,26 @@ class PhotoUpdate(SQLModel):
         return self
 
 
+class ReviewInbox(SQLModel):
+    total: int
+    photo: Photo | None
+    position: int | None
+    previous_photo_id: int | None
+    next_photo_id: int | None
+    requested_photo_unavailable: bool
+    low_confidence: bool
+
+
+class ReviewAcceptRequest(SQLModel):
+    expected_updated_at: datetime
+
+
+class ReviewAcceptResponse(SQLModel):
+    accepted_photo_id: int
+    remaining: int
+    next_photo_id: int | None
+
+
 class TaxonSelection(SQLModel):
     gbif_key: int = Field(ge=1)
 

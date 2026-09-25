@@ -147,6 +147,9 @@ export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
           value={formatDateTime(photo.created_at)}
         />
         <MetadataRow label="Updated" value={formatDateTime(photo.updated_at)} />
+        {photo.reviewed_at ? (
+          <MetadataRow label="Reviewed" value={formatDateTime(photo.reviewed_at)} />
+        ) : null}
       </dl>
       <div className="mt-5 border-t border-stone-200 pt-5">
         <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
@@ -177,6 +180,7 @@ export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
 
 type PhotoMetadataEditorProps = {
   photo: Photo;
+  expectedUpdatedAt?: string;
   onSaved: (photo: Photo) => void;
   onCancel: () => void;
   onBusyChange: (busy: boolean) => void;
@@ -185,6 +189,7 @@ type PhotoMetadataEditorProps = {
 
 export function PhotoMetadataEditor({
   photo,
+  expectedUpdatedAt,
   onSaved,
   onCancel,
   onBusyChange,
@@ -202,6 +207,10 @@ export function PhotoMetadataEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (JSON.stringify(form) === JSON.stringify(formStateFromPhoto(photo))) {
+      onSaved(photo);
+      return;
+    }
     const confidenceValue = form.confidence.trim();
     const confidenceNumber =
       confidenceValue === "" ? null : Number(confidenceValue);
@@ -234,7 +243,9 @@ export function PhotoMetadataEditor({
     onBusyChange(true);
     onError(null);
     try {
-      onSaved(await updatePhoto(photo.id, metadata));
+      onSaved(await (expectedUpdatedAt
+        ? updatePhoto(photo.id, metadata, expectedUpdatedAt)
+        : updatePhoto(photo.id, metadata)));
     } catch (nextError) {
       const message =
         nextError instanceof Error ? nextError.message : "Save failed";

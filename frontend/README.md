@@ -25,6 +25,13 @@ sidebar, and the Move to Trash confirmation. State remains in focused React
 hooks and route clients; the frontend does not use a global state or
 data-fetching library.
 
+The `/review` route uses the backend's filtered one-item inbox projection and
+`?photo=<id>` for navigation and refresh. It reuses photo media, metadata editing,
+linked-animal taxonomy, and classification job components. Accept and metadata
+saves advance to the next item; missing or trashed items redirect to the first
+remaining item. Arrow shortcuts apply only outside editable controls and the
+lightbox. See the root README for review persistence and API semantics.
+
 The dedicated `/map` route loads one typed `GET /catalog/map` projection after
 mount and renders loading, error, empty, and loaded states. Leaflet and
 Leaflet.markercluster are imported only by dynamically loaded client modules

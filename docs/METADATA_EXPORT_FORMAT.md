@@ -1,4 +1,4 @@
-# FaunaVault metadata export format v3
+# FaunaVault metadata export format v4
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, user-defined Collections,
@@ -12,7 +12,7 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v3 is `3`. |
+| `format_version` | Metadata export representation version; v4 is `4`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
 | `counts` | Photo, active, Trash, Animal, Taxon, Collection, Collection-membership, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
@@ -25,7 +25,8 @@ Export format and database schema versions have separate compatibility
 lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
-adds the durable Photo capture-metadata contract. FaunaVault emits only v3.
+adds the durable Photo capture-metadata contract. Version 4 adds human review
+timestamps. FaunaVault emits only v4.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -63,6 +64,7 @@ status
 animal_id
 lifecycle_state
 deleted_at
+reviewed_at
 created_at
 updated_at
 ```
@@ -77,6 +79,8 @@ path, checksum, or content is included.
 Trash records have a timestamp. `status` is the durable Photo classification
 outcome, not classification-job execution state. `tags` is always a JSON string
 array and retains its stored order.
+`reviewed_at` records when a person accepted or changed Photo metadata; null
+means no human review is recorded. A new AI result clears it.
 
 `captured_at` is the image-stated, camera-local wall time, or null. It is never
 derived from upload time, filesystem metadata, a filename, or `created_at`.
@@ -204,6 +208,7 @@ taxon_external_id
 taxon_scientific_name
 taxon_common_name
 deleted_at
+reviewed_at
 created_at
 updated_at
 ```
@@ -227,6 +232,7 @@ JSON.
 - v1: Photos, Animals, and Taxa.
 - v2: Collections and Collection memberships.
 - v3: persisted Photo capture time/offset, camera, lens, dimensions, and GPS.
+- v4: nullable Photo human review timestamp.
 
 ## Deliberate exclusions
 

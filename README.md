@@ -184,6 +184,14 @@ FaunaVault supports one local backend process and one classification worker. Do 
 
 The existing `POST /photos/{id}/classify` and `POST /photos/classify-pending` URLs are retained, but both now return asynchronous HTTP 202 job resources instead of synchronous Photo or batch-result bodies. There is no legacy synchronous Ollama classification route. The canonical resource API is `POST/GET /classification-jobs` plus `POST /classification-jobs/{id}/retry`.
 
+## AI Review Inbox
+
+Open **Review** at `/review` to process active photos whose AI result has `status = needs_review`. The inbox shows one photo at a time in oldest-first order, with its metadata, confidence, linked animal/taxonomy, available classification provenance, and job state. The URL may include `?photo=<id>`; Previous/Next and Left/Right arrows navigate, while Skip moves on without changing metadata. Trash photos are never listed. A missing or already reviewed link opens the first remaining item.
+
+**Accept** confirms the current result, changes the photo to `classified`, and records `reviewed_at` without removing its classification jobs. **Edit** uses the existing photo metadata editor; an actual manual metadata change anywhere in the app, including bulk tag/category edits, resolves `needs_review` and records `reviewed_at`. A no-op save leaves the item in review. Taxonomy selection alone does not confirm the photo; use Accept afterward. **Reclassify** uses the durable job API, and failed jobs retain the existing Retry action. If Ollama is unavailable, the photo stays in review with the failed job visible. Active jobs block Accept; edits still invalidate delayed results through `updated_at`.
+
+Schema migration 12 adds nullable `photo.reviewed_at`. A new AI result clears it. Existing classified photos retain `null` because their past review history cannot be determined. `GET /review?photo=<id>` returns the count, current photo, ordinal position, neighboring IDs, and a low-confidence flag using the configured threshold. `POST /review/photos/{id}/accept` takes `expected_updated_at` and returns the remaining count and next ID; stale, trashed, changed, or active-job photos return HTTP 409. `PATCH /photos/{id}` accepts optional `expected_updated_at` for guarded edits. The original model review flag and exact reason are not stored, so the UI gives a specific low-confidence reason only when supported by the saved score.
+
 ## Developer commands
 
 Install Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 24+, and npm.
@@ -370,7 +378,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v3](docs/METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v4](docs/METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
