@@ -19,6 +19,24 @@ uv run pytest
 
 Configuration is loaded through `pydantic-settings` from `backend/.env`. Relative SQLite paths resolve against this directory. See the root README for storage, backup, migration, and recovery details.
 
+## Local folder import
+
+After the backend has initialized the archive, stop it before importing:
+
+```powershell
+uv run faunavault-import "E:\Photos\Wildlife" --recursive --dry-run
+uv run faunavault-import "E:\Photos\Wildlife" --recursive --classify
+```
+
+On Unix-like systems, use
+`uv run faunavault-import ~/Pictures/Wildlife --recursive` from this directory.
+Omit `--recursive` for the top level only.
+Dry runs are read-only and may run while the backend is online. Imports copy
+supported photos into managed storage and never change source files. Exact
+duplicates are skipped; possible visual duplicates are skipped unless
+`--allow-visual-duplicates` is supplied. `--classify` queues jobs for new photos
+that the backend processes after restart. See the root README for details.
+
 ## Portable metadata export
 
 Create a deterministic JSON metadata and original-file inventory in a new local

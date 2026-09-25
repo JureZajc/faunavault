@@ -7,6 +7,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 ## Features
 
 - Interactive single- and multi-file upload with JPEG, PNG, WebP, HEIC, and HEIF content validation and a frontend-controlled sequential queue
+- Recursive local folder import with dry-run preview and source files left untouched
 - Exact duplicate detection using SHA-256, including duplicates currently in Trash
 - Conservative perceptual near-duplicate review with an explicit Keep both choice
 - Original, resized, and thumbnail variants with EXIF orientation handling
@@ -42,6 +43,52 @@ photos. A refresh failure is reported separately and does not relabel an
 already accepted upload as failed. The backend's compatibility batch-upload API
 remains available, but the interactive catalog uses the single-photo endpoint
 to provide these per-file states and retries.
+
+## Import a local photo folder
+
+Start the backend once to initialize or migrate the archive, then stop it before
+an actual import. From `backend`, run:
+
+```powershell
+uv run faunavault-import "E:\Photos\Wildlife" --recursive --dry-run
+uv run faunavault-import "E:\Photos\Wildlife" --recursive
+uv run faunavault-import "E:\Photos\Wildlife" --recursive --classify
+```
+
+On macOS or Linux:
+
+```sh
+cd backend
+uv run faunavault-import ~/Pictures/Wildlife --recursive --dry-run
+uv run faunavault-import ~/Pictures/Wildlife --recursive
+```
+
+Without `--recursive`, only files directly inside the source directory are
+processed. FaunaVault reads source files without moving, renaming, deleting, or
+changing them, and keeps its own byte-for-byte copies in managed storage.
+JPEG, PNG, WebP, HEIC, and HEIF use the same validation and size limits as
+browser uploads. Unsupported files are skipped. Exact SHA-256 duplicates,
+including photos in Trash and files imported earlier in the run, are skipped;
+repeating an import does not create another Photo for the same bytes.
+
+Possible visual duplicates are reported separately and skipped by default. Use
+`--allow-visual-duplicates` to keep both; exact duplicates still cannot be
+imported twice. `--verbose` prints each file's outcome. Without it, progress
+appears every 100 files plus duplicate and failure details and a final summary.
+Corrupt or unreadable photos are reported and later files continue. A run with
+file failures exits with status 1; setup errors exit with status 2.
+
+`--dry-run` may run while the backend is online. It validates and hashes files,
+checks exact and possible visual duplicates, and predicts how earlier files in
+that scan affect later ones. It creates no photos, archive files, derivatives,
+or classification jobs. It requires an initialized, current-schema archive.
+
+New photos remain pending, as with browser uploads. `--classify` queues durable
+classification jobs for newly imported photos only, without running the model
+in the CLI. Those jobs are processed after the backend restarts. A dry run with
+`--classify` reports planned jobs but creates none. The source folder should
+stay stable during the scan, and actual imports should run with the backend
+stopped.
 
 ## Catalog API and navigation
 
