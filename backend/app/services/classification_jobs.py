@@ -75,6 +75,8 @@ def enqueue_classification_jobs(
     intent: str,
     batch_kind: str,
     clock: Callable[[], datetime] = utc_now,
+    *,
+    commit: bool = True,
 ) -> tuple[list[EnqueuedJob], list[EnqueueRejection]]:
     batch_id = uuid4().hex
     enqueued: list[EnqueuedJob] = []
@@ -153,9 +155,10 @@ def enqueue_classification_jobs(
             continue
         enqueued.append(EnqueuedJob(job, True))
 
-    session.commit()
-    for item in enqueued:
-        session.refresh(item.job)
+    if commit:
+        session.commit()
+        for item in enqueued:
+            session.refresh(item.job)
     return enqueued, rejected
 
 

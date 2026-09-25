@@ -6,6 +6,7 @@ import json
 import logging
 import shutil
 import warnings
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -19,12 +20,16 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import Settings
 from app.models import Animal, Photo, utc_now
 from app.schemas import TrashMutationResponse, TrashPage
-from app.services.classification_jobs import fail_active_jobs_for_photos
+from app.services.classification_jobs import (
+    enqueue_classification_jobs,
+    fail_active_jobs_for_photos,
+)
 from app.services.image_codecs import open_image
 from app.services.image_variants import (
     RESIZED_MAX_SIZE,
     THUMBNAIL_MAX_SIZE,
     ImageEncoding,
+    SourceFormatPolicy,
     normalized_extension,
     save_variant,
     source_format_for_extension,
@@ -53,6 +58,14 @@ class PreparedUpload:
     stored_filename: str
     resized_filename: str
     thumbnail_filename: str
+    metadata: ExtractedPhotoMetadata
+    perceptual_hash: str
+
+
+@dataclass(frozen=True)
+class PhotoInspection:
+    digest: str
+    size: int
     metadata: ExtractedPhotoMetadata
     perceptual_hash: str
 
@@ -102,18 +115,105 @@ def _cleanup(paths: list[Path]) -> None:
             )
 
 
-async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload:
-    original_filename = safe_original_filename(file.filename)
+def _source_policy(original_filename: str, media_type: str) -> SourceFormatPolicy:
     source_policy = source_format_for_extension(clean_extension(original_filename))
     if source_policy is None:
         raise HTTPException(status_code=415, detail="Unsupported image format")
 
-    media_type = (file.content_type or "").lower()
     if media_type not in source_policy.accepted_media_types:
         raise HTTPException(
             status_code=415, detail="Image MIME type does not match its filename"
         )
 
+    return source_policy
+
+
+def _inspect_image(
+    path: Path,
+    source_policy: SourceFormatPolicy,
+    settings: Settings,
+    variants: tuple[Path, Path] | None = None,
+) -> tuple[ExtractedPhotoMetadata, str]:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with open_image(path) as probe:
+                if probe.format != source_policy.source.pillow_format:
+                    raise HTTPException(
+                        status_code=415,
+                        detail="Image contents do not match the declared format",
+                    )
+                width, height = probe.size
+                if width * height > settings.max_image_pixels:
+                    raise HTTPException(
+                        status_code=413, detail="Image dimensions are too large"
+                    )
+                probe.verify()
+            with open_image(path) as image:
+                image.load()
+                if image.width * image.height > settings.max_image_pixels:
+                    raise HTTPException(
+                        status_code=413, detail="Image dimensions are too large"
+                    )
+                metadata = extract_photo_metadata(image)
+                image_hash = perceptual_hash(image)
+                if variants is not None:
+                    save_variant(
+                        image, variants[0], source_policy.derivative, RESIZED_MAX_SIZE
+                    )
+                    save_variant(
+                        image, variants[1], source_policy.derivative, THUMBNAIL_MAX_SIZE
+                    )
+                return metadata, image_hash
+    except HTTPException:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise HTTPException(
+            status_code=413, detail="Image dimensions are too large"
+        ) from exc
+    except (
+        UnidentifiedImageError,
+        EOFError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        ValueError,
+    ) as exc:
+        raise HTTPException(
+            status_code=400, detail="Uploaded file is not a valid image"
+        ) from exc
+
+
+def inspect_local_photo(path: Path, settings: Settings) -> PhotoInspection:
+    policy = source_format_for_extension(path.suffix)
+    if policy is None:
+        raise HTTPException(status_code=415, detail="Unsupported image format")
+    source_policy = _source_policy(path.name, policy.source.media_type)
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            size += len(chunk)
+            if size > settings.max_upload_bytes:
+                raise HTTPException(
+                    status_code=413, detail="Uploaded image is too large"
+                )
+            digest.update(chunk)
+    if size == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    metadata, image_hash = _inspect_image(path, source_policy, settings)
+    return PhotoInspection(digest.hexdigest(), size, metadata, image_hash)
+
+
+async def prepare_source(
+    chunks: AsyncIterator[bytes],
+    filename: str | None,
+    media_type: str,
+    settings: Settings,
+) -> PreparedUpload:
+    original_filename = safe_original_filename(filename)
+    media_type = media_type.lower()
+    source_policy = _source_policy(original_filename, media_type)
     ensure_storage(settings)
     operation_id = uuid4().hex
     staged_original = settings.staging_dir / f"{operation_id}.upload"
@@ -124,7 +224,7 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
     size = 0
     try:
         with staged_original.open("xb") as destination:
-            while chunk := await file.read(1024 * 1024):
+            async for chunk in chunks:
                 size += len(chunk)
                 if size > settings.max_upload_bytes:
                     raise HTTPException(
@@ -135,58 +235,12 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
         if size == 0:
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", Image.DecompressionBombWarning)
-                with open_image(staged_original) as probe:
-                    if probe.format != source_policy.source.pillow_format:
-                        raise HTTPException(
-                            status_code=415,
-                            detail="Image contents do not match the declared format",
-                        )
-                    width, height = probe.size
-                    if width * height > settings.max_image_pixels:
-                        raise HTTPException(
-                            status_code=413, detail="Image dimensions are too large"
-                        )
-                    probe.verify()
-                with open_image(staged_original) as image:
-                    image.load()
-                    if image.width * image.height > settings.max_image_pixels:
-                        raise HTTPException(
-                            status_code=413, detail="Image dimensions are too large"
-                        )
-                    metadata = extract_photo_metadata(image)
-                    uploaded_perceptual_hash = perceptual_hash(image)
-                    save_variant(
-                        image,
-                        staged_resized,
-                        source_policy.derivative,
-                        RESIZED_MAX_SIZE,
-                    )
-                    save_variant(
-                        image,
-                        staged_thumbnail,
-                        source_policy.derivative,
-                        THUMBNAIL_MAX_SIZE,
-                    )
-        except HTTPException:
-            raise
-        except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
-            raise HTTPException(
-                status_code=413, detail="Image dimensions are too large"
-            ) from exc
-        except (
-            UnidentifiedImageError,
-            EOFError,
-            OSError,
-            RuntimeError,
-            SyntaxError,
-            ValueError,
-        ) as exc:
-            raise HTTPException(
-                status_code=400, detail="Uploaded file is not a valid image"
-            ) from exc
+        metadata, uploaded_perceptual_hash = _inspect_image(
+            staged_original,
+            source_policy,
+            settings,
+            (staged_resized, staged_thumbnail),
+        )
     except Exception:
         _cleanup(staged_paths)
         raise
@@ -207,6 +261,16 @@ async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload
         thumbnail_filename=f"{safe_id}_thumb.{source_policy.derivative.extension}",
         metadata=metadata,
         perceptual_hash=uploaded_perceptual_hash,
+    )
+
+
+async def prepare_upload(file: UploadFile, settings: Settings) -> PreparedUpload:
+    async def chunks() -> AsyncIterator[bytes]:
+        while chunk := await file.read(1024 * 1024):
+            yield chunk
+
+    return await prepare_source(
+        chunks(), file.filename, file.content_type or "", settings
     )
 
 
@@ -240,7 +304,32 @@ async def create_photo_from_upload(
     *,
     allow_visual_duplicate: bool = False,
 ) -> Photo:
-    prepared = await prepare_upload(file, settings)
+    async def chunks() -> AsyncIterator[bytes]:
+        while chunk := await file.read(1024 * 1024):
+            yield chunk
+
+    return await create_photo_from_source(
+        session,
+        chunks(),
+        file.filename,
+        file.content_type or "",
+        settings,
+        allow_visual_duplicate=allow_visual_duplicate,
+    )
+
+
+async def create_photo_from_source(
+    session: Session,
+    chunks: AsyncIterator[bytes],
+    filename: str | None,
+    media_type: str,
+    settings: Settings,
+    *,
+    allow_visual_duplicate: bool = False,
+    classify: bool = False,
+    visual_lookup: Callable[[Session, str], list] | None = None,
+) -> Photo:
+    prepared = await prepare_source(chunks, filename, media_type, settings)
     staged = [
         prepared.staged_original,
         prepared.staged_resized,
@@ -261,9 +350,8 @@ async def create_photo_from_upload(
 
         promoted: list[Path] = []
         try:
-            visual_candidates = find_visual_duplicate_candidates(
-                session, prepared.perceptual_hash
-            )
+            lookup = visual_lookup or find_visual_duplicate_candidates
+            visual_candidates = lookup(session, prepared.perceptual_hash)
             if visual_candidates and not allow_visual_duplicate:
                 raise _visual_duplicate_error(visual_candidates)
 
@@ -299,6 +387,18 @@ async def create_photo_from_upload(
                 longitude=prepared.metadata.longitude,
             )
             session.add(photo)
+            if classify:
+                session.flush()
+                jobs, rejected = enqueue_classification_jobs(
+                    session,
+                    settings,
+                    [photo.id],
+                    "classify_pending",
+                    "single",
+                    commit=False,
+                )
+                if rejected or len(jobs) != 1 or not jobs[0].created:
+                    raise RuntimeError("Could not enqueue classification")
             session.commit()
             session.refresh(photo)
             return photo
@@ -307,6 +407,13 @@ async def create_photo_from_upload(
             _cleanup(promoted + staged)
             raise
         except (OSError, SQLAlchemyError) as exc:
+            session.rollback()
+            _cleanup(promoted + staged)
+            logger.exception("Upload failed while committing local photo lifecycle")
+            raise HTTPException(
+                status_code=500, detail="Could not save the uploaded photo"
+            ) from exc
+        except Exception as exc:
             session.rollback()
             _cleanup(promoted + staged)
             logger.exception("Upload failed while committing local photo lifecycle")

@@ -6,7 +6,9 @@ import math
 import re
 import statistics
 import warnings
+from collections import defaultdict
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -103,6 +105,82 @@ def hamming_distance(left: str, right: str) -> int:
             "Perceptual hashes must be 16 lowercase hexadecimal characters"
         )
     return (int(left, 16) ^ int(right, 16)).bit_count()
+
+
+@dataclass(frozen=True)
+class VisualIndexEntry:
+    photo_id: int
+    perceptual_hash: str
+    original_filename: str
+    display_title: str | None = None
+    common_name: str | None = None
+    species_guess: str | None = None
+    location: str = "catalog"
+
+
+class VisualDuplicateIndex:
+    """Compact offline candidate index with exact phash64-v1 distance checks."""
+
+    # At most four changed bits guarantee one unchanged part among five parts.
+    _PARTS = ((0, 13), (13, 13), (26, 13), (39, 13), (52, 12))
+
+    def __init__(self) -> None:
+        self.entries: list[VisualIndexEntry] = []
+        self.buckets: dict[tuple[int, int], list[int]] = defaultdict(list)
+
+    @classmethod
+    def _keys(cls, value: str):
+        bits = int(value, 16)
+        for offset, (shift, length) in enumerate(cls._PARTS):
+            yield offset, (bits >> shift) & ((1 << length) - 1)
+
+    def add(self, entry: VisualIndexEntry) -> None:
+        if not is_valid_perceptual_hash(entry.perceptual_hash):
+            return
+        index = len(self.entries)
+        self.entries.append(entry)
+        for key in self._keys(entry.perceptual_hash):
+            self.buckets[key].append(index)
+
+    def find(
+        self,
+        value: str,
+        *,
+        threshold: int = PHASH_DISTANCE_THRESHOLD,
+        limit: int = MAX_VISUAL_DUPLICATE_CANDIDATES,
+    ) -> list[VisualDuplicateCandidate]:
+        if not is_valid_perceptual_hash(value):
+            return []
+        if threshold > PHASH_DISTANCE_THRESHOLD:
+            indices = set(range(len(self.entries)))
+        else:
+            indices: set[int] = set()
+            for key in self._keys(value):
+                indices.update(self.buckets.get(key, ()))
+        matches: list[VisualDuplicateCandidate] = []
+        for index in indices:
+            entry = self.entries[index]
+            distance = hamming_distance(value, entry.perceptual_hash)
+            if distance <= threshold:
+                matches.append(
+                    VisualDuplicateCandidate(
+                        photo_id=entry.photo_id,
+                        original_filename=entry.original_filename,
+                        display_title=entry.display_title,
+                        common_name=entry.common_name,
+                        species_guess=entry.species_guess,
+                        location=entry.location,
+                        hamming_distance=distance,
+                    )
+                )
+        matches.sort(
+            key=lambda candidate: (
+                candidate.hamming_distance,
+                1 if candidate.location == "trash" else 0,
+                -candidate.photo_id,
+            )
+        )
+        return matches[:limit]
 
 
 def find_visual_duplicate_candidates(
