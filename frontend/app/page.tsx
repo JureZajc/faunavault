@@ -249,6 +249,7 @@ function HomeContent() {
             onNavigate={(section, event) => {
               if (
                 section === "collections" ||
+                section === "review" ||
                 section === "map" ||
                 section === "timeline"
               ) {

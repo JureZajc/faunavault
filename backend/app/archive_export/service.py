@@ -77,6 +77,7 @@ CSV_COLUMNS = (
     "taxon_scientific_name",
     "taxon_common_name",
     "deleted_at",
+    "reviewed_at",
     "created_at",
     "updated_at",
 )
@@ -140,6 +141,7 @@ class SnapshotPhoto:
     latitude: float | None
     longitude: float | None
     deleted_at: str | None
+    reviewed_at: str | None
     created_at: str
     updated_at: str
 
@@ -366,7 +368,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             "original_size_bytes, media_type, captured_at, "
             "captured_at_offset_minutes, camera_make, camera_model, lens_model, "
             "image_width, image_height, latitude, longitude, deleted_at, "
-            "created_at, updated_at "
+            "reviewed_at, created_at, updated_at "
             "FROM photo ORDER BY id"
         ).fetchall()
         photos: list[SnapshotPhoto] = []
@@ -448,6 +450,11 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                     deleted_at=_timestamp(
                         row["deleted_at"],
                         f"photo {photo_id} deleted_at",
+                        optional=True,
+                    ),
+                    reviewed_at=_timestamp(
+                        row["reviewed_at"],
+                        f"photo {photo_id} reviewed_at",
                         optional=True,
                     ),
                     created_at=_timestamp(
@@ -652,6 +659,7 @@ def _inventory_photos(
                 animal_id=photo.animal_id,
                 lifecycle_state="trash" if photo.deleted_at is not None else "active",
                 deleted_at=photo.deleted_at,
+                reviewed_at=photo.reviewed_at,
                 created_at=photo.created_at,
                 updated_at=photo.updated_at,
             )
@@ -759,6 +767,7 @@ def _csv_rows(document: ArchiveMetadataExport) -> list[list[str]]:
             None if taxon is None else taxon.scientific_name,
             None if taxon is None else taxon.common_name,
             photo.deleted_at,
+            photo.reviewed_at,
             photo.created_at,
             photo.updated_at,
         )

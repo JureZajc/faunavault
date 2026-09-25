@@ -65,7 +65,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for migration in range(1, 12):
+        for migration in range(1, 13):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (migration,),
@@ -113,6 +113,7 @@ def archive(tmp_path):
                 image_width=24,
                 image_height=18,
                 deleted_at=utc_now() if deleted else None,
+                reviewed_at=utc_now() if deleted else None,
             )
             session.add(photo)
             session.flush()
@@ -151,8 +152,8 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert backup_path.name.startswith("faunavault-backup-")
     manifest = read_manifest(backup_path / "manifest.json")
     assert manifest.backup_format_version == 1
-    assert manifest.database.schema_version == 11
-    assert manifest.database.applied_migrations == list(range(1, 12))
+    assert manifest.database.schema_version == 12
+    assert manifest.database.applied_migrations == list(range(1, 13))
     assert manifest.counts.photos == 2
     assert manifest.counts.active_photos == 1
     assert manifest.counts.trashed_photos == 1
@@ -241,7 +242,7 @@ def test_schema10_backup_rehearsal_preserves_collections(archive):
 
     result = rehearse_backup(backup_path, target)
 
-    assert result.source_schema_version == 11
+    assert result.source_schema_version == 12
     assert result.collections == 1
     assert result.collection_memberships == 2
     recovered_settings = Settings(

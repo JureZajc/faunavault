@@ -65,6 +65,7 @@ function photo(overrides: Partial<Photo> = {}): Photo {
     camera_make: null, camera_model: null, lens_model: null,
     image_width: null, image_height: null, latitude: null, longitude: null,
     deleted_at: null,
+    reviewed_at: null,
     created_at: "2026-08-12T08:00:00Z",
     updated_at: "2026-08-12T08:00:00Z",
     ...overrides,

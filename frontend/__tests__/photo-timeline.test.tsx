@@ -120,7 +120,7 @@ test("renders ordered semantic groups, previews, navigation, and unknown count",
   const navigation = screen.getByRole("navigation", { name: "Archive views" });
   expect(
     Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Trash"]);
+  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Trash"]);
   expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("aria-current"))
     .toBe("page");
 });

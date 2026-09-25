@@ -344,4 +344,5 @@ def apply_classification(
         and result.confidence >= threshold
         else "needs_review"
     )
+    photo.reviewed_at = None
     photo.updated_at = utc_now()

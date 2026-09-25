@@ -29,6 +29,7 @@ export type Photo = {
   latitude: number | null;
   longitude: number | null;
   deleted_at: string | null;
+  reviewed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -245,6 +246,22 @@ export type PhotoUpdate = Partial<{
   tags: string[];
   status: PhotoStatus;
 }>;
+
+export type ReviewInbox = {
+  total: number;
+  photo: Photo | null;
+  position: number | null;
+  previous_photo_id: number | null;
+  next_photo_id: number | null;
+  requested_photo_unavailable: boolean;
+  low_confidence: boolean;
+};
+
+export type ReviewAcceptResponse = {
+  accepted_photo_id: number;
+  remaining: number;
+  next_photo_id: number | null;
+};
 
 export type BulkPhotoOperation =
   | "add_tags"
@@ -724,13 +741,29 @@ export function permanentlyDeleteTrashPhoto(id: number) {
   }>(`/trash/photos/${id}`, { method: "DELETE" });
 }
 
-export function updatePhoto(id: number, metadata: PhotoUpdate) {
-  return request<Photo>(`/photos/${id}`, {
+export function updatePhoto(id: number, metadata: PhotoUpdate, expectedUpdatedAt?: string) {
+  const params = expectedUpdatedAt
+    ? `?expected_updated_at=${encodeURIComponent(expectedUpdatedAt)}`
+    : "";
+  return request<Photo>(`/photos/${id}${params}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(metadata),
+  });
+}
+
+export function getReviewInbox(photoId?: number, signal?: AbortSignal) {
+  const query = photoId === undefined ? "" : `?photo=${photoId}`;
+  return request<ReviewInbox>(`/review${query}`, { signal });
+}
+
+export function acceptReview(photoId: number, expectedUpdatedAt: string) {
+  return request<ReviewAcceptResponse>(`/review/photos/${photoId}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }),
   });
 }
 

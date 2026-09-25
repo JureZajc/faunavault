@@ -56,6 +56,7 @@ function photo(id = 11): Photo {
     camera_make: null, camera_model: null, lens_model: null,
     image_width: null, image_height: null, latitude: null, longitude: null,
     deleted_at: null,
+    reviewed_at: null,
     created_at: now,
     updated_at: now,
   };

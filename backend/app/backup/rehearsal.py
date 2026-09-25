@@ -83,6 +83,7 @@ class PhotoRecoveryRecord:
     image_height: int | None = None
     latitude: float | None = None
     longitude: float | None = None
+    reviewed_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -352,6 +353,29 @@ def _read_schema_11_snapshot(database_path: Path) -> RecoverySnapshot:
             connection.close()
 
 
+def _read_schema_12_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_11_snapshot(database_path)
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = open_read_only_database(database_path)
+        reviewed_by_id = {
+            int(row[0]): row[1]
+            for row in connection.execute(
+                "SELECT id, reviewed_at FROM photo ORDER BY id"
+            )
+        }
+        photos = tuple(
+            replace(photo, reviewed_at=reviewed_by_id[photo.id])
+            for photo in base.photos
+        )
+        return replace(base, photos=photos)
+    except (KeyError, sqlite3.Error, TypeError, ValueError) as exc:
+        raise ArchiveIntegrityError(f"Could not read review metadata: {exc}") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
     if schema_version == 9:
         return _read_schema_9_snapshot(database_path)
@@ -359,13 +383,15 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
         return _read_schema_10_snapshot(database_path)
     if schema_version == 11:
         return _read_schema_11_snapshot(database_path)
+    if schema_version == 12:
+        return _read_schema_12_snapshot(database_path)
     raise ArchiveIntegrityError(
         f"No recovery metadata reader for schema {schema_version}"
     )
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_11_snapshot(database_path)
+    return _read_schema_12_snapshot(database_path)
 
 
 def _verify_source(backup_path: Path) -> tuple[VerificationResult, str]:

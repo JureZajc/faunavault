@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from sqlalchemy import update
 from sqlmodel import Session
 
 from app.clients.gbif import GbifClient
@@ -22,6 +23,7 @@ from app.routers.catalog import create_catalog_router
 from app.routers.classification import create_classification_router
 from app.routers.collections import create_collections_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
+from app.routers.review import create_review_router
 from app.routers.taxonomy import create_taxonomy_router
 from app.schemas import PhotoUpdate
 from app.services.classification import (
@@ -39,6 +41,7 @@ from app.services.classification_jobs import (
 from app.services.image_variants import encoding_for_filename
 from app.services.perceptual_duplicates import run_perceptual_hash_backfill
 from app.services.photo_lifecycle import active_photo_or_404
+from app.services.review import record_manual_photo_change
 from app.storage_startup import initialize_archive_storage
 
 __all__ = ["Animal", "Photo", "Taxon", "app", "migrate_animals_and_taxonomy"]
@@ -170,6 +173,7 @@ app.include_router(create_classification_router(lambda: settings))
 app.include_router(create_albums_router())
 app.include_router(create_taxonomy_router())
 app.include_router(create_animals_router())
+app.include_router(create_review_router(lambda: settings))
 
 
 def photo_or_404(photo_id: int, session: Session) -> Photo:
@@ -191,11 +195,42 @@ def get_photo(photo_id: int, session: SessionDep) -> Photo:
 
 
 @app.patch("/photos/{photo_id}", response_model=Photo)
-def update_photo(photo_id: int, metadata: PhotoUpdate, session: SessionDep) -> Photo:
+def update_photo(
+    photo_id: int,
+    metadata: PhotoUpdate,
+    session: SessionDep,
+    expected_updated_at: str | None = None,
+) -> Photo:
     photo = photo_or_404(photo_id, session)
+    if (
+        expected_updated_at is not None
+        and photo.updated_at.isoformat() != expected_updated_at
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "photo_changed",
+                "message": "Photo changed. Refresh before saving.",
+            },
+        )
     updates = metadata.model_dump(exclude_unset=True)
     if not updates:
         return photo
+
+    tracked = (
+        "display_title",
+        "common_name",
+        "breed_guess",
+        "species_guess",
+        "category",
+        "confidence",
+        "description",
+        "tags",
+        "status",
+    )
+    before = tuple(getattr(photo, name) for name in tracked)
+    before_updated_at = photo.updated_at
+    original_status = photo.status
 
     for field_name, value in updates.items():
         if field_name == "tags":
@@ -213,7 +248,39 @@ def update_photo(photo_id: int, metadata: PhotoUpdate, session: SessionDep) -> P
             setattr(photo, field_name, value)
 
     apply_domestic_metadata_normalization(photo)
-    photo.updated_at = utc_now()
+    after = tuple(getattr(photo, name) for name in tracked)
+    if after == before:
+        return photo
+    record_manual_photo_change(
+        photo,
+        utc_now(),
+        resolve_review=original_status == "needs_review" and after[:-1] != before[:-1],
+    )
+    if expected_updated_at is not None:
+        values = {name: getattr(photo, name) for name in tracked}
+        values["reviewed_at"] = photo.reviewed_at
+        values["updated_at"] = photo.updated_at
+        session.expunge(photo)
+        result = session.exec(
+            update(Photo)
+            .where(
+                Photo.id == photo_id,
+                Photo.deleted_at.is_(None),
+                Photo.updated_at == before_updated_at,
+            )
+            .values(**values)
+        )
+        if result.rowcount != 1:
+            session.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "photo_changed",
+                    "message": "Photo changed. Refresh before saving.",
+                },
+            )
+        session.commit()
+        return photo_or_404(photo_id, session)
     session.add(photo)
     session.commit()
     session.refresh(photo)
@@ -233,6 +300,7 @@ def mock_classify_photo(photo_id: int, session: SessionDep) -> Photo:
     photo.tags = ["cat", "pet", "mammal"]
     apply_domestic_metadata_normalization(photo)
     photo.status = "classified"
+    photo.reviewed_at = None
     photo.updated_at = utc_now()
     session.add(photo)
     session.commit()
