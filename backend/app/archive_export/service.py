@@ -22,6 +22,7 @@ from app.archive_export.schema import (
     CollectionPhotoExport,
     ExportCounts,
     PhotoExport,
+    SmartCollectionExport,
     TaxonExport,
 )
 from app.archive_integrity import (
@@ -36,6 +37,7 @@ from app.archive_integrity import (
     validate_database_connection,
     validate_flat_filename,
 )
+from app.catalog_query import CatalogSavedQuery
 from app.config import Settings
 from app.migrations import LATEST_SCHEMA_VERSION
 
@@ -154,6 +156,7 @@ class SnapshotData:
     taxa: list[TaxonExport]
     collections: list[CollectionExport]
     collection_photos: list[CollectionPhotoExport]
+    smart_collections: list[SmartCollectionExport]
 
 
 @dataclass(frozen=True)
@@ -553,6 +556,20 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                 "ORDER BY collection_id, photo_id"
             )
         ]
+        smart_collections = [
+            SmartCollectionExport(
+                id=_required_id(row["id"], "smart_collection.id"),
+                name=_required_text(row["name"], "smart_collection.name"),
+                query_version=row["query_version"],
+                query=CatalogSavedQuery.model_validate_json(row["query_json"]),
+                created_at=_timestamp(row["created_at"], "smart_collection.created_at"),
+                updated_at=_timestamp(row["updated_at"], "smart_collection.updated_at"),
+            )
+            for row in connection.execute(
+                "SELECT id, name, query_version, query_json, created_at, updated_at "
+                "FROM smart_collection ORDER BY id"
+            )
+        ]
         return SnapshotData(
             migrations[-1],
             photos,
@@ -560,6 +577,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             taxa,
             collections,
             collection_photos,
+            smart_collections,
         )
     except ArchiveExportIntegrityError:
         raise
@@ -685,6 +703,7 @@ def _build_document(
             taxa=len(snapshot.taxa),
             collections=len(snapshot.collections),
             collection_memberships=len(snapshot.collection_photos),
+            smart_collections=len(snapshot.smart_collections),
             original_bytes=sum(photo.original_size_bytes for photo in photos),
         ),
         photos=photos,
@@ -692,6 +711,7 @@ def _build_document(
         taxa=snapshot.taxa,
         collections=snapshot.collections,
         collection_photos=snapshot.collection_photos,
+        smart_collections=snapshot.smart_collections,
     )
 
 

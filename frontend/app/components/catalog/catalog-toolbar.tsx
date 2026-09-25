@@ -67,6 +67,7 @@ type CatalogToolbarProps = {
   onLoadMoreTaxa: () => void;
   onResetFilters: () => void;
   onEnterSelectionMode: () => void;
+  onSaveSmartCollection?: () => void;
 };
 
 export default function CatalogToolbar({
@@ -100,6 +101,7 @@ export default function CatalogToolbar({
   onLoadMoreTaxa,
   onResetFilters,
   onEnterSelectionMode,
+  onSaveSmartCollection,
 }: CatalogToolbarProps) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
@@ -264,6 +266,7 @@ export default function CatalogToolbar({
         </p>
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
           <p>Backend-filtered local collection.</p>
+          {onSaveSmartCollection ? <button type="button" onClick={onSaveSmartCollection} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Save as Smart Collection</button> : null}
           {hasActiveFilters ? (
             <button
               type="button"

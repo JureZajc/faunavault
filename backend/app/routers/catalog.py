@@ -4,7 +4,9 @@ from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import ValidationError
 
+from app.catalog_query import CatalogSavedQuery
 from app.db import SessionDep
 from app.schemas import (
     CatalogPhotoPage,
@@ -54,30 +56,25 @@ def create_catalog_router() -> APIRouter:
         ] = "created_at",
         order: Literal["asc", "desc"] = "desc",
     ) -> CatalogPhotoPage:
-        normalized_category = category.strip() if category else None
-        if normalized_category and uncategorized:
-            raise HTTPException(
-                status_code=422,
-                detail="category and uncategorized cannot be combined",
+        try:
+            criteria = CatalogSavedQuery(
+                search=search,
+                status=status,
+                category=category,
+                uncategorized=uncategorized,
+                taxon_id=taxon_id,
+                taken_from=taken_from,
+                taken_to=taken_to,
+                sort=sort,
+                order=order,
             )
-        if taken_from is not None and taken_to is not None and taken_from > taken_to:
-            raise HTTPException(
-                status_code=422,
-                detail="taken_from must be on or before taken_to",
-            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()[0]["msg"]) from exc
         return list_catalog_photos(
             session,
             page=page,
             page_size=page_size,
-            search=search,
-            status=status,
-            category=normalized_category,
-            uncategorized=uncategorized,
-            taxon_id=taxon_id,
-            taken_from=taken_from,
-            taken_to=taken_to,
-            sort=sort,
-            order=order,
+            **criteria.model_dump(),
         )
 
     @router.get("/taxa", response_model=CatalogTaxonPage)

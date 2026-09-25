@@ -19,6 +19,15 @@ uv run pytest
 
 Configuration is loaded through `pydantic-settings` from `backend/.env`. Relative SQLite paths resolve against this directory. See the root README for storage, backup, migration, and recovery details.
 
+`/smart-collections` stores version-one, validated catalog criteria separately
+from manual Collection memberships. Create and PATCH use `query_version: 1`
+and a structured `query` of search, status, category/uncategorized, taxon ID,
+capture dates, sort, and order. `/smart-collections/{id}/photos` calls the same
+active Photo catalog query as `/catalog/photos`, with bounded pagination and a
+SQL count. List responses omit live counts to avoid one query per saved search.
+An unknown or damaged stored query is reported on that collection and can be
+replaced without affecting other collections. Deletion never touches Photos.
+
 ## Local folder import
 
 After the backend has initialized the archive, stop it before importing:
@@ -55,7 +64,7 @@ and ignores unrelated database commits after the snapshot. A concurrent
 permanent deletion may cause a safe failure and retry; no locking is added.
 
 `archive-metadata.json` is authoritative and includes all active/Trash Photos,
-Animals, local Taxa, Collections, and Collection memberships (including Trash
+Animals, local Taxa, manual Collections, Collection memberships (including Trash
 memberships). `photos.csv` is optional. Neither contains media,
 derivative paths, derived albums, perceptual hashes, classification jobs, absolute source
 paths, secrets, or a generation timestamp. The destination must not exist;
@@ -127,10 +136,12 @@ recoverability failure and exit `2` means usage, target, permission, disk, or
 other setup failure.
 
 Backup format v1 and database recovery versions are independent. This version
-explicitly supports schema 9, schema 10, and schema 11 backups. Schema-9
+explicitly supports schema 9 through schema 13 backups. Schema-9
 rehearsals migrate to empty Collection tables; schema-10 rehearsals compare
 Collection metadata and membership exactly; schema-11 rehearsals additionally
-compare all persisted Photo capture metadata. A later application schema must retain the
+compare all persisted Photo capture metadata. Schema-12 adds review timestamps;
+schema-13 additionally compares saved Smart Collection definitions exactly.
+A later application schema must retain the
 frozen schema-9 verifier and migration rehearsal unless compatibility is
 intentionally removed and documented. The root README contains the compatibility
 table, target layout, limitations, and unchanged manual production-restore

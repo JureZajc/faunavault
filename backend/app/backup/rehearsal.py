@@ -127,6 +127,17 @@ class CollectionRecoveryRecord:
 
 
 @dataclass(frozen=True)
+class SmartCollectionRecoveryRecord:
+    id: int
+    name: str
+    name_key: str
+    query_version: int
+    query_json: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class RecoverySnapshot:
     photos: tuple[PhotoRecoveryRecord, ...]
     animals: tuple[AnimalRecoveryRecord, ...]
@@ -134,6 +145,7 @@ class RecoverySnapshot:
     job_counts: tuple[tuple[str, int], ...]
     collections: tuple[CollectionRecoveryRecord, ...] = ()
     collection_memberships: tuple[tuple[int, int], ...] = ()
+    smart_collections: tuple[SmartCollectionRecoveryRecord, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -376,6 +388,36 @@ def _read_schema_12_snapshot(database_path: Path) -> RecoverySnapshot:
             connection.close()
 
 
+def _read_schema_13_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_12_snapshot(database_path)
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = open_read_only_database(database_path)
+        smart_collections = tuple(
+            SmartCollectionRecoveryRecord(
+                id=int(row[0]),
+                name=str(row[1]),
+                name_key=str(row[2]),
+                query_version=int(row[3]),
+                query_json=str(row[4]),
+                created_at=str(row[5]),
+                updated_at=str(row[6]),
+            )
+            for row in connection.execute(
+                "SELECT id, name, name_key, query_version, query_json, created_at, "
+                "updated_at FROM smart_collection ORDER BY id"
+            )
+        )
+        return replace(base, smart_collections=smart_collections)
+    except (sqlite3.Error, TypeError, ValueError) as exc:
+        raise ArchiveIntegrityError(
+            f"Could not read Smart Collection metadata: {exc}"
+        ) from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
     if schema_version == 9:
         return _read_schema_9_snapshot(database_path)
@@ -385,13 +427,15 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
         return _read_schema_11_snapshot(database_path)
     if schema_version == 12:
         return _read_schema_12_snapshot(database_path)
+    if schema_version == 13:
+        return _read_schema_13_snapshot(database_path)
     raise ArchiveIntegrityError(
         f"No recovery metadata reader for schema {schema_version}"
     )
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_12_snapshot(database_path)
+    return _read_schema_13_snapshot(database_path)
 
 
 def _verify_source(backup_path: Path) -> tuple[VerificationResult, str]:
@@ -510,6 +554,10 @@ def _compare_recovery_snapshots(
         raise ArchiveIntegrityError("Collection metadata changed during rehearsal")
     if source.collection_memberships != current.collection_memberships:
         raise ArchiveIntegrityError("Collection memberships changed during rehearsal")
+    if source.smart_collections != current.smart_collections:
+        raise ArchiveIntegrityError(
+            "Smart Collection metadata changed during rehearsal"
+        )
     expected_jobs = dict(source.job_counts)
     running = expected_jobs.get("running", 0)
     expected_jobs["running"] = 0

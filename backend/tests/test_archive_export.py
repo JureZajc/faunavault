@@ -29,6 +29,7 @@ from app.models import (
     Collection,
     CollectionPhoto,
     Photo,
+    SmartCollection,
     Taxon,
 )
 
@@ -70,7 +71,7 @@ def _create_archive(tmp_path: Path, *, populated: bool = True) -> ArchiveFixture
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for version in range(1, 13):
+        for version in range(1, 14):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (version,),
@@ -274,8 +275,8 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
 
     payload = json.loads(first_json)
     validated = ArchiveMetadataExport.model_validate(payload)
-    assert payload["format_version"] == 4
-    assert payload["source_database_schema_version"] == 12
+    assert payload["format_version"] == 5
+    assert payload["source_database_schema_version"] == 13
     assert payload["counts"] == {
         "photos": 3,
         "active_photos": 2,
@@ -284,6 +285,7 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
         "taxa": 2,
         "collections": 1,
         "collection_memberships": 2,
+        "smart_collections": 0,
         "original_bytes": len(b"authoritative-oneauthoritative-twothird"),
     }
     assert [photo["id"] for photo in payload["photos"]] == [1, 2, 3]
@@ -379,7 +381,7 @@ def test_metadata_export_preserves_heic_source_identity_without_version_bump(
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     photo = next(item for item in payload["photos"] if item["id"] == 3)
 
-    assert payload["format_version"] == 4
+    assert payload["format_version"] == 5
     assert photo["original_filename"] == "iPhone.HEIC"
     assert photo["archive_relative_original_path"] == "images/original/three.heic"
     assert photo["media_type"] == "image/heic"
@@ -400,13 +402,43 @@ def test_empty_archive_exports_valid_json_and_header_only_csv(tmp_path: Path):
         "taxa": 0,
         "collections": 0,
         "collection_memberships": 0,
+        "smart_collections": 0,
         "original_bytes": 0,
     }
     assert payload["photos"] == payload["animals"] == payload["taxa"] == []
-    assert payload["collections"] == payload["collection_photos"] == []
+    assert (
+        payload["collections"]
+        == payload["collection_photos"]
+        == payload["smart_collections"]
+        == []
+    )
     assert result.csv_path is not None
     with result.csv_path.open(encoding="utf-8", newline="") as source:
         assert list(csv.reader(source)) == [list(CSV_COLUMNS)]
+
+
+def test_export_includes_versioned_smart_collection_query(tmp_path: Path):
+    archive = _create_archive(tmp_path, populated=False)
+    engine = create_database_engine(archive.settings)
+    with Session(engine) as session:
+        session.add(
+            SmartCollection(
+                name="Birds 2026",
+                name_key="birds 2026",
+                query_version=1,
+                query_json='{"category":"bird","taken_from":"2026-01-01","sort":"captured_at","order":"desc"}',
+                created_at=STAMP,
+                updated_at=STAMP,
+            )
+        )
+        session.commit()
+    engine.dispose()
+    result = create_metadata_export(tmp_path / "smart export", archive.settings)
+    payload = json.loads(result.json_path.read_text(encoding="utf-8"))
+    assert payload["counts"]["smart_collections"] == 1
+    assert payload["smart_collections"][0]["name"] == "Birds 2026"
+    assert payload["smart_collections"][0]["query"]["taken_from"] == "2026-01-01"
+    ArchiveMetadataExport.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -603,7 +635,7 @@ def test_cli_summary_warnings_exit_codes_and_help(
     assert export_cli.main([str(destination), "--csv"]) == 0
     captured = capsys.readouterr()
     assert "Metadata export: COMPLETE" in captured.out
-    assert "Format: v4" in captured.out
+    assert "Format: v5" in captured.out
     assert "Collections: 1 with 2 membership(s)" in captured.out
     assert "Photos: 3 total / 2 active / 1 Trash" in captured.out
     assert "1 photo(s) lacked a stored original size or SHA-256" in captured.out
@@ -631,13 +663,13 @@ def test_format_version_is_independent_and_schema_rejects_bad_artifacts(
     result = create_metadata_export(tmp_path / "valid", archive.settings)
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     payload["source_database_schema_version"] = 10
-    assert ArchiveMetadataExport.model_validate(payload).format_version == 4
+    assert ArchiveMetadataExport.model_validate(payload).format_version == 5
 
     payload["format_version"] = 1
     with pytest.raises(ValidationError):
         ArchiveMetadataExport.model_validate(payload)
 
-    payload["format_version"] = 4
+    payload["format_version"] = 5
     payload["photos"][0]["original_sha256"] = "BAD"
     with pytest.raises(ValidationError):
         ArchiveMetadataExport.model_validate(payload)

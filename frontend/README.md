@@ -1,7 +1,7 @@
 # FaunaVault frontend
 
 The Next.js 16 App Router frontend provides the photo catalog, capture-date
-Timeline, clustered archive Map, species Albums, manually managed Collections,
+Timeline, clustered archive Map, species Albums, manual and Smart Collections,
 metadata review, persistent local-AI job controls, and Trash workflows.
 Project-wide setup, storage, backup, and backend behavior are documented in the
 [root README](../README.md).
@@ -88,6 +88,14 @@ Collection create/rename share an accessible name dialog; deletion and membershi
 removal have explicit safety wording and Cancel-first focus. Select page is
 strictly page-local, the client and server both enforce a 250-photo maximum, and
 there is no all-matching-results or bulk permanent-delete action.
+
+List offers **Save as Smart Collection** for its current search, filters, and
+sort, including search text still awaiting debounce. The page and grouped
+layout are not saved. `/collections` separates manual groups from live saved
+queries, and `/collections/smart/<id>?page=N` restores a Smart Collection page.
+Its **Edit criteria** action uses the existing List controls with an explicit
+Save changes banner. Smart detail does not expose membership removal or bulk
+selection; Add to Collection continues to list manual Collections only.
 
 ## Upload queue and duplicate review
 

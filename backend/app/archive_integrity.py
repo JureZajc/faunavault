@@ -5,7 +5,7 @@ import math
 import os
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -80,6 +80,7 @@ class DatabaseInventory:
     job_counts: dict[str, int]
     collections: int = 0
     collection_memberships: int = 0
+    smart_collections: int = 0
 
     @property
     def active_photos(self) -> int:
@@ -322,11 +323,24 @@ def _inspect_schema_11(
     )
 
 
+def _inspect_schema_13(
+    connection: sqlite3.Connection, migrations: list[int]
+) -> DatabaseInventory:
+    base = _inspect_schema_11(connection, migrations)
+    return replace(
+        base,
+        smart_collections=int(
+            connection.execute("SELECT COUNT(*) FROM smart_collection").fetchone()[0]
+        ),
+    )
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
     11: _inspect_schema_11,
     12: _inspect_schema_11,
+    13: _inspect_schema_13,
 }
 
 

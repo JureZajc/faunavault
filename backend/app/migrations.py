@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 12
+LATEST_SCHEMA_VERSION = 13
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -419,6 +419,25 @@ def _migration_12(connection) -> None:
         connection.execute(text("ALTER TABLE photo ADD COLUMN reviewed_at DATETIME"))
 
 
+def _migration_13(connection) -> None:
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS smart_collection (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
+                name_key TEXT NOT NULL CHECK (length(name_key) >= 1),
+                query_version INTEGER NOT NULL CHECK (query_version >= 1),
+                query_json TEXT NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                CONSTRAINT uq_smart_collection_name_key UNIQUE (name_key)
+            )
+            """
+        )
+    )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -478,6 +497,8 @@ def run_migrations(
                 _migration_11(connection)
             elif version == 12:
                 _migration_12(connection)
+            elif version == 13:
+                _migration_13(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

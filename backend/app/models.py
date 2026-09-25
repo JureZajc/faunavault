@@ -215,6 +215,28 @@ class CollectionPhoto(SQLModel, table=True):
     )
 
 
+class SmartCollection(SQLModel, table=True):
+    __tablename__ = "smart_collection"
+    __table_args__ = (
+        CheckConstraint(
+            "length(name) BETWEEN 1 AND 100", name="ck_smart_collection_name_length"
+        ),
+        CheckConstraint(
+            "length(name_key) >= 1", name="ck_smart_collection_name_key_nonempty"
+        ),
+        CheckConstraint("query_version >= 1", name="ck_smart_collection_query_version"),
+        UniqueConstraint("name_key", name="uq_smart_collection_name_key"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    name_key: str = Field(exclude=True)
+    query_version: int = 1
+    query_json: str
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class ClassificationJob(SQLModel, table=True):
     __tablename__ = "classification_job"
 

@@ -217,6 +217,30 @@ export type CollectionDetail = CollectionSummary & {
   photos: CollectionPhotoPage;
 };
 
+export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size">;
+export type SmartCollectionSummary = {
+  id: number;
+  name: string;
+  query_version: number;
+  query_valid: boolean;
+  query_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type SmartCollection = SmartCollectionSummary & {
+  query: SmartCollectionQuery | null;
+};
+export type SmartCollectionCreateRequest = {
+  name: string;
+  query_version: 1;
+  query: SmartCollectionQuery;
+};
+export type SmartCollectionUpdateRequest = {
+  name?: string;
+  query_version?: 1;
+  query?: SmartCollectionQuery;
+};
+
 export type CollectionCreateRequest = { name: string };
 export type CollectionRenameRequest = { name: string };
 export type CollectionMembershipRequest = { photo_ids: number[] };
@@ -543,6 +567,34 @@ export function getSpeciesAlbums(params: URLSearchParams) {
 
 export function getCollections(signal?: AbortSignal) {
   return request<CollectionSummary[]>("/collections", { signal });
+}
+
+export function getSmartCollections(signal?: AbortSignal) {
+  return request<SmartCollectionSummary[]>("/smart-collections", { signal });
+}
+
+export function createSmartCollection(body: SmartCollectionCreateRequest) {
+  return request<SmartCollection>("/smart-collections", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+}
+
+export function getSmartCollection(id: number, signal?: AbortSignal) {
+  return request<SmartCollection>(`/smart-collections/${id}`, { signal });
+}
+
+export function updateSmartCollection(id: number, body: SmartCollectionUpdateRequest) {
+  return request<SmartCollection>(`/smart-collections/${id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+}
+
+export function deleteSmartCollection(id: number) {
+  return request<{ status: "deleted"; smart_collection_id: number }>(`/smart-collections/${id}`, { method: "DELETE" });
+}
+
+export function getSmartCollectionPhotos(id: number, page: number, signal?: AbortSignal) {
+  return request<CatalogPhotoPage>(`/smart-collections/${id}/photos?page=${page}&page_size=48`, { signal });
 }
 
 export function createCollection(requestBody: CollectionCreateRequest) {

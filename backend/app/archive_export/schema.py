@@ -7,7 +7,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-EXPORT_FORMAT_VERSION = 4
+from app.catalog_query import CatalogSavedQuery
+
+EXPORT_FORMAT_VERSION = 5
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -62,6 +64,7 @@ class ExportCounts(StrictExportModel):
     taxa: int = Field(ge=0)
     collections: int = Field(ge=0)
     collection_memberships: int = Field(ge=0)
+    smart_collections: int = Field(ge=0)
     original_bytes: int = Field(ge=0)
 
     @model_validator(mode="after")
@@ -202,6 +205,20 @@ class CollectionPhotoExport(StrictExportModel):
     photo_id: int = Field(ge=1)
 
 
+class SmartCollectionExport(StrictExportModel):
+    id: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=100)
+    query_version: Literal[1]
+    query: CatalogSavedQuery
+    created_at: str
+    updated_at: str
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def validate_timestamp(cls, value: str) -> str:
+        return validate_export_timestamp(value)
+
+
 class ArchiveMetadataExport(StrictExportModel):
     format_version: Literal[EXPORT_FORMAT_VERSION]
     source_database_schema_version: int = Field(ge=1)
@@ -211,6 +228,7 @@ class ArchiveMetadataExport(StrictExportModel):
     taxa: list[TaxonExport]
     collections: list[CollectionExport]
     collection_photos: list[CollectionPhotoExport]
+    smart_collections: list[SmartCollectionExport]
 
     @staticmethod
     def _validate_order(records: list[object], label: str) -> None:
@@ -226,6 +244,7 @@ class ArchiveMetadataExport(StrictExportModel):
         self._validate_order(self.animals, "animal")
         self._validate_order(self.taxa, "taxon")
         self._validate_order(self.collections, "collection")
+        self._validate_order(self.smart_collections, "Smart Collection")
 
         membership_keys = [
             (item.collection_id, item.photo_id) for item in self.collection_photos
@@ -247,6 +266,7 @@ class ArchiveMetadataExport(StrictExportModel):
             "taxa": len(self.taxa),
             "collections": len(self.collections),
             "collection_memberships": len(self.collection_photos),
+            "smart_collections": len(self.smart_collections),
             "original_bytes": sum(photo.original_size_bytes for photo in self.photos),
         }
         if self.counts.model_dump() != actual_counts:

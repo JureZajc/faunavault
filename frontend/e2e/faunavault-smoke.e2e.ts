@@ -11,6 +11,7 @@ const HEIC_FILENAME = "faunavault-e2e-iphone.heic";
 const TIMELINE_JANUARY_FILENAME = "faunavault-e2e-timeline-january.jpg";
 const TIMELINE_FEBRUARY_FILENAME = "faunavault-e2e-timeline-february.jpg";
 const COLLECTION_NAME = "FaunaVault E2E bulk collection";
+const SMART_COLLECTION_NAME = "FaunaVault E2E birds";
 const TRANSPARENT_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -291,6 +292,30 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
     await expect(uploadRow(page, BULK_SECOND_FILENAME)).toContainText("Uploaded");
     await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
     await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(1);
+
+    await test.step("Smart Collection follows metadata changes", async () => {
+      await catalogCard(page, BULK_FIRST_FILENAME).getByRole("link").first().click();
+      await page.getByRole("button", { name: "Edit metadata" }).click();
+      await page.getByRole("textbox", { name: "Category" }).fill("bird");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("link", { name: "Back to catalog" }).click();
+      await page.getByRole("combobox", { name: "Category" }).selectOption("bird");
+      await page.getByRole("button", { name: "Save as Smart Collection" }).click();
+      const dialog = page.getByRole("dialog", { name: "Create Smart Collection" });
+      await dialog.getByRole("textbox", { name: "Smart Collection name" }).fill(SMART_COLLECTION_NAME);
+      await dialog.getByRole("button", { name: "Create Smart Collection" }).click();
+      await expect(page).toHaveURL(/\/collections\/smart\/\d+$/);
+      await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
+      await expect(catalogCard(page, BULK_SECOND_FILENAME)).toHaveCount(0);
+      await catalogCard(page, BULK_FIRST_FILENAME).getByRole("link").first().click();
+      await page.getByRole("button", { name: "Edit metadata" }).click();
+      await page.getByRole("textbox", { name: "Category" }).fill("mammal");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("link", { name: "Back to catalog" }).click();
+      await expect(page.getByRole("heading", { name: "No matching photos" })).toBeVisible();
+      await page.getByRole("link", { name: "List", exact: true }).click();
+      await expect(catalogCard(page, BULK_FIRST_FILENAME)).toHaveCount(1);
+    });
 
     await page.getByRole("link", { name: "Collections", exact: true }).click();
     await page.getByRole("button", { name: "Create Collection" }).click();

@@ -1,8 +1,8 @@
-# FaunaVault metadata export format v4
+# FaunaVault metadata export format v5
 
 FaunaVault metadata export is a deterministic, portable description of the
-archive's Photos, Animals, locally stored Taxa, user-defined Collections,
-Collection memberships, Trash state, and authoritative original-file inventory.
+archive's Photos, Animals, locally stored Taxa, manual Collections and their
+memberships, Smart Collection definitions, Trash state, and authoritative original-file inventory.
 It contains no media bytes and is not a backup, restore format, or supported
 import format.
 
@@ -12,21 +12,22 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v4 is `4`. |
+| `format_version` | Metadata export representation version; v5 is `5`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
-| `counts` | Photo, active, Trash, Animal, Taxon, Collection, Collection-membership, and original-byte totals. |
+| `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
 | `animals` | All Animals, including those without Photos, ordered by local ID. |
 | `taxa` | All locally stored Taxa, including unreferenced rows, ordered by local ID. |
 | `collections` | All user-defined Collections, ordered by local ID. |
 | `collection_photos` | All Collection membership pairs, including memberships to Trash Photos, ordered by Collection ID then Photo ID. |
+| `smart_collections` | Saved versioned catalog queries, ordered by local ID. |
 
 Export format and database schema versions have separate compatibility
 lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
 adds the durable Photo capture-metadata contract. Version 4 adds human review
-timestamps. FaunaVault emits only v4.
+timestamps. Version 5 adds Smart Collection definitions. FaunaVault emits only v5.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -146,6 +147,11 @@ The internal normalized uniqueness key is never exported. Each
 Membership is organizational metadata and is exported even when the referenced
 Photo is in Trash.
 
+Each Smart Collection exports `id`, `name`, `query_version`, structured `query`,
+`created_at`, and `updated_at`. Query version 1 contains the supported catalog
+search, status, category or uncategorized, verified taxon ID, capture date range,
+sort, and order. Smart Collections have no Photo membership pairs.
+
 Photo `animal_id` and Animal `taxon_id` are either JSON `null` or references to
 records present in the same export. Every Collection membership references both
 a Collection and a Photo in the export. Local integer IDs are stable within the
@@ -233,6 +239,7 @@ JSON.
 - v2: Collections and Collection memberships.
 - v3: persisted Photo capture time/offset, camera, lens, dimensions, and GPS.
 - v4: nullable Photo human review timestamp.
+- v5: versioned Smart Collection query definitions.
 
 ## Deliberate exclusions
 
