@@ -28,6 +28,12 @@ SQL count. List responses omit live counts to avoid one query per saved search.
 An unknown or damaged stored query is reported on that collection and can be
 replaced without affecting other collections. Deletion never touches Photos.
 
+The root `python scripts/dev.py benchmark-catalog` command exercises these same
+services on disposable synthetic state, including component counts and query
+plans. From this directory, the equivalent entry point is
+`uv run --no-sync python -m app.cli.benchmark_catalog` with the same options.
+See [Catalog benchmark methodology and results](../docs/CATALOG_BENCHMARK.md).
+
 ## Local folder import
 
 After the backend has initialized the archive, stop it before importing:

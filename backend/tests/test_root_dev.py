@@ -45,6 +45,7 @@ def test_help_exposes_only_the_supported_commands(dev):
         "check-clean",
         "backend",
         "frontend",
+        "benchmark-catalog",
     )
     help_text = parser.format_help()
     assert "Install/synchronize development dependencies." in help_text
@@ -353,4 +354,74 @@ def test_help_runs_by_absolute_path_from_another_directory(tmp_path):
     )
 
     assert result.returncode == 0
-    assert "{setup,check,check-clean,backend,frontend}" in result.stdout
+    assert "benchmark-catalog" in result.stdout
+
+
+def test_benchmark_dispatch_preserves_options_and_callers_output_path(
+    dev, tmp_path, monkeypatch
+):
+    calls = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(dev, "BACKEND_ENV_DIR", tmp_path)
+    monkeypatch.setattr(dev, "FRONTEND_DEPENDENCIES_DIR", tmp_path / "missing-frontend")
+    monkeypatch.setattr(dev, "resolve_tools", lambda _steps: {"uv": "resolved-uv"})
+    monkeypatch.setattr(
+        dev,
+        "run_steps",
+        lambda steps, executables: calls.append((steps, executables)) or 0,
+    )
+    assert (
+        dev.main(
+            [
+                "benchmark-catalog",
+                "--sizes",
+                "60",
+                "120",
+                "--runs",
+                "2",
+                "--output",
+                "report.json",
+                "--verbose",
+            ]
+        )
+        == 0
+    )
+    steps, executables = calls[0]
+    assert executables == {"uv": "resolved-uv"}
+    assert steps[0].cwd == dev.BACKEND_DIR
+    assert steps[0].arguments == (
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "app.cli.benchmark_catalog",
+        "--sizes",
+        "60",
+        "120",
+        "--runs",
+        "2",
+        "--output",
+        str(tmp_path / "report.json"),
+        "--verbose",
+    )
+
+
+def test_benchmark_requires_only_backend_dependencies(
+    dev, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(dev, "BACKEND_ENV_DIR", tmp_path / "missing")
+    monkeypatch.setattr(
+        dev, "resolve_tools", lambda _steps: pytest.fail("must fail before launching")
+    )
+    assert dev.main(["benchmark-catalog"]) == 1
+    assert "Backend dependencies" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "options",
+    [["--sizes", "0"], ["--runs", "-1"], ["--sizes", "bad"], ["--database", "live.db"]],
+)
+def test_benchmark_rejects_invalid_options(dev, options):
+    with pytest.raises(SystemExit) as error:
+        dev.build_parser().parse_args(["benchmark-catalog", *options])
+    assert error.value.code == 2
