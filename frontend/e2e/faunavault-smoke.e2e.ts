@@ -298,6 +298,7 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
       await page.getByRole("button", { name: "Edit metadata" }).click();
       await page.getByRole("textbox", { name: "Category" }).fill("bird");
       await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Edit metadata" })).toBeEnabled();
       await page.getByRole("link", { name: "Back to catalog" }).click();
       await page.getByRole("combobox", { name: "Category" }).selectOption("bird");
       await page.getByRole("button", { name: "Save as Smart Collection" }).click();
@@ -311,6 +312,7 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
       await page.getByRole("button", { name: "Edit metadata" }).click();
       await page.getByRole("textbox", { name: "Category" }).fill("mammal");
       await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Edit metadata" })).toBeEnabled();
       await page.getByRole("link", { name: "Back to catalog" }).click();
       await expect(page.getByRole("heading", { name: "No matching photos" })).toBeVisible();
       await page.getByRole("link", { name: "List", exact: true }).click();
