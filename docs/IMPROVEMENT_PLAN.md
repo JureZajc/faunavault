@@ -60,8 +60,11 @@ and [dependency security review](DEPENDENCY_SECURITY_REVIEW.md).
   maintenance proves archive health. Production restore remains a documented,
   manual operation that preserves the current archive before replacement.
 - Catalog text search is escaped, case-insensitive substring matching across
-  photo, animal, and local taxonomy fields. Pagination and non-text filters are
-  indexed; leading-wildcard text search intentionally scans active candidates.
+  photo, animal, and local taxonomy fields. Existing catalog and relationship
+  indexes remain authoritative; leading-wildcard text search examines active
+  candidates. The [catalog benchmark](CATALOG_BENCHMARK.md) now measures complete
+  responses, counts/facets, saved queries, and actual query plans on disposable
+  synthetic archives before further query changes.
 - Frontend state is route-local or held in focused hooks. Durable work is restored
   from the backend; transient browser-only upload and dialog state is not treated
   as persistent application state.
@@ -302,11 +305,58 @@ or attempt to duplicate all component and backend tests.
 both successful and safety-critical refusal paths, add acceptable CI time, and
 leave no dependency on the user's archive or network services.
 
+### R4 - Catalog Scale Benchmark and Query Profiling — Complete
+
+**Status:** Completed on 2026-09-29. `python scripts/dev.py benchmark-catalog`
+uses owned disposable SQLite/storage state, deterministic metadata, current
+schema/index initialization, and the real catalog/Smart Collection/Timeline/Map/
+taxonomy services. All 56 scenarios passed correctness checks at 1k, 10k, 50k,
+and 100k, with 20 measured iterations per service and captured production plans.
+The [benchmark guide](CATALOG_BENCHMARK.md) records methodology, actual median/p95
+tables, component costs, seven independent assessments, and validation results.
+
+Default browsing and OFFSET pagination remain adequate under the selected 500 ms
+median guideline: 100k first-page/deep-page service medians were 20.22/24.40 ms,
+including counts/facets. The slowest production sort was 67.01 ms. Category/date
+filters remain inexpensive; Taxon filters approach the guideline at 469.73 ms,
+with most time in joined counts.
+
+Current substring search was adequate for the measured 10k personal archive
+workload (all medians below 125 ms). Sparse/absent searches exceeded the guideline
+at 50k (680.25/671.28 ms), and 100k absent search reached 1403.89 ms. Its count
+component alone was 922.53 ms. Common text Smart Collection results/counts reached
+586.84/562.91 ms at 100k, with comparable equivalent catalog work. Smart
+Collections do not exhibit a separate architecture penalty; their displayed live
+count arrives with the full page response. Global facets and default counts remain
+small. The taxonomy selector also deserves count-path investigation at 930.97 ms.
+
+No production optimization, new index, schema migration, caching, cursor rewrite,
+or FTS experiment was included. This replaces an unmeasured search-scale assumption
+with bounded synthetic evidence, not a guarantee for every archive or machine.
+
+### R5 - Catalog count access and substring-search scaling
+
+Investigate broad joined-count candidate access and predicate evaluation using the
+same harness, including the taxonomy selector and shared Smart Collection counts.
+Compare existing indexed access paths in disposable state and evaluate skipping
+the items query after an exact zero count. Preserve current counts, ordering,
+literal substring/term-conjunction/relationship-field semantics, and Trash behavior.
+Only include a production fix after focused tests and before/after measurements
+demonstrate improvement. An experimental FTS comparison is conditional on residual
+matching costs and semantic compatibility; these results do not prescribe FTS,
+new indexes, caching, or cursor pagination.
+
+The independent classifications are: **no action needed** for default browsing,
+filtered browsing under the median guideline, and default deep pagination;
+**requires a dedicated follow-up** for text search, search-driven catalog counts,
+Smart Collection text results, and shared Smart Collection live counts. No area is
+called a small optimization without demonstrated fix evidence.
+
 ## Conditional work
 
 | Candidate | Current conclusion | Trigger to reconsider |
 | --- | --- | --- |
-| SQLite FTS | Not justified now. Current substring search is scan-based, but the indexed, paginated catalog remains appropriate for a personal archive in the low tens of thousands without observed latency evidence. FTS would add synchronization and query-semantics complexity. | Representative searches on a real-sized archive become noticeably slow and profiling identifies text matching, rather than facets, joins, sorting, or image loading, as the cause. Benchmark the existing query and an FTS prototype before choosing it. |
+| SQLite FTS | Production migration remains deferred. Measured 10k synthetic searches were within the 500 ms median guideline; sparse/absent 50k searches reached about 680/671 ms. Broad joined counts also contribute substantially, so these results do not establish FTS as the remedy. See the [measurement report](CATALOG_BENCHMARK.md). | Isolate count/candidate access, joins, and substring predicate costs in a focused follow-up. Compare benchmark-only FTS only if remaining matching cost warrants it and current literal substring, term conjunction, relationship-field, and lifecycle semantics can be retained. |
 | Derivative force regeneration or format/quality migration | Not needed while current dimensions, formats, and quality settings remain valid. Doctor and repair already handle missing or invalid derivatives and deliberately preserve healthy files. | The variant algorithm, size, quality, or output format changes and existing healthy derivatives must be upgraded deliberately. |
 | Backup format v2 | Not needed for the current complete, portable, uncompressed cold backup. Schema compatibility should be solved without changing the container format unless necessary. | A requirement such as compression, encryption, incremental storage, or incompatible payload layout cannot be added safely within v1 compatibility. |
 | Persistent local diagnostic logs | Not scheduled. Durable job records, focused domain warnings/errors, Uvicorn output, and explicit backup/maintenance reports cover current operations without enterprise observability. | Repeated upload, lifecycle, classification, backup, or maintenance failures cannot be diagnosed from current state and console output, or a packaged runtime no longer has a useful console. Use bounded local logs and operation IDs only; no telemetry or external collector. |

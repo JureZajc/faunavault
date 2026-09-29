@@ -128,7 +128,63 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("backend", help="Start the FastAPI development server.")
     subparsers.add_parser("frontend", help="Start the Next.js development server.")
+    benchmark = subparsers.add_parser(
+        "benchmark-catalog",
+        help="Profile production queries on disposable synthetic data.",
+    )
+    benchmark.add_argument(
+        "--sizes", nargs="+", type=positive_int, default=[1000, 10000, 50000, 100000]
+    )
+    benchmark.add_argument("--runs", type=positive_int, default=10)
+    benchmark.add_argument("--output", type=Path)
+    benchmark.add_argument("--verbose", action="store_true")
     return parser
+
+
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def run_benchmark(arguments: argparse.Namespace) -> int:
+    if not BACKEND_ENV_DIR.is_dir():
+        print(
+            "Backend dependencies are not installed. Run python scripts/dev.py setup.",
+            file=sys.stderr,
+        )
+        return 1
+    options = [
+        "--sizes",
+        *(str(size) for size in arguments.sizes),
+        "--runs",
+        str(arguments.runs),
+    ]
+    if arguments.output is not None:
+        options.extend(("--output", str(arguments.output.expanduser().absolute())))
+    if arguments.verbose:
+        options.append("--verbose")
+    step = Step(
+        "[backend] catalog benchmark",
+        "uv",
+        ("run", "--no-sync", "python", "-m", "app.cli.benchmark_catalog", *options),
+        BACKEND_DIR,
+    )
+    try:
+        return run_steps((step,), resolve_tools((step,)))
+    except ToolNotFoundError:
+        print(
+            "uv was not found on PATH. Install uv before running benchmark-catalog.",
+            file=sys.stderr,
+        )
+        return 127
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        return 130
 
 
 def required_tools(steps: Sequence[Step]) -> tuple[str, ...]:
@@ -247,6 +303,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     arguments = build_parser().parse_args(argv)
+    if arguments.command == "benchmark-catalog":
+        return run_benchmark(arguments)
     return run_command(arguments.command)
 
 

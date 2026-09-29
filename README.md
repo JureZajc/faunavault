@@ -265,6 +265,7 @@ python scripts/dev.py check
 python scripts/dev.py check-clean
 python scripts/dev.py backend
 python scripts/dev.py frontend
+python scripts/dev.py benchmark-catalog --sizes 1000 10000 50000 100000 --runs 20 --output catalog-benchmark-results.json
 ```
 
 `setup` runs `uv sync` for the backend and `npm ci` for the frontend. It does
@@ -275,6 +276,14 @@ first if the backend virtual environment or frontend `node_modules` is missing.
 `check-clean` performs the frozen backend sync and clean frontend install before
 running the same validation stages, making it the CI-equivalent path. Both
 checks are sequential and fail fast.
+
+`benchmark-catalog` requires only the installed backend environment. It profiles
+the production catalog, saved Smart Collection queries/counts, Timeline, Map,
+and taxonomy selector against deterministic metadata in disposable SQLite/storage
+state. It never opens the configured archive and needs no images or network
+services. Reports are warm-cache measurements; JSON output requires a new file
+outside managed archive storage. Use `--verbose` for SQL and plans. See the
+[benchmark guide and measured results](docs/CATALOG_BENCHMARK.md).
 
 `setup` and `check-clean` run `npm ci`, which replaces `node_modules`. On
 Windows, stop the Next.js development server before running either command so

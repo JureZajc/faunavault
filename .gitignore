@@ -17,3 +17,7 @@ backend/.env.*
 frontend/.env
 frontend/.env.*
 !frontend/.env.local.example
+
+# Machine-specific developer benchmark reports (summarized in engineering docs).
+/catalog-benchmark-results.json
+/catalog-benchmark-100k-results.json
