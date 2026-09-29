@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import AlbumBrowser from "./components/album-browser";
 import ArchiveNavigation from "./components/archive-navigation";
 import BulkActionDialog from "./components/catalog/bulk-action-dialog";
@@ -8,6 +9,7 @@ import BulkSelectionToolbar, {
   BulkDialogAction,
 } from "./components/catalog/bulk-selection-toolbar";
 import AddToCollectionDialog from "./components/collections/add-to-collection-dialog";
+import CollectionNameDialog from "./components/collections/collection-name-dialog";
 import CatalogClassificationPanel from "./components/catalog/catalog-classification-panel";
 import CatalogResults from "./components/catalog/catalog-results";
 import CatalogToolbar, {
@@ -26,12 +28,34 @@ import { usePhotoCatalog } from "./hooks/use-photo-catalog";
 import {
   BulkPhotoMutationResponse,
   classifyPendingPhotos,
+  createSmartCollection,
+  getSmartCollection,
   Photo,
+  SmartCollection,
+  updateSmartCollection,
 } from "./lib/api";
 import { catalogSortOption } from "./lib/catalog-query";
+import { savedQueryFromState } from "./lib/smart-collections";
 
 function HomeContent() {
+  const router = useRouter();
   const query = useCatalogQueryState();
+  const editIdValue = new URLSearchParams(query.paramsString).get("smart_edit");
+  const editId = editIdValue && /^\d+$/.test(editIdValue) && Number.isSafeInteger(Number(editIdValue)) && Number(editIdValue) > 0 ? Number(editIdValue) : null;
+  const [editCollection, setEditCollection] = useState<SmartCollection | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingCriteria, setSavingCriteria] = useState(false);
+  const [saveSmartOpen, setSaveSmartOpen] = useState(false);
+  useEffect(() => {
+    if (editId === null) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void getSmartCollection(editId, controller.signal)
+        .then((item) => { if (!controller.signal.aborted) { setEditCollection(item); setEditError(null); } })
+        .catch((nextError) => { if (!controller.signal.aborted) setEditError(nextError instanceof Error ? nextError.message : "Could not load Smart Collection"); });
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [editId]);
   const selectionContextKey = useMemo(
     () =>
       JSON.stringify({
@@ -281,6 +305,7 @@ function HomeContent() {
           />
         ) : (
           <>
+            {editId !== null ? <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection ? ` “${editCollection.name}”` : ""}</p><p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>{editError ? <p role="alert" className="mt-2 text-sm text-red-700">{editError} <button type="button" onClick={() => { setEditError(null); void getSmartCollection(editId).then(setEditCollection).catch((error) => setEditError(error instanceof Error ? error.message : "Could not load Smart Collection")); }} className="underline">Retry</button></p> : null}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!editCollection || savingCriteria} onClick={async () => { setSavingCriteria(true); setEditError(null); try { await updateSmartCollection(editId, { query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); } catch (nextError) { setEditError(nextError instanceof Error ? nextError.message : "Could not save criteria"); } finally { setSavingCriteria(false); } }} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button><button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button></div></div> : null}
             <CatalogToolbar
               searchQuery={query.searchInput}
               statusFilter={statusFilter}
@@ -343,6 +368,7 @@ function HomeContent() {
                 query.clearFilters();
               }}
               onEnterSelectionMode={selection.enter}
+              onSaveSmartCollection={editId === null ? () => setSaveSmartOpen(true) : undefined}
             />
 
             {selection.isSelecting ? (
@@ -430,6 +456,7 @@ function HomeContent() {
                 );
               }}
             />
+            <CollectionNameDialog key={`save-smart-${saveSmartOpen ? "open" : "closed"}`} kind="Smart Collection" mode="create" isOpen={saveSmartOpen} onClose={() => setSaveSmartOpen(false)} onSave={async (name) => { const saved = await createSmartCollection({ name, query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${saved.id}`); return saved; }} />
           </>
         )}
       </section>

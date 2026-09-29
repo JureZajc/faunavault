@@ -14,7 +14,7 @@ FaunaVault is a local-first animal photo archive. Originals and derived images s
 - Read-only EXIF capture time, camera/lens, oriented dimensions, and local-only GPS metadata
 - Compact Photo Timeline grouped by camera-local capture year and month
 - Interactive Photo detail maps and a clustered archive Map for active geotagged photos
-- Searchable/filterable photo catalog, derived species Albums, persistent manual Collections, animals, and GBIF taxonomy linking
+- Searchable/filterable photo catalog, derived species Albums, manual and Smart Collections, animals, and GBIF taxonomy linking
 - Explicit cross-page catalog selection with atomic bulk tag, category, Add to Collection, and Move to Trash actions
 - Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
 - Recoverable Trash with restore and explicitly confirmed permanent deletion
@@ -144,6 +144,20 @@ many-to-many Photo membership. Create, rename, and delete them under
 pages show active Photos in catalog order and support single or selected removal.
 Membership survives recoverable Trash and becomes visible again on restore;
 permanent Photo deletion removes the corresponding membership rows.
+
+Smart Collections are named saved List queries with live membership. In List,
+set search, status, category or Unknown, verified taxon, capture dates, and sort,
+then choose **Save as Smart Collection**. An unfiltered “All photos” query is
+valid. Page, page size, flat/grouped layout, and selection are never saved.
+Find Smart Collections in a separate section under `/collections`; open one at
+`/collections/smart/<id>` to see its current count and paginated results. **Edit
+criteria** restores the query in List and **Save changes** updates the same
+Smart Collection. Metadata edits, new Photos, Trash, and restore immediately
+change results because no membership rows are stored. Deleting a Smart
+Collection deletes only its saved query. Bulk **Add to Collection** still
+targets manual Collections. Saved query version 1 has explicit validated
+fields; an unsupported or damaged definition is shown as invalid and can be
+replaced from List without affecting other collections.
 
 `POST /photos/bulk` accepts a discriminated operation body with explicit
 `photo_ids`. The backend validates the complete active set before mutation and
@@ -425,7 +439,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v4](docs/METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v5](docs/METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -468,8 +482,8 @@ faunavault-backup-<UTC timestamp>-<id>/
     thumbs/
 ```
 
-The SQLite snapshot contains photos, animals, taxonomy, Collections and their
-memberships, schema migrations, and classification jobs. All referenced original, resized, and thumbnail files are
+The SQLite snapshot contains photos, animals, taxonomy, manual Collections and their
+memberships, Smart Collection definitions, schema migrations, and classification jobs. All referenced original, resized, and thumbnail files are
 included for both active photos and Trash. Derived variants remain included so
 each backup is complete and immediately usable, even though they can now be
 regenerated from verified originals. Upload staging, purge journals, SQLite
@@ -531,6 +545,8 @@ Backup container compatibility and database recovery compatibility are separate:
 | v1 | 9 | Supported | Verify, then rehearse/migrate in isolated storage |
 | v1 | 10 | Supported | Verify and rehearse with exact Collection metadata and membership checks |
 | v1 | 11 | Supported | Verify and rehearse with exact capture-metadata checks |
+| v1 | 12 | Supported | Verify and rehearse with exact review-timestamp checks |
+| v1 | 13 | Supported | Verify and rehearse with exact Smart Collection definition checks |
 | Other | Any | Unsupported | Reject before target writes |
 | v1 | Other | Not supported until explicitly tested | Reject before target writes |
 

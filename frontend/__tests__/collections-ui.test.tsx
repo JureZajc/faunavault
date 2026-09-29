@@ -7,6 +7,7 @@ import type { CollectionDetail, CollectionSummary, Photo } from "../app/lib/api"
 
 const api = vi.hoisted(() => ({
   getCollections: vi.fn(),
+  getSmartCollections: vi.fn(),
   createCollection: vi.fn(),
   renameCollection: vi.fn(),
   deleteCollection: vi.fn(),
@@ -79,6 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   window.history.replaceState(null, "", "/collections");
   api.getCollections.mockResolvedValue([summary()]);
+  api.getSmartCollections.mockResolvedValue([]);
   api.createCollection.mockResolvedValue(summary({ id: 8, name: "Trips", active_photo_count: 0 }));
   api.renameCollection.mockResolvedValue(summary({ name: "Renamed" }));
   api.deleteCollection.mockResolvedValue({ status: "deleted", collection_id: 7 });

@@ -24,6 +24,7 @@ from app.routers.classification import create_classification_router
 from app.routers.collections import create_collections_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
 from app.routers.review import create_review_router
+from app.routers.smart_collections import create_smart_collections_router
 from app.routers.taxonomy import create_taxonomy_router
 from app.schemas import PhotoUpdate
 from app.services.classification import (
@@ -169,6 +170,7 @@ app.include_router(create_photo_lifecycle_router(lambda: settings))
 app.include_router(create_bulk_photos_router())
 app.include_router(create_catalog_router())
 app.include_router(create_collections_router())
+app.include_router(create_smart_collections_router())
 app.include_router(create_classification_router(lambda: settings))
 app.include_router(create_albums_router())
 app.include_router(create_taxonomy_router())

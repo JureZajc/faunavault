@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import Home from "../app/page";
@@ -10,6 +10,9 @@ const api = vi.hoisted(() => ({
   getClassificationJobs: vi.fn(),
   getTaxonomyFilters: vi.fn(),
   getSpeciesAlbums: vi.fn(),
+  createSmartCollection: vi.fn(),
+  getSmartCollection: vi.fn(),
+  updateSmartCollection: vi.fn(),
 }));
 
 vi.mock("../app/lib/api", async (importOriginal) => ({
@@ -84,6 +87,41 @@ beforeEach(() => {
     classes: [], orders: [], families: [], genera: [], species: [],
   });
   api.getSpeciesAlbums.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 24 });
+  api.createSmartCollection.mockResolvedValue({ id: 8, name: "Foxes", query_valid: true });
+  api.getSmartCollection.mockResolvedValue({ id: 7, name: "Birds", query_version: 1, query_valid: true, query_error: null, query: { sort: "created_at", order: "desc" }, created_at: "2026-01-01", updated_at: "2026-01-01" });
+  api.updateSmartCollection.mockResolvedValue({ id: 7, name: "Birds", query_valid: true });
+});
+
+test("saves current List criteria without page or layout and includes pending search text", async () => {
+  window.history.replaceState(null, "", "/?catalog_page=2&catalog_status=classified&catalog_layout=grouped&catalog_sort=name&catalog_order=asc");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+  await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "fox");
+  await userEvent.click(screen.getByRole("button", { name: "Save as Smart Collection" }));
+  const dialog = screen.getByRole("dialog", { name: "Create Smart Collection" });
+  await userEvent.type(within(dialog).getByRole("textbox", { name: "Smart Collection name" }), "Foxes");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Create Smart Collection" }));
+  await waitFor(() => expect(api.createSmartCollection).toHaveBeenCalledWith({
+    name: "Foxes", query_version: 1,
+    query: expect.objectContaining({ search: "fox", status: "classified", sort: "name", order: "asc" }),
+  }));
+  const savedQuery = api.createSmartCollection.mock.calls[0][0].query;
+  expect(savedQuery).not.toHaveProperty("page");
+  expect(savedQuery).not.toHaveProperty("page_size");
+  expect(savedQuery).not.toHaveProperty("layout");
+  await waitFor(() => expect(window.location.pathname).toBe("/collections/smart/8"));
+});
+
+test("edits a saved query through List controls and saves to the same collection", async () => {
+  window.history.replaceState(null, "", "/?smart_edit=7&catalog_status=pending");
+  render(<Home />);
+  expect(await screen.findByText(/Editing Smart Collection “Birds”/)).toBeTruthy();
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Status" }), "classified");
+  await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(api.updateSmartCollection).toHaveBeenCalledWith(7, {
+    query_version: 1, query: expect.objectContaining({ status: "classified" }),
+  }));
+  await waitFor(() => expect(window.location.pathname).toBe("/collections/smart/7"));
 });
 
 test("restores the complete catalog query and resynchronizes after popstate", async () => {

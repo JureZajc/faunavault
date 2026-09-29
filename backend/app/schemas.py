@@ -11,6 +11,7 @@ from pydantic import (
 from pydantic import Field as PydanticField
 from sqlmodel import Field, SQLModel
 
+from app.catalog_query import CatalogSavedQuery
 from app.models import Animal, Photo
 
 ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}
@@ -339,6 +340,41 @@ class CollectionRemovePhotosResponse(SQLModel):
     requested_count: int
     removed_count: int
     already_absent_count: int
+
+
+class SmartCollectionCreateRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    query_version: Literal[1]
+    query: CatalogSavedQuery
+
+
+class SmartCollectionUpdateRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    query_version: Literal[1] | None = None
+    query: CatalogSavedQuery | None = None
+
+
+class SmartCollectionSummaryRead(SQLModel):
+    id: int
+    name: str
+    query_version: int
+    query_valid: bool
+    query_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SmartCollectionRead(SmartCollectionSummaryRead):
+    query: CatalogSavedQuery | None
+
+
+class SmartCollectionDeleteResponse(SQLModel):
+    status: Literal["deleted"] = "deleted"
+    smart_collection_id: int
 
 
 class CatalogStatusCounts(SQLModel):

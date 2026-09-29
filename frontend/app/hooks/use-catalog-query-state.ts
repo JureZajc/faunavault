@@ -81,6 +81,11 @@ export function useCatalogQueryState() {
     }, 300);
   }
 
+  function cancelPendingSearch() {
+    if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
+    searchTimer.current = null;
+  }
+
   function setStatus(status?: PhotoStatus) {
     updateCatalog({ ...catalogState, status, page: 1 });
   }
@@ -157,6 +162,7 @@ export function useCatalogQueryState() {
     paramsString,
     returnTo: paramsString ? `${pathname}?${paramsString}` : pathname,
     setSearchInput,
+    cancelPendingSearch,
     setStatus,
     setCategory,
     setSort,

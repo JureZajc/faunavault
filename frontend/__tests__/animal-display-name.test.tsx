@@ -401,9 +401,12 @@ test("keeps the photo-detail delete confirmation focus-safe through errors", asy
     "Delete service unavailable",
   );
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" }).disabled).toBe(false);
-  expect(document.activeElement).toBe(
-    screen.getByRole("textbox", { name: "Type the filename to confirm" }),
-  );
+  // The alert can render before the effect that restores focus has run.
+  await waitFor(() => {
+    expect(document.activeElement).toBe(
+      screen.getByRole("textbox", { name: "Type the filename to confirm" }),
+    );
+  });
   expect(screen.getByRole("dialog")).toBe(dialog);
   addEventListenerSpy.mockRestore();
 });
