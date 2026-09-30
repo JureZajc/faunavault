@@ -599,3 +599,37 @@ def test_schema15_rejects_invalid_source_metadata(lifecycle, changes):
         )
     with pytest.raises(ArchiveIntegrityError):
         inspect_database(settings.database_path, 15)
+
+
+def test_filtered_map_uses_effective_capture_and_gps_and_restore(lifecycle):
+    client, _, _ = lifecycle
+    photo = upload(client, gps_metadata_jpeg_bytes()).json()
+    original_filters = {"taken_from": "2024-05-24", "taken_to": "2024-05-24"}
+    edited_filters = {"taken_from": "2026-01-01", "taken_to": "2026-01-01"}
+
+    def points(filters):
+        return client.get("/catalog/map", params=filters).json()
+
+    assert points(original_filters)[0]["latitude"] == 46
+    photo = patch(client, photo, latitude=None, longitude=None).json()
+    assert points(original_filters) == []
+    photo = patch(client, photo, latitude=0, longitude=0).json()
+    assert points(original_filters)[0]["latitude"] == 0
+    photo = patch(
+        client,
+        photo,
+        latitude=12,
+        longitude=13,
+        captured_at="2026-01-01T23:59:59",
+        captured_at_offset_minutes=-600,
+    ).json()
+    assert points(original_filters) == []
+    assert points(edited_filters)[0]["longitude"] == 13
+    photo = patch(
+        client, photo, captured_at=None, captured_at_offset_minutes=None
+    ).json()
+    assert points(edited_filters) == []
+    photo = patch(client, photo, restore_original_metadata=True).json()
+    assert points(edited_filters) == []
+    assert points(original_filters)[0]["latitude"] == photo["latitude"] == 46
+    assert points(original_filters)[0]["captured_at"] == photo["captured_at"]

@@ -1,25 +1,15 @@
 "use client";
 
-import { CatalogTaxonOption, PhotoStatus } from "../../lib/api";
+import Link from "next/link";
+import { CatalogTaxonOption } from "../../lib/api";
 import { CatalogLayout, CatalogSortOption } from "../../lib/catalog-query";
 
-export type StatusFilter = "all" | PhotoStatus;
-
-export const UNKNOWN_CATEGORY_VALUE = "__unknown__";
-
-const statusFilters: StatusFilter[] = [
-  "all",
-  "pending",
-  "classified",
-  "needs_review",
-];
-
-const statusLabels: Record<StatusFilter, string> = {
-  all: "All statuses",
-  pending: "Pending",
-  classified: "Classified",
-  needs_review: "Needs review",
-};
+import {
+  CatalogCategoryFilter, CatalogDateFilters, CatalogStatusFilter, CatalogTaxonFilter,
+  StatusFilter,
+} from "./catalog-filter-controls";
+export { UNKNOWN_CATEGORY_VALUE } from "./catalog-filter-controls";
+export type { StatusFilter } from "./catalog-filter-controls";
 
 const sortLabels: Record<CatalogSortOption, string> = {
   newest: "Added, newest first",
@@ -68,6 +58,8 @@ type CatalogToolbarProps = {
   onResetFilters: () => void;
   onEnterSelectionMode: () => void;
   onSaveSmartCollection?: () => void;
+  mapHref?: string;
+  mapDisabled?: boolean;
 };
 
 export default function CatalogToolbar({
@@ -102,7 +94,15 @@ export default function CatalogToolbar({
   onResetFilters,
   onEnterSelectionMode,
   onSaveSmartCollection,
+  mapHref,
+  mapDisabled,
 }: CatalogToolbarProps) {
+  const filterProps = {
+    statusFilter, categoryFilter, takenFrom, takenTo, categoryOptions,
+    hasUnknownCategory, taxonId, taxonOptions, taxaLoading, taxaError, hasMoreTaxa,
+    onStatusChange, onCategoryChange, onTakenFromChange, onTakenToChange,
+    onTaxonFocus, onTaxonChange, onLoadMoreTaxa,
+  };
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
@@ -119,93 +119,11 @@ export default function CatalogToolbar({
           />
         </label>
 
-        <div>
-          <label className="block">
-            <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
-              Verified taxon
-            </span>
-            <select
-              value={taxonId ? String(taxonId) : ""}
-              onFocus={onTaxonFocus}
-              onChange={(event) =>
-                onTaxonChange(
-                  event.target.value ? Number(event.target.value) : undefined,
-                )
-              }
-              className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-            >
-              <option value="">All verified taxa</option>
-              {taxonOptions.map((taxon) => (
-                <option key={taxon.taxon_id} value={taxon.taxon_id}>
-                  {taxon.label} ({taxon.count})
-                </option>
-              ))}
-            </select>
-          </label>
-          {hasMoreTaxa ? (
-            <button
-              type="button"
-              disabled={taxaLoading}
-              onClick={onLoadMoreTaxa}
-              className="mt-1 text-xs font-semibold text-emerald-800 underline disabled:opacity-50"
-            >
-              {taxaLoading ? "Loading taxa…" : "Load more taxa"}
-            </button>
-          ) : taxaError ? (
-            <button
-              type="button"
-              onClick={onTaxonFocus}
-              className="mt-1 text-xs font-semibold text-red-700 underline"
-            >
-              Retry taxa
-            </button>
-          ) : null}
-        </div>
+        <CatalogTaxonFilter {...filterProps} />
 
-        <label className="block">
-          <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
-            Status
-          </span>
-          <select
-            value={statusFilter}
-            onChange={(event) =>
-              onStatusChange(event.target.value as StatusFilter)
-            }
-            className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-          >
-            {statusFilters.map((filter) => (
-              <option key={filter} value={filter}>
-                {statusLabels[filter]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CatalogStatusFilter {...filterProps} />
 
-        <label className="block">
-          <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
-            Category
-          </span>
-          <select
-            value={categoryFilter}
-            onChange={(event) => onCategoryChange(event.target.value)}
-            className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-          >
-            <option value="all">All categories</option>
-            {hasUnknownCategory || categoryFilter === UNKNOWN_CATEGORY_VALUE ? (
-              <option value={UNKNOWN_CATEGORY_VALUE}>Unknown</option>
-            ) : null}
-            {categoryFilter !== "all" &&
-            categoryFilter !== UNKNOWN_CATEGORY_VALUE &&
-            !categoryOptions.includes(categoryFilter) ? (
-              <option value={categoryFilter}>{categoryFilter}</option>
-            ) : null}
-            {categoryOptions.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CatalogCategoryFilter {...filterProps} />
 
         <label className="block">
           <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
@@ -227,36 +145,7 @@ export default function CatalogToolbar({
         </label>
       </div>
 
-      <div className="mt-4 grid gap-3 border-t border-stone-100 pt-4 sm:grid-cols-2 lg:max-w-xl">
-        <label className="block">
-          <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
-            Taken from
-          </span>
-          <input
-            type="date"
-            value={takenFrom ?? ""}
-            max={takenTo}
-            onChange={(event) =>
-              onTakenFromChange(event.target.value || undefined)
-            }
-            className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
-            Taken to
-          </span>
-          <input
-            type="date"
-            value={takenTo ?? ""}
-            min={takenFrom}
-            onChange={(event) =>
-              onTakenToChange(event.target.value || undefined)
-            }
-            className="mt-2 min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm text-stone-950 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-          />
-        </label>
-      </div>
+      <CatalogDateFilters {...filterProps} />
 
       <div className="mt-4 flex flex-col gap-3 border-t border-stone-100 pt-4 text-sm text-stone-500 lg:flex-row lg:items-center lg:justify-between">
         <p>
@@ -264,8 +153,13 @@ export default function CatalogToolbar({
           of <span className="font-semibold text-stone-800">{totalCount}</span>{" "}
           {totalCount === 1 ? "record" : "records"}
         </p>
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:justify-end">
           <p>Backend-filtered local collection.</p>
+          {mapHref ? <div>
+            {mapDisabled ? <button type="button" disabled aria-describedby="map-search-explanation" className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold opacity-50">View on Map</button>
+              : <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">View on Map</Link>}
+            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear text search to view these filters on Map.</p> : null}
+          </div> : null}
           {onSaveSmartCollection ? <button type="button" onClick={onSaveSmartCollection} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Save as Smart Collection</button> : null}
           {hasActiveFilters ? (
             <button

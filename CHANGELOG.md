@@ -6,6 +6,12 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- URL-restorable Map catalog filters for category/Unknown, verified Taxon,
+  classification status, and inclusive capture dates. Map and List share query
+  semantics and effective capture/GPS metadata; View in List and View on Map
+  carry compatible criteria. Mapped counts exclude missing GPS and Trash;
+  text search remains deferred. Filtering updates clusters without rebuilding
+  the Leaflet map.
 - Editable capture date/time, optional UTC offset, and GPS in Photo metadata.
   Schema 15 retains extracted values and protects manual corrections and clears
   from backfill. Restore original metadata re-reads trusted originals without

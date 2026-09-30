@@ -203,7 +203,7 @@ class Oracle:
         if scenario.kind == "map":
             expected = [
                 row
-                for row in self.active
+                for row in sorted(self.matches(scenario), key=lambda row: row["id"])
                 if row["latitude"] is not None and row["longitude"] is not None
             ]
             require(

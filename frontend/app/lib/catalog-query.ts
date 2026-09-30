@@ -22,6 +22,34 @@ export type CatalogSortOption =
   | "pending_first";
 
 export type CatalogState = CatalogQuery & { layout: CatalogLayout };
+export type MapCatalogQuery = Pick<CatalogQuery,
+  "status" | "category" | "uncategorized" | "taxon_id" | "taken_from" | "taken_to"
+>;
+
+export function mapCatalogQuery(state: MapCatalogQuery): MapCatalogQuery {
+  const { status, category, uncategorized, taxon_id, taken_from, taken_to } = state;
+  return { status, category, uncategorized, taxon_id, taken_from, taken_to };
+}
+
+export function writeMapCatalogState(current: URLSearchParams, state: MapCatalogQuery) {
+  const params = new URLSearchParams(current);
+  for (const key of Array.from(params.keys())) {
+    if (key.startsWith("catalog_") || key === "view" || key === "smart_edit") params.delete(key);
+  }
+  return writeCatalogState(params, { ...DEFAULT_CATALOG_STATE, ...mapCatalogQuery(state) });
+}
+
+export function mapCatalogHref(state: MapCatalogQuery) {
+  const query = writeMapCatalogState(new URLSearchParams(), state).toString();
+  return query ? `/map?${query}` : "/map";
+}
+
+export function mapListHref(state: CatalogState) {
+  const query = writeCatalogState(new URLSearchParams(), {
+    ...DEFAULT_CATALOG_STATE, ...mapCatalogQuery(state), search: state.search,
+  }).toString();
+  return query ? `/?${query}` : "/";
+}
 
 export const DEFAULT_CATALOG_STATE: CatalogState = {
   page: 1,

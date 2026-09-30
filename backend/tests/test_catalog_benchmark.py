@@ -122,7 +122,7 @@ def test_all_scenarios_and_smart_parity_use_production_services(archive, monkeyp
                 item for item in scenarios if item.name == scenario.equivalent
             )
             assert response.model_dump() == runner.invoke(engine, normal).model_dump()
-    assert len(scenarios) == 56
+    assert len(scenarios) == 67
     assert catalog_calls and len(smart_calls) == 10
     expected = {
         "search_none": 0,
@@ -363,7 +363,13 @@ def test_small_report_correctness_schema_privacy_and_cleanup(tmp_path):
     assert report["methodology"]["experimental_fts"] is False
     dataset = report["datasets"][0]
     assert dataset["distributions"]["photos"] == 60
-    assert len(dataset["scenarios"]) == 56
+    assert len(dataset["scenarios"]) == 67
+    map_scenarios = [item for item in dataset["scenarios"] if item["kind"] == "map"]
+    assert len(map_scenarios) == 12
+    assert all(
+        item["query_count"] == 1 and item["criteria"] is not None
+        for item in map_scenarios
+    )
     assert len(dataset["smart_comparisons"]) == 5
     assert len(dataset["assessments"]) == 7
     assert set(dataset["phases_ms"]) == {

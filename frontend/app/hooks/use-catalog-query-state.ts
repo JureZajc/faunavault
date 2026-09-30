@@ -11,10 +11,11 @@ import {
   parseHomeView,
   writeCatalogState,
   writeHomeView,
+  writeMapCatalogState,
 } from "../lib/catalog-query";
 import { PhotoStatus } from "../lib/api";
 
-export function useCatalogQueryState() {
+export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
   const router = useRouter();
   const routerRef = useRef(router);
   const pathname = usePathname();
@@ -48,11 +49,11 @@ export function useCatalogQueryState() {
   const updateCatalog = useCallback(
     (nextState: typeof catalogState, replace = false) => {
       navigate(
-        writeCatalogState(new URLSearchParams(paramsString), nextState),
+        (mode === "map" ? writeMapCatalogState : writeCatalogState)(new URLSearchParams(paramsString), nextState),
         replace,
       );
     },
-    [navigate, paramsString],
+    [mode, navigate, paramsString],
   );
 
   useEffect(() => {
@@ -144,7 +145,7 @@ export function useCatalogQueryState() {
         taken_from: undefined,
         taken_to: undefined,
       },
-      true,
+      mode !== "map",
     );
   }
 

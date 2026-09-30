@@ -42,7 +42,7 @@ class Scenario:
         if self.kind == "detail":
             return smart_collections.get_smart_collection(self.collection_id, session)
         if self.kind == "map":
-            return catalog.list_photo_map_points(session)
+            return catalog.list_photo_map_points(session, self.query)
         if self.kind == "timeline":
             return catalog.get_photo_timeline(session)
         if self.kind == "taxa":
@@ -176,5 +176,17 @@ def build_scenarios(dataset: Dataset, session: Session) -> list[Scenario]:
             Scenario("map", "supporting paths", kind="map"),
             Scenario("taxa", "supporting paths", kind="taxa"),
         )
+    )
+    result.extend(
+        Scenario(
+            f"map_{name}",
+            "filtered Map projection",
+            kind="map",
+            query=CatalogSavedQuery(**criteria),
+        )
+        for name, criteria in {
+            **filters,
+            "empty": {"category": "no-such-category"},
+        }.items()
     )
     return result

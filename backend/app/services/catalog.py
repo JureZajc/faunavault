@@ -6,6 +6,7 @@ from datetime import date, datetime, time, timedelta
 from sqlalchemy import Integer, String, and_, case, cast, func, or_
 from sqlmodel import Session, select
 
+from app.catalog_query import CatalogSavedQuery
 from app.models import Animal, Photo, Taxon
 from app.schemas import (
     CatalogCategoryFacet,
@@ -185,7 +186,7 @@ def _order_by(sort: str, order: str) -> list:
     ]
 
 
-def _catalog_facets(session: Session) -> CatalogFacets:
+def get_catalog_facets(session: Session) -> CatalogFacets:
     active = Photo.deleted_at.is_(None)
     status_counts = {"pending": 0, "classified": 0, "needs_review": 0}
     for status, count in session.exec(
@@ -217,6 +218,46 @@ def _catalog_facets(session: Session) -> CatalogFacets:
     )
 
 
+def _catalog_joins(query, criteria: CatalogSavedQuery):
+    if criteria.taxon_id is not None:
+        return query.join(Animal, Photo.animal_id == Animal.id).join(
+            Taxon, Animal.taxon_id == Taxon.id
+        )
+    if criteria.search:
+        return query.outerjoin(Animal, Photo.animal_id == Animal.id).outerjoin(
+            Taxon, Animal.taxon_id == Taxon.id
+        )
+    return query
+
+
+def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
+    conditions = [Photo.deleted_at.is_(None)]
+    if criteria.search:
+        conditions.extend(_search_conditions(criteria.search))
+    if criteria.status:
+        conditions.append(Photo.status == criteria.status)
+    if criteria.uncategorized:
+        conditions.append(
+            or_(Photo.category.is_(None), func.trim(Photo.category) == "")
+        )
+    elif criteria.category:
+        conditions.append(Photo.category == criteria.category)
+    if criteria.taxon_id is not None:
+        conditions.append(Taxon.id == criteria.taxon_id)
+    if criteria.taken_from is not None:
+        conditions.append(
+            Photo.captured_at >= datetime.combine(criteria.taken_from, time.min)
+        )
+    if criteria.taken_to is not None:
+        upper_bound = (
+            datetime.max
+            if criteria.taken_to == date.max
+            else datetime.combine(criteria.taken_to + timedelta(days=1), time.min)
+        )
+        conditions.append(Photo.captured_at < upper_bound)
+    return conditions
+
+
 def list_catalog_photos(
     session: Session,
     *,
@@ -232,52 +273,24 @@ def list_catalog_photos(
     sort: str,
     order: str,
 ) -> CatalogPhotoPage:
-    has_search = bool(search and search.strip())
-    items_query = select(Photo).select_from(Photo)
-    count_query = select(func.count(Photo.id)).select_from(Photo)
-    if taxon_id is not None:
-        items_query = items_query.join(Animal, Photo.animal_id == Animal.id).join(
-            Taxon,
-            Animal.taxon_id == Taxon.id,
-        )
-        count_query = count_query.join(
-            Animal,
-            Photo.animal_id == Animal.id,
-        ).join(Taxon, Animal.taxon_id == Taxon.id)
-    elif has_search:
-        items_query = items_query.outerjoin(
-            Animal, Photo.animal_id == Animal.id
-        ).outerjoin(
-            Taxon,
-            Animal.taxon_id == Taxon.id,
-        )
-        count_query = count_query.outerjoin(
-            Animal,
-            Photo.animal_id == Animal.id,
-        ).outerjoin(Taxon, Animal.taxon_id == Taxon.id)
-
-    conditions = [Photo.deleted_at.is_(None)]
-    if has_search:
-        conditions.extend(_search_conditions(search.strip()))
-    if status:
-        conditions.append(Photo.status == status)
-    if uncategorized:
-        conditions.append(
-            or_(Photo.category.is_(None), func.trim(Photo.category) == "")
-        )
-    elif category:
-        conditions.append(Photo.category == category)
-    if taxon_id is not None:
-        conditions.append(Taxon.id == taxon_id)
-    if taken_from is not None:
-        conditions.append(Photo.captured_at >= datetime.combine(taken_from, time.min))
-    if taken_to is not None:
-        upper_bound = (
-            datetime.max
-            if taken_to == date.max
-            else datetime.combine(taken_to + timedelta(days=1), time.min)
-        )
-        conditions.append(Photo.captured_at < upper_bound)
+    criteria = CatalogSavedQuery(
+        search=search,
+        status=status,
+        category=category,
+        uncategorized=uncategorized,
+        taxon_id=taxon_id,
+        taken_from=taken_from,
+        taken_to=taken_to,
+        sort=sort,
+        order=order,
+    )
+    search = criteria.search
+    has_search = bool(search)
+    items_query = _catalog_joins(select(Photo).select_from(Photo), criteria)
+    count_query = _catalog_joins(
+        select(func.count(Photo.id)).select_from(Photo), criteria
+    )
+    conditions = _catalog_conditions(criteria)
 
     selective_photo_filters = bool(
         status
@@ -326,12 +339,15 @@ def list_catalog_photos(
         page_size=page_size,
         total=total,
         total_pages=math.ceil(total / page_size) if total else 0,
-        facets=_catalog_facets(session),
+        facets=get_catalog_facets(session),
     )
 
 
-def list_photo_map_points(session: Session) -> list[PhotoMapPoint]:
-    rows = session.exec(
+def list_photo_map_points(
+    session: Session, criteria: CatalogSavedQuery | None = None
+) -> list[PhotoMapPoint]:
+    criteria = criteria or CatalogSavedQuery()
+    query = _catalog_joins(
         select(
             Photo.id,
             Photo.latitude,
@@ -342,13 +358,15 @@ def list_photo_map_points(session: Session) -> list[PhotoMapPoint]:
             Photo.common_name,
             Photo.species_guess,
             Photo.captured_at,
-        )
-        .where(
-            Photo.deleted_at.is_(None),
+        ).select_from(Photo),
+        criteria,
+    )
+    rows = session.exec(
+        query.where(
+            *_catalog_conditions(criteria),
             Photo.latitude.is_not(None),
             Photo.longitude.is_not(None),
-        )
-        .order_by(Photo.id.asc())
+        ).order_by(Photo.id.asc())
     ).all()
     return [
         PhotoMapPoint(

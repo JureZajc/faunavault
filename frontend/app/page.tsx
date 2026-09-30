@@ -34,7 +34,7 @@ import {
   SmartCollection,
   updateSmartCollection,
 } from "./lib/api";
-import { catalogSortOption } from "./lib/catalog-query";
+import { catalogSortOption, mapCatalogHref } from "./lib/catalog-query";
 import { savedQueryFromState } from "./lib/smart-collections";
 
 function HomeContent() {
@@ -308,6 +308,8 @@ function HomeContent() {
           <>
             {editId !== null ? <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection ? ` “${editCollection.name}”` : ""}</p><p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>{editError ? <p role="alert" className="mt-2 text-sm text-red-700">{editError} <button type="button" onClick={() => { setEditError(null); void getSmartCollection(editId).then(setEditCollection).catch((error) => setEditError(error instanceof Error ? error.message : "Could not load Smart Collection")); }} className="underline">Retry</button></p> : null}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!editCollection || savingCriteria} onClick={async () => { setSavingCriteria(true); setEditError(null); try { await updateSmartCollection(editId, { query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); } catch (nextError) { setEditError(nextError instanceof Error ? nextError.message : "Could not save criteria"); } finally { setSavingCriteria(false); } }} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button><button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button></div></div> : null}
             <CatalogToolbar
+              mapHref={mapCatalogHref(query.catalogState)}
+              mapDisabled={Boolean(query.catalogState.search || query.searchInput.trim())}
               searchQuery={query.searchInput}
               statusFilter={statusFilter}
               categoryFilter={categoryFilter}
@@ -357,7 +359,7 @@ function HomeContent() {
               }}
               onViewModeChange={query.setLayout}
               onTaxonFocus={() => {
-                if (!taxa.isLoaded && !taxa.isLoading) void taxa.load();
+                if ((!taxa.isLoaded || taxa.error) && !taxa.isLoading) void taxa.load();
               }}
               onTaxonChange={(value) => {
                 selection.reset();
