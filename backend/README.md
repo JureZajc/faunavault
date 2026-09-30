@@ -36,7 +36,8 @@ archive integrity scan. Core readiness does not depend on Ollama.
 `/smart-collections` stores version-one, validated catalog criteria separately
 from manual Collection memberships. Create and PATCH use `query_version: 1`
 and a structured `query` of search, status, category/uncategorized, taxon ID,
-capture dates, sort, and order. `/smart-collections/{id}/photos` calls the same
+capture dates, Favorites, exact/minimum/Unrated rating criteria, sort, and order.
+`/smart-collections/{id}/photos` calls the same
 active Photo catalog query as `/catalog/photos`, with bounded pagination and a
 SQL count. List responses omit live counts to avoid one query per saved search.
 An unknown or damaged stored query is reported on that collection and can be

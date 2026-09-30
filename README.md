@@ -4,7 +4,7 @@ FaunaVault is a local-first animal photo archive for one person on one machine.
 Original photos and previews stay on your filesystem, metadata lives in SQLite,
 and optional AI classification runs through local Ollama vision models.
 
-**v0.1.0** is a source-based release. [Release notes](CHANGELOG.md) ·
+**v0.2.0** is a source-based release. [Release notes](CHANGELOG.md) ·
 [MIT license](LICENSE)
 
 ![FaunaVault album view](faunavault-album-desktop.png)
@@ -17,7 +17,12 @@ and optional AI classification runs through local Ollama vision models.
   extracted values and Restore original metadata. [Editing guide](docs/OPERATIONS.md#editable-capture-metadata-v02).
 - Search, filters, sorting, Timeline, clustered Map, species Albums, manual
   Collections, and live Smart Collections.
-- Explicit cross-page selection for bulk tags, category, Collections, and Trash.
+- URL-restorable Map filters and compatible List navigation.
+  [Map guide](docs/OPERATIONS.md#map-filters-and-list-navigation).
+- Personal Favorites and 1–5-star Ratings, with List filters, rating sorting,
+  Smart Collection criteria, and bulk actions. [Curation guide](docs/OPERATIONS.md#photo-favorites-and-ratings).
+- Explicit cross-page selection for bulk tags, category, Collections, curation,
+  and recoverable Trash.
 - SHA-256 exact duplicate protection and conservative visual duplicate review.
 - Duplicate Review Center for archive curation, persistent Keep both decisions,
   and recoverable Trash actions; explicit local scans discover existing pairs.
@@ -25,30 +30,6 @@ and optional AI classification runs through local Ollama vision models.
   manual editing, and local taxonomy with GBIF lookup.
 - Recoverable Trash, confirmed permanent deletion, archive diagnostics,
   verified cold backups, isolated recovery rehearsal, and portable metadata export.
-
-## Map filters and List navigation
-
-Photo Map supports the same category (including Unknown), verified Taxon,
-classification status, and inclusive camera-local capture dates as List and
-Smart Collections. Open **Filters** on Map to combine these criteria. Filters
-are stored in the URL; reload, copied links, and browser Back/Forward restore them.
-For example:
-
-```text
-/map?catalog_category=bird&catalog_taken_from=2026-01-01&catalog_taken_to=2026-12-31
-```
-
-**View in List** opens the normal catalog with equivalent filters. Its results
-also include matching Photos without GPS. **View on Map** in List carries the
-supported filters and omits pagination, sorting, and layout. Clear text search
-first: Map text search is deliberately deferred, and searched Lists explain why
-the action is disabled.
-
-The mapped-photo count includes only matching active Photos with complete
-location data. Manual GPS and capture corrections, clears, and Restore original
-metadata use the same effective values as List. Trash Photos remain excluded.
-Popup Photo links preserve filters when returning to Map. Map filters do not save
-viewport/zoom, selection, or Smart Collection definitions.
 
 ## Requirements
 
@@ -205,7 +186,8 @@ own API URL, so restart/rebuild normal frontend development afterward.
 - [Measured catalog scale and R5 results](docs/CATALOG_BENCHMARK.md)
 - [Engineering baseline and deferred work](docs/IMPROVEMENT_PLAN.md)
 - [Maintainer release procedure](docs/RELEASE.md)
-- [Release-readiness implementation and validation report](docs/RELEASE_READINESS.md)
+- [v0.2.0 release readiness and prepared GitHub notes](docs/RELEASE_READINESS_V0.2.0.md)
+- [Historical v0.1.0 readiness report](docs/RELEASE_READINESS.md)
 
 ## Current limitations
 
@@ -228,18 +210,3 @@ own API URL, so restart/rebuild normal frontend development afterward.
 
 The project uses the MIT license. The committed HEIC compatibility fixture
 retains its [BSD-3-Clause notice](backend/tests/fixtures/heic/LICENSE.txt).
-
-## Photo Favorites and Ratings
-
-Use the Favorite toggle and five-star Rating control on Photo detail without
-entering metadata edit mode. Clear rating returns the Photo to unrated; ratings
-are optional integers 1–5. Favorite and Rating are independent personal choices
-and never affect AI review status. Cards show compact indicators.
-
-List offers Favorites only, exact/minimum rating, and Unrated filters. Rating
-sorting puts unrated Photos last in either direction. Filters survive copied
-URLs, refresh, and browser history, and can be saved as Smart Collections.
-Select explicit Photos to Favorite/Unfavorite or set/clear ratings in bulk.
-Trash and restore preserve curation. Portable export v7 and schema-16 verified
-backups/recovery preserve both fields. Map and Timeline do not offer these
-filters; View on Map explains when List criteria are unsupported.

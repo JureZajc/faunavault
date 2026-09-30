@@ -175,7 +175,8 @@ Photo is in Trash.
 Each Smart Collection exports `id`, `name`, `query_version`, structured `query`,
 `created_at`, and `updated_at`. Query version 1 contains the supported catalog
 search, status, category or uncategorized, verified taxon ID, capture date range,
-sort, and order. Smart Collections have no Photo membership pairs.
+sort, order, Favorites, and exact/minimum/Unrated rating criteria. Smart
+Collections have no Photo membership pairs.
 
 Photo `animal_id` and Animal `taxon_id` are either JSON `null` or references to
 records present in the same export. Every Collection membership references both
@@ -206,6 +207,8 @@ fixed columns are:
 
 ```text
 photo_id
+is_favorite
+rating
 lifecycle_state
 original_filename
 archive_relative_original_path

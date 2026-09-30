@@ -2,32 +2,38 @@
 
 Release entries describe user-visible milestones rather than individual commits.
 
-## [Unreleased]
+## [0.2.0] - 2026-09-30
 
 ### Added
 
-- Personal Photo Favorites and optional 1–5-star Ratings, with direct accessible
-  detail controls and subtle card/duplicate-comparison indicators. List supports
-  Favorites, exact/minimum/Unrated rating filters, URL-restorable criteria, and
-  deterministic null-last rating sorting. Smart Collections share these criteria;
-  explicit atomic bulk actions set/unset Favorite and set/clear Rating. Schema 16,
-  portable export v7, and backup-v1 verification/rehearsal preserve curation,
-  including through Trash/restore, independently of AI Review.
-- URL-restorable Map catalog filters for category/Unknown, verified Taxon,
-  classification status, and inclusive capture dates. Map and List share query
-  semantics and effective capture/GPS metadata; View in List and View on Map
-  carry compatible criteria. Mapped counts exclude missing GPS and Trash;
-  text search remains deferred. Filtering updates clusters without rebuilding
-  the Leaflet map.
-- Editable capture date/time, optional UTC offset, and GPS in Photo metadata.
-  Schema 15 retains extracted values and protects manual corrections and clears
-  from backfill. Restore original metadata re-reads trusted originals without
-  modifying image bytes. Backup/rehearsal and portable export v6 preserve
-  correction provenance; Timeline, Map, catalog, and Smart Collections use
-  effective values.
-- Duplicate Review Center for persistent pairwise visual review, Keep both decisions,
-  recoverable Trash actions, and explicit guarded archive scans. Schema 14 retains
-  review decisions in verified backups and recovery rehearsals.
+- Duplicate Review Center with persistent Keep both / Not duplicates decisions,
+  pairwise comparisons, recoverable Trash actions, and explicit guarded scans
+  for existing archive photos. Unresolved pairs return on restore; dismissed
+  pairs stay dismissed while their fingerprint evidence is unchanged.
+- Editable camera-local capture date/time, optional UTC offset, and GPS, with
+  retained extracted values and Restore original metadata. Timeline, Map, List,
+  and Smart Collections use the effective corrected values.
+- URL-restorable Map filters for category/Unknown, verified Taxon,
+  classification status, and inclusive capture dates. Map → List and compatible
+  List → Map navigation preserve criteria; unsupported text and Favorite/Rating
+  filters are explained instead of silently dropped.
+- Personal Favorites and optional 1–5-star Ratings, accessible detail controls,
+  and compact comparison/card indicators. List supports Favorites,
+  exact/minimum/Unrated filters and null-last rating sorting. Smart Collections
+  share these criteria; explicit atomic bulk actions set/unset Favorite and
+  set/clear Rating independently of AI Review.
+
+### Reliability and data safety
+
+- Ordered migrations through schema 16 preserve existing archives and initialize
+  new curation fields safely. Manual capture/GPS corrections and intentional
+  clears survive backfill and Trash/restore without modifying original bytes.
+- Backup format v1 verification and isolated recovery rehearsal support schemas
+  9–16, preserving duplicate-review decisions, retained extraction, manual
+  overrides, Favorites, Ratings, and Smart Collection definitions.
+- Portable JSON/CSV metadata export v7 includes effective/source capture and GPS
+  values, override markers, Favorites, and Ratings. Duplicate workflow state
+  remains deliberately excluded; verified backups preserve it for recovery.
 
 ## 0.1.0
 
