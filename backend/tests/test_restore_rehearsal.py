@@ -27,6 +27,7 @@ from app.migrations import LATEST_SCHEMA_VERSION
 from app.models import Animal, ClassificationJob, Photo
 from app.services.albums import list_albums
 from app.services.archive_maintenance import Finding, HealthResult
+from app.storage_startup import initialize_archive_storage
 
 FIXTURE = Path(__file__).parent / "fixtures" / "backup_v1_schema9"
 
@@ -184,6 +185,75 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
             ).read_bytes() == source.read_bytes()
     assert _fingerprint(backup) == source_before
     assert _fingerprint(FIXTURE) == fixture_before
+
+
+def test_schema13_upgrade_failure_preserves_originals_and_retries(
+    tmp_path, monkeypatch
+):
+    fixture_before = _fingerprint(FIXTURE)
+    backup = _intermediate_backup(tmp_path, monkeypatch, 13)
+    source_before = _fingerprint(backup)
+    assert verify_backup(backup).valid
+    runtime = tmp_path / "runtime"
+    shutil.copytree(backup, runtime)
+    database = runtime / DATABASE_BACKUP_PATH
+    settings = Settings(
+        _env_file=None,
+        data_dir=database.parent,
+        image_dir=runtime / "images",
+        database_url=f"sqlite:///{database}",
+    )
+    with sqlite3.connect(database) as connection:
+        database_before = tuple(connection.iterdump())
+    originals_before = _fingerprint(settings.image_dirs["original"])
+    existing_backups = set(database.parent.glob("*.pre-migrate-*.db"))
+    engine = create_database_engine(settings)
+    try:
+        with monkeypatch.context() as patch:
+
+            def fail_migration(_connection):
+                raise RuntimeError("injected schema-16 migration failure")
+
+            patch.setattr(migrations_module, "_migration_16", fail_migration)
+            with pytest.raises(RuntimeError, match="schema-16 migration failure"):
+                initialize_archive_storage(engine, settings)
+        with sqlite3.connect(database) as connection:
+            assert [
+                row[0]
+                for row in connection.execute(
+                    "SELECT version FROM schema_migration ORDER BY version"
+                )
+            ] == list(range(1, 16))
+        new_backups = set(database.parent.glob("*.pre-migrate-*.db")) - existing_backups
+        assert len(new_backups) == 1
+        migration_backup = new_backups.pop()
+        with sqlite3.connect(migration_backup) as connection:
+            assert tuple(connection.iterdump()) == database_before
+            assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+            assert connection.execute(
+                "SELECT MAX(version) FROM schema_migration"
+            ).fetchone() == (13,)
+        assert _fingerprint(settings.image_dirs["original"]) == originals_before
+        assert initialize_archive_storage(engine, settings).applied_migrations == (16,)
+        assert initialize_archive_storage(engine, settings).applied_migrations == ()
+        with sqlite3.connect(database) as connection:
+            assert [
+                row[0]
+                for row in connection.execute(
+                    "SELECT version FROM schema_migration ORDER BY version"
+                )
+            ] == list(range(1, 17))
+            assert connection.execute(
+                "SELECT is_favorite, rating FROM photo ORDER BY id"
+            ).fetchall() == [(0, None), (0, None)]
+            assert connection.execute(
+                "SELECT captured_at, extracted_captured_at, capture_metadata_overridden, location_metadata_overridden FROM photo WHERE id=1"
+            ).fetchone() == ("2024-05-24T18:42:00", "2024-05-24T18:42:00", 0, 0)
+        assert _fingerprint(settings.image_dirs["original"]) == originals_before
+        assert _fingerprint(backup) == source_before
+        assert _fingerprint(FIXTURE) == fixture_before
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize(

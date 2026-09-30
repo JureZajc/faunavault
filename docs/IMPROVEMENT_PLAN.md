@@ -117,8 +117,8 @@ framework.
 ## Current product feature: user-defined Photo Collections
 
 Schema 10 adds normalized persisted Collections and many-to-many Photo
-membership. The six peer destinations are List, Timeline, Map, Albums,
-Collections, and Trash.
+membership. The eight peer destinations are List, Timeline, Map, Albums,
+Collections, Review, Duplicates, and Trash.
 Users can create, rename, and delete Collections, add explicitly selected active
 Photos, and remove one or many memberships without changing Photo files or
 metadata. Recoverable Trash preserves membership, while permanent Photo deletion
@@ -129,7 +129,8 @@ Backup format v1 explicitly verifies and rehearses database schemas 9 through
 rehearsals compare Collection metadata and membership exactly; schema-11 also
 compares durable capture metadata; schema 12 preserves review timestamps and
 schema 13 preserves Smart Collection definitions; schema 14 preserves duplicate
-curation; schema 15 retains extracted capture/GPS and manual override state.
+curation; schema 15 retains extracted capture/GPS and manual override state;
+schema 16 preserves Favorites and Ratings.
 Current metadata export v7
 includes capture fields, review timestamps, deterministic Collection records,
 Trash memberships, versioned Smart Collection definitions, and capture/GPS
@@ -171,7 +172,8 @@ Map now shares validated catalog predicates and reusable filter controls with Li
 category/Unknown, verified Taxon, classification status, and inclusive camera-local
 capture dates. URL state restores on reload and Back/Forward. View in List carries
 equivalent criteria; View on Map omits List presentation state and is disabled with
-an explanation during text search. Filter changes replace cluster data while keeping
+an explanation during text search or unsupported Favorite/Rating filtering.
+Filter changes replace cluster data while keeping
 the Leaflet map and tile layer mounted. Counts come from the GPS projection, with
 no separate missing-location count or fully hydrated Photo response.
 
@@ -184,8 +186,8 @@ tile dependency. Map consumes effective persisted capture/GPS values, including
 manual corrections and clears. GPS editing remains in Photo metadata. Reverse
 geocoding, Map text/location search, viewport APIs, spatial indexes, alternate
 layers, saved Map views, and offline tile downloads remain explicitly deferred.
-A bounded next v0.2 feature is opening compatible Smart Collections on Map,
-reusing these predicates without introducing another saved-query format.
+Opening compatible Smart Collections directly on Map remains a future product
+evaluation, outside the v0.2.0 release inventory.
 
 ## Current product feature: Photo Timeline
 
@@ -226,9 +228,9 @@ and conversion UI remain deferred.
 
 ## Recommended next (in order)
 
-The v0.1.0 source-release preparation retains this product baseline, adds portable
-first-run defaults and composed setup diagnostics, and strengthens fresh-run and
-historical recovery coverage. See [Operations](OPERATIONS.md),
+The v0.2.0 source release retains the portable first-run defaults and setup
+diagnostics established for v0.1.0, adds archive curation and metadata correction,
+and preserves historical recovery coverage. See [Operations](OPERATIONS.md),
 [release notes](../CHANGELOG.md), and the [maintainer release procedure](RELEASE.md).
 R1–R5 below are completed historical slices; their measurements are preserved.
 

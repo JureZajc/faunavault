@@ -144,8 +144,9 @@ stopped.
 The main List view uses `GET /catalog/photos`, a backend-paginated and
 backend-filtered API with 48 items by default and a maximum page size of 100. It
 supports `page`, `page_size`, `search`, `status`, `category`, `uncategorized`, `taxon_id`,
-`taken_from`, `taken_to`, `sort`, and `order`. Capture-date bounds are inclusive
-camera-local dates, and `sort=captured_at` keeps unknown capture dates last.
+`taken_from`, `taken_to`, `favorites_only`, `rating`, `rating_min`, `unrated`,
+`sort`, and `order`. Rating criteria are mutually exclusive. Capture-date bounds
+are inclusive camera-local dates, and `sort=captured_at` keeps unknown capture dates last.
 Responses include the filtered `total`, `total_pages`, and
 small global status/category facets. Search is a case-insensitive SQLite
 substring search across photo metadata, tags, animal names, and locally stored
@@ -157,8 +158,9 @@ its display label, scientific name, and active-photo count. The legacy
 `GET /photos` endpoint remains unchanged and still returns the complete active
 Photo array for compatible consumers.
 
-The six peer archive destinations are List, Timeline, Map, Albums, Collections,
-and Trash. Timeline has its own `/timeline` route and reads a compact,
+The eight peer archive destinations are List (`/`), Timeline (`/timeline`), Map
+(`/map`), Albums (`/?view=album`), Collections (`/collections`), Review (`/review`),
+Duplicates (`/duplicates`), and Trash (`/?view=trash`). Timeline reads a compact,
 deterministic `GET /catalog/timeline` projection of active Photos grouped by the
 camera-local year and month stored in `captured_at`. Each month shows four
 newest-captured thumbnail previews and links to the existing List using its
@@ -171,7 +173,7 @@ Map has its own `/map` route and reads a lightweight, deterministic
 `GET /catalog/map` projection containing only active geotagged Photos and the
 metadata needed for markers and previews. Nearby points cluster, exact-coordinate
 points remain distinct through spiderfying, and `/map?photo=<id>` focuses a
-specific active point. Map does not duplicate List filters or bulk selection.
+specific active point. Map shares supported catalog filters but has no bulk selection.
 
 List page, search, filters, sorting, verified taxon, and flat/grouped layout are
 stored in URL search parameters. Refresh, copied URLs, browser Back/Forward,
@@ -184,7 +186,8 @@ context. Search, filter, sort, Map, Albums, Collections, or Trash changes clear 
 page changes do not. Select page means the currently loaded page only, requests
 are capped at 250 photos, and there is no select-all-results behavior. Bulk actions
 can add/remove tags, set or explicitly clear category, add photos to one persisted
-Collection, or move active photos to recoverable Trash. Permanent deletion is
+Collection, set/unset Favorite, set/clear Rating, or move active photos to
+recoverable Trash. Permanent deletion is
 never available as a bulk action.
 
 Collections are manually named groups with stable numeric IDs and explicit
@@ -195,7 +198,8 @@ Membership survives recoverable Trash and becomes visible again on restore;
 permanent Photo deletion removes the corresponding membership rows.
 
 Smart Collections are named saved List queries with live membership. In List,
-set search, status, category or Unknown, verified taxon, capture dates, and sort,
+set search, status, category or Unknown, verified taxon, capture dates, Favorites,
+exact/minimum/Unrated rating criteria, and sort,
 then choose **Save as Smart Collection**. An unfiltered “All photos” query is
 valid. Page, page size, flat/grouped layout, and selection are never saved.
 Find Smart Collections in a separate section under `/collections`; open one at
@@ -212,9 +216,35 @@ replaced from List without affecting other collections.
 `photo_ids`. The backend validates the complete active set before mutation and
 commits metadata changes or Trash/job-state transitions atomically.
 
+## Map filters and List navigation
+
+Photo Map supports the same category (including Unknown), verified Taxon,
+classification status, and inclusive camera-local capture dates as List and
+Smart Collections. Open **Filters** on Map to combine these criteria. Filters
+are stored in the URL; reload, copied links, and browser Back/Forward restore them.
+For example:
+
+```text
+/map?catalog_category=bird&catalog_taken_from=2026-01-01&catalog_taken_to=2026-12-31
+```
+
+**View in List** opens the normal catalog with equivalent filters, including
+matching Photos without GPS. **View on Map** in List carries supported filters
+and omits pagination, sorting, and layout. Text search and Favorite/Rating filters
+are unsupported: List disables this action with an explanation until they are
+cleared. A manually constructed Map URL containing those criteria blocks Map
+results and offers explicit removal or **View in List**, which retains them.
+
+The mapped-photo count includes only matching active Photos with complete
+location data. Manual GPS and capture corrections, clears, and Restore original
+metadata use the same effective values as List. Trash Photos remain excluded.
+Popup Photo links preserve filters when returning to Map. Filters update cluster
+contents without rebuilding the map. Map filters do not save viewport/zoom,
+selection, or Smart Collection definitions.
+
 ## Exact and possible visual duplicates
 
-### Duplicate Review Center (v0.2 development)
+### Duplicate Review Center
 
 Open **Duplicates** (`/duplicates`) to curate possible visual duplicates already
 stored in the archive. The view shows one canonical pair at a time, strongest
@@ -252,7 +282,8 @@ uv run --no-sync faunavault-maintenance duplicates-scan --apply
 ```
 
 The default is a read-only dry run; `--apply` saves candidates and scan status in
-SQLite. Schema 14 must already be initialized by normal startup. Safe configured
+SQLite. The current schema (16 for v0.2.0) must already be initialized by normal
+startup; the command does not migrate storage. Safe configured
 storage and empty staging/purge journals are required. The command compares
 stored `phash64-v1` fingerprints at the same Hamming distance threshold of four,
 including active and Trash Photos. It never decodes images, modifies original
@@ -566,6 +597,7 @@ Backup container compatibility and database recovery compatibility are separate:
 | v1 | 13 | Supported | Verify and rehearse with exact Smart Collection definition checks |
 | v1 | 14 | Supported | Verify and rehearse with duplicate-pair decisions and scan-state preservation |
 | v1 | 15 | Supported | Verify and rehearse with effective capture/GPS, retained extraction, and manual override state |
+| v1 | 16 | Supported | Verify curation structure and values; rehearse with Favorite/Rating preservation and safe older-schema defaults |
 | Other | Any | Unsupported | Reject before target writes |
 | v1 | Other | Not supported until explicitly tested | Reject before target writes |
 
@@ -596,8 +628,9 @@ SHA-256, size, format, decodability and pixel limits; resized/thumbnail format
 and dimensions; perceptual-hash format; and unowned files. It uses a temporary
 SQLite snapshot and verifies that the live inventory did not change during the
 scan. Ordinary orphan files and directories are warnings and are never deleted.
-For schema 11 it also reports partial/invalid dimensions or GPS and a capture
-offset without a capture timestamp; it does not compare stored values to EXIF.
+It also validates capture dimensions, effective/extracted GPS and date/offset
+groups, override markers, duplicate-pair/scan state, and Favorite/Rating structure
+and values. It does not compare stored values to EXIF or discover duplicate pairs.
 
 `backfill-photo-metadata` is also a stopped-archive operation and defaults to a
 dry run. It scans active and Trash Photos by ID, opens authoritative originals
@@ -670,6 +703,12 @@ means unrated. Neither value implies the other or changes AI review state.
 Use detail controls, List Favorites/exact/minimum/Unrated filters, rating sorting
 (unrated last), or explicit selection bulk actions. Smart Collections save the
 same criteria. Map and Timeline retain their limited projection contracts.
+
+Use the Favorite toggle and five-star Rating control on Photo detail without
+entering metadata edit mode. Clear rating returns the Photo to unrated. Native
+radio controls support keyboard rating changes; cards and duplicate comparisons
+show compact indicators. List criteria survive copied URLs, reload, and browser
+history. Select explicit Photos to Favorite/Unfavorite or set/clear ratings in bulk.
 
 Migration 16 adds only the two Photo columns with false/null defaults and
 constraints. Existing metadata and historical migrations are preserved. Trash,

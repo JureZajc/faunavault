@@ -98,7 +98,22 @@ with TestClient(main.app) as client:
     page = client.get("/catalog/photos").json()
     assert page["total"] == 0 and page["items"] == []
     assert client.get("/photos").json() == []
+    timeline = client.get("/catalog/timeline").json()
+    assert timeline["years"] == [] and timeline["unknown_capture_count"] == 0
+    assert client.get("/catalog/map").json() == []
+    albums = client.get("/species-albums").json()
+    assert albums["items"] == [] and albums["total"] == 0
+    assert client.get("/collections").json() == []
     assert client.get("/smart-collections").json() == []
+    inbox = client.get("/review").json()
+    assert inbox["total"] == 0 and inbox["photo"] is None
+    duplicates = client.get("/duplicates/review").json()
+    assert duplicates["total"] == 0 and duplicates["pair"] is None
+    summary = client.get("/duplicates/summary").json()
+    assert summary["unresolved"] == summary["dismissed"] == summary["missing_fingerprints"] == 0
+    assert summary["scan"] is None
+    trash = client.get("/trash/photos").json()
+    assert trash["total"] == 0 and trash["items"] == []
     with main.engine.connect() as connection:
         versions = list(connection.exec_driver_sql("SELECT version FROM schema_migration ORDER BY version").scalars())
         assert versions == list(range(1, LATEST_SCHEMA_VERSION + 1))
@@ -109,6 +124,7 @@ with TestClient(main.app) as client:
             "ix_animal_legacy_species_group", "ix_collection_photo_photo_collection",
         } <= indexes
         connection.exec_driver_sql("SELECT reviewed_at, captured_at, perceptual_hash FROM photo LIMIT 0")
+        connection.exec_driver_sql("SELECT is_favorite, rating FROM photo LIMIT 0")
         connection.exec_driver_sql("SELECT extracted_captured_at, extracted_captured_at_offset_minutes, extracted_latitude, extracted_longitude, capture_metadata_overridden, location_metadata_overridden FROM photo LIMIT 0")
         connection.exec_driver_sql("SELECT status, attempt_count, prompt_version FROM classification_job LIMIT 0")
         connection.exec_driver_sql("SELECT query_version, query_json FROM smart_collection LIMIT 0")
