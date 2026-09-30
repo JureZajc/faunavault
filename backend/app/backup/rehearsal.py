@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -18,6 +19,7 @@ from app.archive_integrity import (
     inspect_database,
     is_link_or_junction,
     open_read_only_database,
+    read_duplicate_signature,
     validate_flat_filename,
 )
 from app.backup.integrity import copy_and_hash_stable
@@ -146,6 +148,8 @@ class RecoverySnapshot:
     collections: tuple[CollectionRecoveryRecord, ...] = ()
     collection_memberships: tuple[tuple[int, int], ...] = ()
     smart_collections: tuple[SmartCollectionRecoveryRecord, ...] = ()
+    duplicate_pairs: str = hashlib.sha256(b"").hexdigest()
+    duplicate_scans: str = hashlib.sha256(b"").hexdigest()
 
 
 @dataclass(frozen=True)
@@ -418,6 +422,12 @@ def _read_schema_13_snapshot(database_path: Path) -> RecoverySnapshot:
             connection.close()
 
 
+def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_13_snapshot(database_path)
+    pairs, scans = read_duplicate_signature(database_path)
+    return replace(base, duplicate_pairs=pairs, duplicate_scans=scans)
+
+
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
     if schema_version == 9:
         return _read_schema_9_snapshot(database_path)
@@ -429,13 +439,15 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
         return _read_schema_12_snapshot(database_path)
     if schema_version == 13:
         return _read_schema_13_snapshot(database_path)
+    if schema_version == 14:
+        return _read_schema_14_snapshot(database_path)
     raise ArchiveIntegrityError(
         f"No recovery metadata reader for schema {schema_version}"
     )
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_13_snapshot(database_path)
+    return _read_schema_14_snapshot(database_path)
 
 
 def _verify_source(backup_path: Path) -> tuple[VerificationResult, str]:
@@ -558,6 +570,11 @@ def _compare_recovery_snapshots(
         raise ArchiveIntegrityError(
             "Smart Collection metadata changed during rehearsal"
         )
+    if (
+        source.duplicate_pairs != current.duplicate_pairs
+        or source.duplicate_scans != current.duplicate_scans
+    ):
+        raise ArchiveIntegrityError("Duplicate review state changed during rehearsal")
     expected_jobs = dict(source.job_counts)
     running = expected_jobs.get("running", 0)
     expected_jobs["running"] = 0

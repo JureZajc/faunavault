@@ -9,6 +9,9 @@ type MoveToTrashButtonProps = {
   onMoved: (photo: Photo) => void | Promise<void>;
   onError?: (message: string) => void;
   className?: string;
+  label?: string;
+  disabled?: boolean;
+  onBusyChange?: (busy: boolean) => void;
 };
 
 export default function MoveToTrashButton({
@@ -16,16 +19,21 @@ export default function MoveToTrashButton({
   onMoved,
   onError,
   className,
+  label = "Move to Trash",
+  disabled = false,
+  onBusyChange,
 }: MoveToTrashButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const movingGuard = useRef(false);
 
   function closeDialog() {
     if (isMoving) return;
     setIsOpen(false);
+    onBusyChange?.(false);
     setDialogError(null);
   }
 
@@ -42,11 +50,14 @@ export default function MoveToTrashButton({
   }, [dialogError, isMoving]);
 
   async function movePhoto() {
-    if (isMoving) return;
+    if (movingGuard.current) return;
+    movingGuard.current = true;
     setIsMoving(true);
     setDialogError(null);
+    let moved = false;
     try {
       await deletePhoto(photo.id);
+      moved = true;
       setIsOpen(false);
       await onMoved(photo);
     } catch (error) {
@@ -55,7 +66,9 @@ export default function MoveToTrashButton({
       setDialogError(message);
       onError?.(message);
     } finally {
+      movingGuard.current = false;
       setIsMoving(false);
+      if (moved) onBusyChange?.(false);
     }
   }
 
@@ -63,16 +76,19 @@ export default function MoveToTrashButton({
     <>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => {
+          if (disabled) return;
           setDialogError(null);
           setIsOpen(true);
+          onBusyChange?.(true);
         }}
         className={
           className ??
           "min-h-9 rounded-md border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-600 hover:border-red-200 hover:text-red-700"
         }
       >
-        Move to Trash
+        {label}
       </button>
       {isOpen ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-stone-950/40 p-3 sm:items-center sm:p-6">

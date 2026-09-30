@@ -364,7 +364,7 @@ test("turns a Keep both race into an exact duplicate result", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(row("race.jpg").getByText("Exact duplicate")).toBeTruthy();
   expect(row("race.jpg").getByRole("button", { name: "View Trash" })).toBeTruthy();
-  expect(api.uploadPhoto).toHaveBeenLastCalledWith(expect.any(File), true);
+  expect(api.uploadPhoto).toHaveBeenLastCalledWith(expect.any(File), true, [91]);
 });
 
 test("preserves accepted item states when catalog refresh fails", async () => {

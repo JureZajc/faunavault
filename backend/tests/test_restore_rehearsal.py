@@ -79,6 +79,13 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
                 "INSERT INTO smart_collection VALUES "
                 "(1, 'All photos', 'all photos', 1, '{}', '2026-09-01T12:00:00', '2026-09-01T12:00:00')"
             )
+        if schema >= 14:
+            connection.execute(
+                "INSERT INTO duplicate_pair VALUES (1, 2, 'phash64-v1:d4', '0000000000000000', '0000000000000001', 1, '2026-09-01T12:00:00', '2026-09-01T12:00:00')"
+            )
+            connection.execute(
+                "INSERT INTO duplicate_scan_state VALUES ('phash64-v1:d4', 'complete', '2026-09-01T12:00:00', '2026-09-01T12:00:00', '2026-09-01T12:00:00', 2, 0, 1, 5, NULL)"
+            )
     manifest_path = backup / "manifest.json"
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     payload["database"]["schema_version"] = schema
@@ -89,7 +96,7 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
     return backup
 
 
-@pytest.mark.parametrize("schema", [10, 11, 12, 13])
+@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14])
 def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
     tmp_path, monkeypatch, schema
 ):
@@ -134,6 +141,16 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
             assert connection.execute(
                 "SELECT name, query_version, query_json FROM smart_collection"
             ).fetchone() == ("All photos", 1, "{}")
+        if schema >= 14:
+            assert (
+                connection.execute(
+                    "SELECT dismissed_at FROM duplicate_pair"
+                ).fetchone()[0]
+                == "2026-09-01T12:00:00"
+            )
+            assert connection.execute(
+                "SELECT status, processed FROM duplicate_scan_state"
+            ).fetchone() == ("complete", 2)
     for role in ("original", "resized", "thumbs"):
         for source in (backup / "images" / role).iterdir():
             assert (
@@ -150,6 +167,8 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
         (13, "photo", "reviewed_at"),
         (13, "smart_collection", "query_json"),
         (13, "smart_collection", "query_version"),
+        (14, "duplicate_pair", "left_hash"),
+        (14, "duplicate_scan_state", "reason"),
     ],
 )
 def test_schema_claim_requires_actual_review_and_smart_columns(
@@ -224,7 +243,7 @@ def test_frozen_schema9_fixture_verifies_rehearses_and_remains_immutable(tmp_pat
     assert verification.valid
     assert verification.manifest is not None
     assert verification.manifest.database.schema_version == 9
-    assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset({9, 10, 11, 12, 13})
+    assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset({9, 10, 11, 12, 13, 14})
     assert result.source_schema_version == 9
     assert result.current_schema_version == LATEST_SCHEMA_VERSION
     assert result.applied_migrations == tuple(range(10, LATEST_SCHEMA_VERSION + 1))

@@ -18,6 +18,14 @@ afterEach(() => {
 });
 
 describe("HEIC/HEIF multipart media types", () => {
+  test("sends only the explicitly reviewed IDs alongside the ingestion override", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(successfulResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    await uploadPhoto(new File(["photo"], "fox.jpg", { type: "image/jpeg" }), true, [7, 11]);
+    const submitted = submittedFormData(fetchMock);
+    expect(submitted.get("allow_visual_duplicate")).toBe("true");
+    expect(submitted.getAll("reviewed_candidate_ids")).toEqual(["7", "11"]);
+  });
   test.each([
     ["IMG_2757.HEIC", "image/heif", "image/heic"],
     ["IMG_2758.heic", "", "image/heic"],

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from app.archive_integrity import read_duplicate_signature
 from app.backup.integrity import (
     BackupError,
     copy_and_hash_stable,
@@ -166,6 +167,7 @@ def create_backup(
         snapshot_database(database, snapshot)
         inventory = inspect_database(snapshot, LATEST_SCHEMA_VERSION)
         expected_signature = inventory.photo_signature()
+        expected_duplicates = read_duplicate_signature(snapshot)
         source_paths = _source_paths(inventory, variants)
 
         warnings: list[SourceWarning] = []
@@ -178,6 +180,10 @@ def create_backup(
             warnings.extend(scan_orphans(directory, expected, role))
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed after the SQLite snapshot")
+        if read_duplicate_signature(database) != expected_duplicates:
+            raise BackupError(
+                "Live duplicate review state changed after the SQLite snapshot"
+            )
 
         files: list[BackupFile] = []
         database_digest, database_size = hash_file(snapshot)
@@ -246,6 +252,10 @@ def create_backup(
             )
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed while files were copied")
+        if read_duplicate_signature(database) != expected_duplicates:
+            raise BackupError(
+                "Live duplicate review state changed while files were copied"
+            )
         files.sort(key=lambda item: item.path)
         jobs = inventory.job_counts
         manifest = BackupManifest(
@@ -293,6 +303,8 @@ def create_backup(
         _ensure_lifecycle_quiet(settings)
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed before publication")
+        if read_duplicate_signature(database) != expected_duplicates:
+            raise BackupError("Live duplicate review state changed before publication")
         temporary.rename(final_path)
         verification.backup_path = final_path
         return final_path, verification

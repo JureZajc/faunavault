@@ -274,6 +274,7 @@ function HomeContent() {
               if (
                 section === "collections" ||
                 section === "review" ||
+                section === "duplicates" ||
                 section === "map" ||
                 section === "timeline"
               ) {

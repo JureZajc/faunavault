@@ -7,7 +7,7 @@ import re
 import statistics
 import warnings
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -149,30 +149,19 @@ class VisualDuplicateIndex:
         threshold: int = PHASH_DISTANCE_THRESHOLD,
         limit: int = MAX_VISUAL_DUPLICATE_CANDIDATES,
     ) -> list[VisualDuplicateCandidate]:
-        if not is_valid_perceptual_hash(value):
-            return []
-        if threshold > PHASH_DISTANCE_THRESHOLD:
-            indices = set(range(len(self.entries)))
-        else:
-            indices: set[int] = set()
-            for key in self._keys(value):
-                indices.update(self.buckets.get(key, ()))
         matches: list[VisualDuplicateCandidate] = []
-        for index in indices:
-            entry = self.entries[index]
-            distance = hamming_distance(value, entry.perceptual_hash)
-            if distance <= threshold:
-                matches.append(
-                    VisualDuplicateCandidate(
-                        photo_id=entry.photo_id,
-                        original_filename=entry.original_filename,
-                        display_title=entry.display_title,
-                        common_name=entry.common_name,
-                        species_guess=entry.species_guess,
-                        location=entry.location,
-                        hamming_distance=distance,
-                    )
+        for entry, distance in self.iter_matches(value, threshold=threshold):
+            matches.append(
+                VisualDuplicateCandidate(
+                    photo_id=entry.photo_id,
+                    original_filename=entry.original_filename,
+                    display_title=entry.display_title,
+                    common_name=entry.common_name,
+                    species_guess=entry.species_guess,
+                    location=entry.location,
+                    hamming_distance=distance,
                 )
+            )
         matches.sort(
             key=lambda candidate: (
                 candidate.hamming_distance,
@@ -181,6 +170,34 @@ class VisualDuplicateIndex:
             )
         )
         return matches[:limit]
+
+    def iter_matches(
+        self,
+        value: str,
+        *,
+        threshold: int = PHASH_DISTANCE_THRESHOLD,
+        visit: Callable[[], None] | None = None,
+    ) -> Iterator[tuple[VisualIndexEntry, int]]:
+        """Yield all matches; a caller may budget every bucket-entry visit."""
+        if not is_valid_perceptual_hash(value):
+            return
+        buckets = (
+            (range(len(self.entries)),)
+            if threshold > PHASH_DISTANCE_THRESHOLD
+            else (self.buckets.get(key, ()) for key in self._keys(value))
+        )
+        seen: set[int] = set()
+        for bucket in buckets:
+            for index in bucket:
+                if visit is not None:
+                    visit()
+                if index in seen:
+                    continue
+                seen.add(index)
+                entry = self.entries[index]
+                distance = hamming_distance(value, entry.perceptual_hash)
+                if distance <= threshold:
+                    yield entry, distance
 
 
 def find_visual_duplicate_candidates(

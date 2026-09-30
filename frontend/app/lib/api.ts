@@ -844,16 +844,64 @@ function fileWithRegisteredHeifMediaType(file: File) {
   });
 }
 
-export function uploadPhoto(file: File, allowVisualDuplicate = false) {
+export function uploadPhoto(file: File, allowVisualDuplicate = false, reviewedCandidateIds: number[] = []) {
   const formData = new FormData();
   formData.append("file", fileWithRegisteredHeifMediaType(file));
   if (allowVisualDuplicate) {
     formData.append("allow_visual_duplicate", "true");
   }
+  reviewedCandidateIds.forEach((id) => formData.append("reviewed_candidate_ids", String(id)));
 
   return request<Photo>("/photos/upload", {
     method: "POST",
     body: formData,
+  });
+}
+
+export type DuplicateIdentity = { left: number; right: number };
+export type DuplicateComparison = {
+  identity: DuplicateIdentity;
+  left_photo: Photo;
+  right_photo: Photo;
+  detector: string;
+  distance: number;
+  discovered_at: string;
+};
+export type DuplicateReview = {
+  pair: DuplicateComparison | null;
+  total: number;
+  previous: DuplicateIdentity | null;
+  next: DuplicateIdentity | null;
+  first: DuplicateIdentity | null;
+  requested_pair_unavailable: boolean;
+};
+export type DuplicateSummary = {
+  unresolved: number;
+  dismissed: number;
+  detector: string;
+  threshold: number;
+  missing_fingerprints: number;
+  scan: null | {
+    status: "incomplete" | "complete";
+    started_at: string;
+    completed_at: string | null;
+    last_successful_at: string | null;
+    processed: number;
+    skipped: number;
+    pairs: number;
+    probes: number;
+    reason: string | null;
+  };
+};
+export function getDuplicateSummary(signal?: AbortSignal) {
+  return request<DuplicateSummary>("/duplicates/summary", { signal });
+}
+export function getDuplicateReview(pair?: DuplicateIdentity, signal?: AbortSignal) {
+  return request<DuplicateReview>(`/duplicates/review${pair ? `?left=${pair.left}&right=${pair.right}` : ""}`, { signal });
+}
+export function dismissDuplicate(pair: DuplicateComparison) {
+  return request<{ remaining: number; next: DuplicateIdentity | null }>(`/duplicates/pairs/${pair.identity.left}/${pair.identity.right}/dismiss`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ detector: pair.detector, expected_discovered_at: pair.discovered_at }),
   });
 }
 

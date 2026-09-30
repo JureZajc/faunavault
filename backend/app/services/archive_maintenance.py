@@ -532,6 +532,19 @@ def doctor(
             result.findings.append(Finding("error", "database_invalid", str(exc)))
             return result
         result.inventory = inventory
+        digest_ids: dict[str, list[int]] = {}
+        for photo in inventory.photos:
+            if photo.content_sha256 is not None:
+                digest_ids.setdefault(photo.content_sha256, []).append(photo.id)
+        for ids in digest_ids.values():
+            if len(ids) > 1:
+                result.findings.append(
+                    Finding(
+                        "error",
+                        "exact_original_collision",
+                        "Photos share original SHA-256: " + ", ".join(map(str, ids)),
+                    )
+                )
         result.expected_signature = inventory.photo_signature()
         try:
             if read_photo_signature(storage.database) != result.expected_signature:

@@ -102,7 +102,7 @@ test("shows loading and then passes points plus focus to the map boundary", asyn
   expect(screen.getByText("2 geotagged photos")).toBeTruthy();
   expect(
     screen.getAllByRole("link").map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Trash"]);
+  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Duplicates", "Trash"]);
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("aria-current"))
     .toBe("page");
 });

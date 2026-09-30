@@ -8,6 +8,7 @@ import pytest
 from app.benchmark.safety import IsolatedSettings
 from app.cli.maintenance import main
 from app.database import create_database_engine
+from app.migrations import LATEST_SCHEMA_VERSION
 from app.services.environment_diagnostics import environment_diagnostics
 from app.storage_startup import initialize_archive_storage
 
@@ -90,7 +91,9 @@ def test_schema_readiness_is_read_only(settings):
     )
     assert settings.database_path.read_bytes() == before
     with sqlite3.connect(settings.database_path) as connection:
-        connection.execute("DELETE FROM schema_migration WHERE version=13")
+        connection.execute(
+            "DELETE FROM schema_migration WHERE version=?", (LATEST_SCHEMA_VERSION,)
+        )
     before = settings.database_path.read_bytes()
     assert (
         next(

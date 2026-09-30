@@ -12,7 +12,7 @@ from pydantic import Field as PydanticField
 from sqlmodel import Field, SQLModel
 
 from app.catalog_query import CatalogSavedQuery
-from app.models import Animal, Photo
+from app.models import Animal, DuplicateScanState, Photo
 
 ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}
 BulkPhotoOperation = Literal[
@@ -70,6 +70,51 @@ class ReviewInbox(SQLModel):
     next_photo_id: int | None
     requested_photo_unavailable: bool
     low_confidence: bool
+
+
+class DuplicateIdentity(SQLModel):
+    left: int
+    right: int
+
+
+class DuplicateComparison(SQLModel):
+    identity: DuplicateIdentity
+    left_photo: Photo
+    right_photo: Photo
+    detector: str
+    distance: int
+    discovered_at: datetime
+
+
+class DuplicateReview(SQLModel):
+    pair: DuplicateComparison | None
+    total: int
+    previous: DuplicateIdentity | None = None
+    next: DuplicateIdentity | None = None
+    first: DuplicateIdentity | None = None
+    requested_pair_unavailable: bool = False
+
+
+class DuplicateDismissRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+    detector: str
+    expected_discovered_at: datetime
+
+
+class DuplicateDismissResponse(SQLModel):
+    identity: DuplicateIdentity
+    dismissed_at: datetime
+    remaining: int
+    next: DuplicateIdentity | None = None
+
+
+class DuplicateSummary(SQLModel):
+    unresolved: int
+    dismissed: int
+    detector: str
+    threshold: int
+    scan: DuplicateScanState | None
+    missing_fingerprints: int
 
 
 class ReviewAcceptRequest(SQLModel):

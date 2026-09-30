@@ -214,6 +214,85 @@ commits metadata changes or Trash/job-state transitions atomically.
 
 ## Exact and possible visual duplicates
 
+### Duplicate Review Center (v0.2 development)
+
+Open **Duplicates** (`/duplicates`) to curate possible visual duplicates already
+stored in the archive. The view shows one canonical pair at a time, strongest
+fingerprint similarity first, with both previews, normal detail/lightbox access,
+and capture/camera/file metadata. A distance of zero means equal perceptual
+fingerprints, not identical original bytes. A shared SHA-256 original is an
+archive-integrity anomaly, reported by `doctor` and the scan rather than offered
+as an ordinary visual candidate.
+
+**Keep both / Not duplicates** records a persistent decision for that pair's
+fingerprint evidence and detector version. It leaves both Photos and their
+metadata unchanged. **Skip** only advances the view; it wraps to the first pair
+and never resolves a candidate. Similarity is pairwise: A/B and B/C candidates
+do not establish that A/C are similar.
+
+Moving either side to Trash uses the normal confirmation and recoverable
+lifecycle. Every pair involving a trashed Photo leaves the active queue.
+Restoring it reopens unresolved pairs; explicit Keep both decisions survive
+Trash and restoration. Permanent deletion remains in Trash and cascades removal
+of dependent pair records. This page offers no permanent-delete action.
+
+Browser upload Keep both also saves dismissals for the specific displayed
+candidates. Folder import still skips visual duplicates by default;
+`--allow-visual-duplicates` permits ingestion but leaves detected pairs unresolved
+for curation. Neither override bypasses exact-duplicate protection, including
+originals in Trash. Ingestion persists the same at-most-three matches it already
+looks up; it does not perform a second archive scan.
+
+For existing archive Photos and full pair discovery, stop the backend and folder
+importer and keep them stopped for the entire operation. From `backend`:
+
+```powershell
+uv run --no-sync faunavault-maintenance duplicates-scan
+uv run --no-sync faunavault-maintenance duplicates-scan --apply
+```
+
+The default is a read-only dry run; `--apply` saves candidates and scan status in
+SQLite. Schema 14 must already be initialized by normal startup. Safe configured
+storage and empty staging/purge journals are required. The command compares
+stored `phash64-v1` fingerprints at the same Hamming distance threshold of four,
+including active and Trash Photos. It never decodes images, modifies original
+bytes, calls Ollama, uses the network, or starts a persistent scanner. Missing
+fingerprints are explicitly counted as unassessed; normal startup's existing
+fingerprint backfill remains responsible for generating them. Malformed archive
+state fails preflight instead of being silently repaired.
+
+The existing five-part importer index narrows candidates before exact distance
+checks. Work scales with bucket occupancy and qualifying pairs; dense sets may
+still require quadratic output. Buffers hold at most 500 pairs and the index is
+proportional to Photo count. Defaults stop an attempt at 50 million bucket-entry
+visits or one million qualifying visual pairs. To deliberately increase either
+budget, use positive `--max-probes` or `--max-pairs` values. Progress and a final
+summary report counts, timing, skipped fingerprints, and exact-SHA collision IDs.
+Exit code 0 means completed discovery without exact anomalies; 1 means incomplete
+discovery or exact anomalies; 2 means setup/usage failed.
+
+Each applied attempt is marked incomplete before writes. Batches commit
+atomically, unchanged evidence retains dismissal/discovery timestamps, and
+interruption preserves completed work. Rerun from the beginning; identical pairs
+are not duplicated. Limits apply to each attempt, so raising a reached budget
+is necessary to get beyond the same stopping point. External database commits
+stop the scan and require a cold rerun. No candidates are deleted by a scan.
+
+The page displays scan coverage independently from queue completion. A completed
+scan covers valid stored fingerprints at that time; new ingestion/backfill may
+require another scan. “No possible duplicates need review” describes the current
+queue under these rules and does not guarantee absence of similar photos.
+
+Canonical pair records contain evidence snapshots and `phash64-v1:d4`. New
+evidence/version cannot inherit an old dismissal silently. Candidates are derived
+and reproducible, while explicit dismissals are user-curation data. Schema-14
+verified backups include both pair records and scan state, and rehearsal checks
+their preservation. Backup v1 and historical schemas 9–13 remain supported.
+Portable metadata export stays v5 and intentionally excludes this state; use
+verified backups to preserve decisions during recovery.
+
+### Ingestion detection
+
 Byte-identical uploads are detected by SHA-256 and rejected with HTTP 409. This
 authoritative rule also applies when the existing photo is in Trash and cannot
 be bypassed.
@@ -446,6 +525,7 @@ Backup container compatibility and database recovery compatibility are separate:
 | v1 | 11 | Supported | Verify and rehearse with exact capture-metadata checks |
 | v1 | 12 | Supported | Verify and rehearse with exact review-timestamp checks |
 | v1 | 13 | Supported | Verify and rehearse with exact Smart Collection definition checks |
+| v1 | 14 | Supported | Verify and rehearse with duplicate-pair decisions and scan-state preservation |
 | Other | Any | Unsupported | Reject before target writes |
 | v1 | Other | Not supported until explicitly tested | Reject before target writes |
 

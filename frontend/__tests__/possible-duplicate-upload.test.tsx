@@ -148,7 +148,7 @@ test("reviews a possible duplicate and keeps both with explicit override", async
   ).toBe(true);
 
   await userEvent.click(keep);
-  await waitFor(() => expect(api.uploadPhoto).toHaveBeenLastCalledWith(file, true));
+  await waitFor(() => expect(api.uploadPhoto).toHaveBeenLastCalledWith(file, true, [1]));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(screen.getByText("Uploaded")).toBeTruthy();
   expect(screen.getByRole("status").textContent).toMatch(/1 file: 1 uploaded/i);

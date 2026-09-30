@@ -71,7 +71,7 @@ def _create_archive(tmp_path: Path, *, populated: bool = True) -> ArchiveFixture
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for version in range(1, 14):
+        for version in range(1, 15):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (version,),
@@ -276,7 +276,7 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
     payload = json.loads(first_json)
     validated = ArchiveMetadataExport.model_validate(payload)
     assert payload["format_version"] == 5
-    assert payload["source_database_schema_version"] == 13
+    assert payload["source_database_schema_version"] == 14
     assert payload["counts"] == {
         "photos": 3,
         "active_photos": 2,

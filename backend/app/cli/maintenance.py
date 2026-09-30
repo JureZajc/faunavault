@@ -12,6 +12,7 @@ from app.services.archive_maintenance import (
     doctor,
     repair_derived,
 )
+from app.services.duplicate_scan import MAX_PAIRS, MAX_PROBES, scan_duplicates
 from app.services.environment_diagnostics import environment_diagnostics
 from app.services.photo_metadata_backfill import (
     MetadataBackfillResult,
@@ -120,6 +121,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Inspect and safely repair a stopped FaunaVault live archive.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    duplicates = commands.add_parser(
+        "duplicates-scan",
+        help="Discover visual pairs from stored fingerprints; stop backend/importer first",
+    )
+    duplicates.add_argument(
+        "--apply", action="store_true", help="persist candidates (default: dry run)"
+    )
+    duplicates.add_argument("--max-probes", type=int, default=MAX_PROBES)
+    duplicates.add_argument("--max-pairs", type=int, default=MAX_PAIRS)
     inspect = commands.add_parser(
         "doctor", help="inspect the configured live archive read-only"
     )
@@ -161,6 +171,27 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         settings = get_settings()
+        if args.command == "duplicates-scan":
+            result = scan_duplicates(
+                settings,
+                apply=args.apply,
+                max_probes=args.max_probes,
+                max_pairs=args.max_pairs,
+                progress=_progress,
+                exact_collision=lambda ids: print(
+                    "ERROR exact-original SHA collision: photos "
+                    + ", ".join(map(str, ids))
+                ),
+            )
+            print(
+                f"Duplicate scan {'APPLY' if result.applied else 'DRY RUN'}: {result.processed} photos, {result.skipped} unassessed, {result.pairs} pairs, {result.probes} probes, {result.seconds:.2f}s"
+            )
+            print(
+                "Complete for valid stored fingerprints"
+                if result.complete
+                else f"INCOMPLETE: {result.reason}"
+            )
+            return 0 if result.complete and not result.exact_groups else 1
         if args.command == "doctor":
             if args.environment_only:
                 findings = environment_diagnostics(settings, ollama=args.ollama)

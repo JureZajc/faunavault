@@ -17,6 +17,8 @@ and optional AI classification runs through local Ollama vision models.
   Collections, and live Smart Collections.
 - Explicit cross-page selection for bulk tags, category, Collections, and Trash.
 - SHA-256 exact duplicate protection and conservative visual duplicate review.
+- Duplicate Review Center for archive curation, persistent Keep both decisions,
+  and recoverable Trash actions; explicit local scans discover existing pairs.
 - Optional durable AI classification jobs, confidence-based Review Inbox,
   manual editing, and local taxonomy with GBIF lookup.
 - Recoverable Trash, confirmed permanent deletion, archive diagnostics,

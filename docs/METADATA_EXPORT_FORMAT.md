@@ -245,7 +245,8 @@ JSON.
 
 The format excludes originals and all other media bytes, derivative inventory,
 perceptual hashes, derived Albums, Collection normalized-name keys,
-classification-job history and failures,
+classification-job history and failures, duplicate candidates, duplicate-review
+dismissals and scan bookkeeping,
 application configuration, credentials, absolute database/image paths, staging
 and purge paths, database internals, and export bookkeeping. There is no import
 or restore guarantee. Keep verified FaunaVault backups containing SQLite and

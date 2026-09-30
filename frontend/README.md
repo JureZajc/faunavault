@@ -101,6 +101,15 @@ selection; Add to Collection continues to list manual Collections only.
 
 ## Upload queue and duplicate review
 
+The **Duplicates** navigation destination (`/duplicates`) reviews persisted
+archive pairs. It reuses Photo media/lightbox and metadata presentation, provides
+Keep both, Previous/Next/Skip, normal detail links with a return URL, and separately
+labelled left/right recoverable Trash confirmations. Skip does not resolve a pair;
+Trash resolution follows Photo lifecycle. The current canonical pair is encoded
+as `left`/`right` URL parameters. The page shows scan coverage alongside its empty
+state and performs no similarity calculations. Browser upload Keep both sends
+displayed candidate IDs so those decisions do not immediately reappear here.
+
 The interactive uploader uses the single-photo API through a
 frontend-controlled sequential queue; it does not send the selection through
 the compatibility batch endpoint. Rows appear immediately as `Waiting`, then

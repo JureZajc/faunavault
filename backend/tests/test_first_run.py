@@ -111,6 +111,9 @@ with TestClient(main.app) as client:
         connection.exec_driver_sql("SELECT reviewed_at, captured_at, perceptual_hash FROM photo LIMIT 0")
         connection.exec_driver_sql("SELECT status, attempt_count, prompt_version FROM classification_job LIMIT 0")
         connection.exec_driver_sql("SELECT query_version, query_json FROM smart_collection LIMIT 0")
+        connection.exec_driver_sql("SELECT left_photo_id, right_photo_id, dismissed_at FROM duplicate_pair LIMIT 0")
+        connection.exec_driver_sql("SELECT status, last_successful_at FROM duplicate_scan_state LIMIT 0")
+        assert {"ix_duplicate_pair_queue", "ix_duplicate_pair_right"} <= indexes
     assert doctor(settings).status == "HEALTHY"
     payload = BytesIO()
     Image.new("RGB", (40, 30), "green").save(payload, format="JPEG")

@@ -169,6 +169,15 @@ def test_visual_duplicate_gate_and_override(archive):
     assert (first.imported, first.visual_duplicates) == (1, 1)
     second = run(source, settings, allow_visual_duplicates=True)
     assert (second.duplicates, second.imported) == (1, 1)
+    engine = create_database_engine(settings)
+    try:
+        from app.services.duplicate_review import summary
+
+        with Session(engine) as session:
+            assert summary(session).unresolved == 1
+            assert summary(session).dismissed == 0
+    finally:
+        engine.dispose()
 
 
 def test_dry_run_reports_existing_and_prospective_visual_matches(archive):
