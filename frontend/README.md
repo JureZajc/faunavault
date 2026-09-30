@@ -60,12 +60,17 @@ conversion, shows a recorded `UTC±HH:MM` offset or states that the timezone was
 not recorded, and conditionally shows camera, lens, dimensions, and plain local
 coordinates. Complete coordinates also render a compact detail map and a
 `/map?photo=<id>` deep link. Photos without GPS omit the map cleanly. These
-extracted fields are read-only and never enter PATCH bodies.
+camera/lens/dimension fields remain read-only. Capture time, an optional signed
+UTC offset, and atomic latitude/longitude can be edited in the existing form.
+Date/time serialization preserves camera-local strings and full stored precision.
+Clear actions retain authoritative manual markers; Restore is staged until Save
+and replaces both supported groups from the original. Saves use the version
+captured when the editor opens. Capture-only changes leave AI review pending.
 
 The basemap uses standard remote OpenStreetMap raster tiles with visible
 attribution. Photo metadata and preview images continue to come only from the
 local FaunaVault API; the tile host receives ordinary visible-viewport tile
-requests, not Photo records. There is no geocoding, coordinate editing, analytics,
+requests, not Photo records. There is no geocoding, map pin dragging, analytics,
 offline tile downloader, or claim that the remote basemap works offline.
 
 Durable classification state is restored from the backend after refresh. The

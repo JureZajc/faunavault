@@ -48,6 +48,12 @@ class PhotoRecord:
     image_height: int | None = None
     latitude: float | None = None
     longitude: float | None = None
+    extracted_captured_at: str | None = None
+    extracted_captured_at_offset_minutes: int | None = None
+    extracted_latitude: float | None = None
+    extracted_longitude: float | None = None
+    capture_metadata_overridden: bool = False
+    location_metadata_overridden: bool = False
 
     def signature(self) -> tuple[object, ...]:
         return (
@@ -69,6 +75,12 @@ class PhotoRecord:
             self.image_height,
             self.latitude,
             self.longitude,
+            self.extracted_captured_at,
+            self.extracted_captured_at_offset_minutes,
+            self.extracted_latitude,
+            self.extracted_longitude,
+            self.capture_metadata_overridden,
+            self.location_metadata_overridden,
         )
 
 
@@ -266,14 +278,20 @@ def _validate_capture_metadata(photos: list[PhotoRecord]) -> None:
                 and -180 <= photo.longitude <= 180
             )
         offset_valid = photo.captured_at_offset_minutes is None or (
-            photo.captured_at is not None
+            type(photo.captured_at_offset_minutes) is int
+            and photo.captured_at is not None
             and -1439 <= photo.captured_at_offset_minutes <= 1439
         )
         timestamp_valid = True
         if photo.captured_at is not None:
             try:
                 timestamp_valid = (
-                    datetime.fromisoformat(photo.captured_at).tzinfo is None
+                    re.fullmatch(
+                        r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?",
+                        photo.captured_at,
+                    )
+                    is not None
+                    and datetime.fromisoformat(photo.captured_at).tzinfo is None
                 )
             except (TypeError, ValueError):
                 timestamp_valid = False
@@ -451,6 +469,52 @@ def _inspect_schema_14(
     return base
 
 
+def _photo_from_schema_15_row(row) -> PhotoRecord:
+    if (
+        type(row[22]) is not int
+        or row[22] not in (0, 1)
+        or type(row[23]) is not int
+        or row[23] not in (0, 1)
+    ):
+        raise ArchiveIntegrityError("Invalid capture metadata override state")
+    return replace(
+        _photo_from_schema_11_row(row),
+        extracted_captured_at=row[18],
+        extracted_captured_at_offset_minutes=row[19],
+        extracted_latitude=row[20],
+        extracted_longitude=row[21],
+        capture_metadata_overridden=bool(row[22]),
+        location_metadata_overridden=bool(row[23]),
+    )
+
+
+def _inspect_schema_15(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_14(connection, migrations)
+    rows = connection.execute(
+        "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
+        "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
+        "media_type, captured_at, captured_at_offset_minutes, camera_make, "
+        "camera_model, lens_model, image_width, image_height, latitude, longitude, "
+        "extracted_captured_at, extracted_captured_at_offset_minutes, "
+        "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
+        "location_metadata_overridden FROM photo ORDER BY id"
+    ).fetchall()
+    photos = [_photo_from_schema_15_row(row) for row in rows]
+    _validate_capture_metadata(
+        [
+            replace(
+                photo,
+                captured_at=photo.extracted_captured_at,
+                captured_at_offset_minutes=photo.extracted_captured_at_offset_minutes,
+                latitude=photo.extracted_latitude,
+                longitude=photo.extracted_longitude,
+            )
+            for photo in photos
+        ]
+    )
+    return replace(base, photos=photos)
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
@@ -458,6 +522,7 @@ SCHEMA_INVENTORY_READERS = {
     12: _inspect_schema_12,
     13: _inspect_schema_13,
     14: _inspect_schema_14,
+    15: _inspect_schema_15,
 }
 
 
@@ -518,9 +583,11 @@ def read_photo_signature(path: Path) -> tuple[tuple[object, ...], ...]:
             "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
             "media_type, captured_at, captured_at_offset_minutes, camera_make, "
             "camera_model, lens_model, image_width, image_height, latitude, "
-            "longitude FROM photo ORDER BY id"
+            "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
+            "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
+            "location_metadata_overridden FROM photo ORDER BY id"
         ).fetchall()
-        return tuple(_photo_from_schema_11_row(row).signature() for row in rows)
+        return tuple(_photo_from_schema_15_row(row).signature() for row in rows)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check live archive state: {exc}"
@@ -538,10 +605,12 @@ def read_photo_record(path: Path, photo_id: int) -> PhotoRecord | None:
             "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
             "media_type, captured_at, captured_at_offset_minutes, camera_make, "
             "camera_model, lens_model, image_width, image_height, latitude, "
-            "longitude FROM photo WHERE id = ?",
+            "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
+            "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
+            "location_metadata_overridden FROM photo WHERE id = ?",
             (photo_id,),
         ).fetchone()
-        return None if row is None else _photo_from_schema_11_row(row)
+        return None if row is None else _photo_from_schema_15_row(row)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check photo {photo_id}: {exc}"

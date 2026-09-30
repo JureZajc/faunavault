@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 14
+LATEST_SCHEMA_VERSION = 15
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -445,6 +445,31 @@ def _migration_14(connection) -> None:
     DuplicateScanState.__table__.create(connection, checkfirst=True)
 
 
+def _migration_15(connection) -> None:
+    columns = _columns(connection, "photo")
+    additions = {
+        "extracted_captured_at": "DATETIME",
+        "extracted_captured_at_offset_minutes": "INTEGER CHECK (extracted_captured_at_offset_minutes BETWEEN -1439 AND 1439)",
+        "extracted_latitude": "REAL CHECK (extracted_latitude BETWEEN -90 AND 90)",
+        "extracted_longitude": "REAL CHECK (extracted_longitude BETWEEN -180 AND 180)",
+        "capture_metadata_overridden": "BOOLEAN NOT NULL DEFAULT 0 CHECK (capture_metadata_overridden IN (0, 1))",
+        "location_metadata_overridden": "BOOLEAN NOT NULL DEFAULT 0 CHECK (location_metadata_overridden IN (0, 1))",
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            connection.execute(
+                text(f"ALTER TABLE photo ADD COLUMN {name} {definition}")
+            )
+    connection.execute(
+        text(
+            "UPDATE photo SET extracted_captured_at=captured_at, "
+            "extracted_captured_at_offset_minutes=captured_at_offset_minutes, "
+            "extracted_latitude=latitude, extracted_longitude=longitude "
+            "WHERE capture_metadata_overridden=0 AND location_metadata_overridden=0"
+        )
+    )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -508,6 +533,8 @@ def run_migrations(
                 _migration_13(connection)
             elif version == 14:
                 _migration_14(connection)
+            elif version == 15:
+                _migration_15(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

@@ -61,6 +61,12 @@ CSV_COLUMNS = (
     "image_height",
     "latitude",
     "longitude",
+    "extracted_captured_at",
+    "extracted_captured_at_offset_minutes",
+    "extracted_latitude",
+    "extracted_longitude",
+    "capture_metadata_overridden",
+    "location_metadata_overridden",
     "display_title",
     "common_name",
     "breed_guess",
@@ -142,6 +148,12 @@ class SnapshotPhoto:
     image_height: int | None
     latitude: float | None
     longitude: float | None
+    extracted_captured_at: str | None
+    extracted_captured_at_offset_minutes: int | None
+    extracted_latitude: float | None
+    extracted_longitude: float | None
+    capture_metadata_overridden: bool
+    location_metadata_overridden: bool
     deleted_at: str | None
     reviewed_at: str | None
     created_at: str
@@ -169,6 +181,12 @@ def _required_text(value: object, field: str) -> str:
     if not isinstance(value, str):
         raise ArchiveExportIntegrityError(f"Invalid text value for {field}")
     return value
+
+
+def _override_flag(value: object) -> bool:
+    if type(value) is not int or value not in (0, 1):
+        raise ArchiveExportIntegrityError("Invalid capture metadata override flag")
+    return bool(value)
 
 
 def _optional_text(value: object, field: str) -> str | None:
@@ -371,7 +389,10 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             "original_size_bytes, media_type, captured_at, "
             "captured_at_offset_minutes, camera_make, camera_model, lens_model, "
             "image_width, image_height, latitude, longitude, deleted_at, "
-            "reviewed_at, created_at, updated_at "
+            "reviewed_at, created_at, updated_at, "
+            "extracted_captured_at, extracted_captured_at_offset_minutes, "
+            "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
+            "location_metadata_overridden "
             "FROM photo ORDER BY id"
         ).fetchall()
         photos: list[SnapshotPhoto] = []
@@ -449,6 +470,28 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                     ),
                     longitude=_optional_float(
                         row["longitude"], f"photo {photo_id} longitude"
+                    ),
+                    extracted_captured_at=_capture_timestamp(
+                        row["extracted_captured_at"],
+                        f"photo {photo_id} extracted_captured_at",
+                    ),
+                    extracted_captured_at_offset_minutes=_optional_integer(
+                        row["extracted_captured_at_offset_minutes"],
+                        f"photo {photo_id} extracted offset",
+                    ),
+                    extracted_latitude=_optional_float(
+                        row["extracted_latitude"],
+                        f"photo {photo_id} extracted latitude",
+                    ),
+                    extracted_longitude=_optional_float(
+                        row["extracted_longitude"],
+                        f"photo {photo_id} extracted longitude",
+                    ),
+                    capture_metadata_overridden=_override_flag(
+                        row["capture_metadata_overridden"]
+                    ),
+                    location_metadata_overridden=_override_flag(
+                        row["location_metadata_overridden"]
                     ),
                     deleted_at=_timestamp(
                         row["deleted_at"],
@@ -665,6 +708,12 @@ def _inventory_photos(
                 image_height=photo.image_height,
                 latitude=photo.latitude,
                 longitude=photo.longitude,
+                extracted_captured_at=photo.extracted_captured_at,
+                extracted_captured_at_offset_minutes=photo.extracted_captured_at_offset_minutes,
+                extracted_latitude=photo.extracted_latitude,
+                extracted_longitude=photo.extracted_longitude,
+                capture_metadata_overridden=photo.capture_metadata_overridden,
+                location_metadata_overridden=photo.location_metadata_overridden,
                 display_title=photo.display_title,
                 common_name=photo.common_name,
                 breed_guess=photo.breed_guess,
@@ -732,6 +781,8 @@ def _json_bytes(document: ArchiveMetadataExport) -> bytes:
 def _csv_value(value: object | None) -> str:
     if value is None:
         return CSV_NULL
+    if isinstance(value, bool):
+        return "true" if value else "false"
     if isinstance(value, float):
         text = json.dumps(value, ensure_ascii=False, allow_nan=False)
     else:
@@ -767,6 +818,12 @@ def _csv_rows(document: ArchiveMetadataExport) -> list[list[str]]:
             photo.image_height,
             photo.latitude,
             photo.longitude,
+            photo.extracted_captured_at,
+            photo.extracted_captured_at_offset_minutes,
+            photo.extracted_latitude,
+            photo.extracted_longitude,
+            photo.capture_metadata_overridden,
+            photo.location_metadata_overridden,
             photo.display_title,
             photo.common_name,
             photo.breed_guess,

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Column,
     Float,
@@ -99,6 +101,64 @@ class Photo(SQLModel, table=True):
     original_size_bytes: int | None = None
     media_type: str | None = None
     captured_at: datetime | None = None
+    extracted_captured_at: datetime | None = None
+    extracted_captured_at_offset_minutes: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            CheckConstraint(
+                "extracted_captured_at_offset_minutes BETWEEN -1439 AND 1439",
+                name="ck_photo_extracted_capture_offset_range",
+            ),
+            nullable=True,
+        ),
+    )
+    extracted_latitude: float | None = Field(
+        default=None,
+        sa_column=Column(
+            Float,
+            CheckConstraint(
+                "extracted_latitude BETWEEN -90 AND 90",
+                name="ck_photo_extracted_latitude_range",
+            ),
+            nullable=True,
+        ),
+    )
+    extracted_longitude: float | None = Field(
+        default=None,
+        sa_column=Column(
+            Float,
+            CheckConstraint(
+                "extracted_longitude BETWEEN -180 AND 180",
+                name="ck_photo_extracted_longitude_range",
+            ),
+            nullable=True,
+        ),
+    )
+    capture_metadata_overridden: bool = Field(
+        default=False,
+        sa_column=Column(
+            Boolean,
+            CheckConstraint(
+                "capture_metadata_overridden IN (0, 1)",
+                name="ck_photo_capture_override",
+            ),
+            nullable=False,
+            server_default="0",
+        ),
+    )
+    location_metadata_overridden: bool = Field(
+        default=False,
+        sa_column=Column(
+            Boolean,
+            CheckConstraint(
+                "location_metadata_overridden IN (0, 1)",
+                name="ck_photo_location_override",
+            ),
+            nullable=False,
+            server_default="0",
+        ),
+    )
     captured_at_offset_minutes: int | None = Field(
         default=None,
         sa_column=Column(
@@ -166,10 +226,24 @@ class Photo(SQLModel, table=True):
 def validate_capture_metadata(_mapper, _connection, photo: Photo) -> None:
     if (photo.image_width is None) != (photo.image_height is None):
         raise ValueError("image dimensions must be both present or both null")
-    if (photo.latitude is None) != (photo.longitude is None):
-        raise ValueError("latitude and longitude must be both present or both null")
-    if photo.captured_at is None and photo.captured_at_offset_minutes is not None:
-        raise ValueError("capture offset requires captured_at")
+    for prefix in ("", "extracted_"):
+        latitude = getattr(photo, f"{prefix}latitude")
+        longitude = getattr(photo, f"{prefix}longitude")
+        captured = getattr(photo, f"{prefix}captured_at")
+        offset = getattr(photo, f"{prefix}captured_at_offset_minutes")
+        if (latitude is None) != (longitude is None):
+            raise ValueError("latitude and longitude must be both present or both null")
+        if latitude is not None and (
+            not math.isfinite(latitude)
+            or not -90 <= latitude <= 90
+            or not math.isfinite(longitude)
+            or not -180 <= longitude <= 180
+        ):
+            raise ValueError("GPS coordinates must be finite and in range")
+        if captured is not None and captured.tzinfo is not None:
+            raise ValueError("capture timestamp must be camera-local")
+        if offset is not None and (captured is None or not -1439 <= offset <= 1439):
+            raise ValueError("capture offset requires captured_at and must be in range")
 
 
 class Collection(SQLModel, table=True):

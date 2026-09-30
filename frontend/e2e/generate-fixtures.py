@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import random
 import sys
 from pathlib import Path
 
@@ -128,6 +129,11 @@ def generate(test_root: Path) -> None:
     heic = fixtures / HEIC_FILENAME
     timeline_january = fixtures / TIMELINE_JANUARY_FILENAME
     timeline_february = fixtures / TIMELINE_FEBRUARY_FILENAME
+    capture_edit = fixtures / "faunavault-e2e-capture-edit.jpg"
+    generator = random.Random(150)
+    capture_image = Image.new("RGB", (64, 48))
+    capture_image.putdata([tuple(generator.randrange(256) for _ in range(3)) for _ in range(64 * 48)])
+    capture_image.resize((640, 480)).save(capture_edit, format="JPEG", quality=92)
 
     exif = Image.Exif()
     exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:22 14:30:00"
@@ -187,6 +193,7 @@ def generate(test_root: Path) -> None:
             heic,
             timeline_january,
             timeline_february,
+            capture_edit,
         )
     ]
     for first_index, first_hash in enumerate(fixture_hashes):

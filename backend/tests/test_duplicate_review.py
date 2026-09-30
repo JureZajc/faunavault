@@ -269,7 +269,7 @@ def test_exact_anomalies_are_reported_excluded_and_migration_idempotent(scan_arc
     assert run_migrations(engine, settings) == []
     assert (
         inspect_database(settings.database_path, LATEST_SCHEMA_VERSION).migrations[-1]
-        == 14
+        == 15
     )
 
 

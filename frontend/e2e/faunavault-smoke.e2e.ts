@@ -10,6 +10,7 @@ const BULK_SECOND_FILENAME = "faunavault-e2e-bulk-second.jpg";
 const HEIC_FILENAME = "faunavault-e2e-iphone.heic";
 const TIMELINE_JANUARY_FILENAME = "faunavault-e2e-timeline-january.jpg";
 const TIMELINE_FEBRUARY_FILENAME = "faunavault-e2e-timeline-february.jpg";
+const CAPTURE_EDIT_FILENAME = "faunavault-e2e-capture-edit.jpg";
 const COLLECTION_NAME = "FaunaVault E2E bulk collection";
 const SMART_COLLECTION_NAME = "FaunaVault E2E birds";
 const TRANSPARENT_PNG = Buffer.from(
@@ -495,5 +496,47 @@ test("persistent visual duplicate review", async ({ page, request }) => {
       await request.delete(`http://127.0.0.1:8001/photos/${id}`);
       await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
     }
+  }
+});
+
+
+test("manual capture and GPS correction drives Timeline and Map", async ({ page, request }) => {
+  await page.route(/^https:\/\/tile\.openstreetmap\.org\/\d+\/\d+\/\d+\.png$/, (route) => route.fulfill({ status: 200, contentType: "image/png", body: TRANSPARENT_PNG }));
+  await page.goto("/");
+  await uploadFile(page, CAPTURE_EDIT_FILENAME);
+  await expect(uploadRow(page, CAPTURE_EDIT_FILENAME)).toContainText("Uploaded");
+  await catalogCard(page, CAPTURE_EDIT_FILENAME).getByRole("link").first().click();
+  await expect(page.getByRole("button", { name: "Edit metadata" })).toBeVisible();
+  const detailPath = new URL(page.url()).pathname;
+  const id = detailPath.split("/").pop();
+  try {
+    await expect(page.getByRole("link", { name: "View on map" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Edit metadata" }).click();
+    await page.getByLabel("Capture date/time").fill("2025-03-14T23:45:12");
+    await page.getByLabel("UTC offset").fill("-05:30");
+    await page.getByLabel("Latitude", { exact: true }).fill("46.123456789");
+    await page.getByLabel("Longitude", { exact: true }).fill("14.987654321");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Edit metadata" })).toBeVisible();
+    await expect(page.getByText(/UTC−05:30 · Manually edited/)).toBeVisible();
+    await page.goto("/timeline");
+    await expect(page.getByRole("link", { name: "View 1 photo from March 2025" })).toBeVisible();
+    await expectDecodedImage(page.getByRole("img", { name: CAPTURE_EDIT_FILENAME }));
+    await page.goto(`/map?photo=${id}`);
+    const point = page.getByRole("button", { name: `Open map preview for ${CAPTURE_EDIT_FILENAME}` });
+    await expect(point).toBeVisible();
+    await point.click();
+    await page.getByRole("link", { name: "Open photo", exact: true }).click();
+    await expect(page.getByText("46.12346, 14.98765 · Manually edited")).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Edit metadata" }).click();
+    await expect(page.getByLabel("Capture date/time")).toHaveValue("2025-03-14T23:45:12");
+    await expect(page.getByLabel("UTC offset")).toHaveValue("-05:30");
+    await expect(page.getByLabel("Latitude", { exact: true })).toHaveValue("46.123456789");
+    await expect(page.getByLabel("Longitude", { exact: true })).toHaveValue("14.987654321");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  } finally {
+    await request.delete(`http://127.0.0.1:8001/photos/${id}`);
+    await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
   }
 });

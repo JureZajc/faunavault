@@ -6,6 +6,12 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Editable capture date/time, optional UTC offset, and GPS in Photo metadata.
+  Schema 15 retains extracted values and protects manual corrections and clears
+  from backfill. Restore original metadata re-reads trusted originals without
+  modifying image bytes. Backup/rehearsal and portable export v6 preserve
+  correction provenance; Timeline, Map, catalog, and Smart Collections use
+  effective values.
 - Duplicate Review Center for persistent pairwise visual review, Keep both decisions,
   recoverable Trash actions, and explicit guarded archive scans. Schema 14 retains
   review decisions in verified backups and recovery rehearsals.

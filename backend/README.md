@@ -95,7 +95,7 @@ integrity failure, and `2` means usage, configuration, destination, permission,
 disk, or publication failure.
 
 See the operations guide for the user workflow and
-[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v5
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v6
 field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
 does not replace a verified backup and is not an import or restore mechanism.
 
@@ -121,8 +121,8 @@ Keep both supplies repeated optional `reviewed_candidate_ids` multipart fields
 atomically. Bare overrides and importer overrides leave matches unresolved.
 Dismissals preserve both Photo metadata and AI-review timestamps. Trash hides
 pairs; restore reopens them unless dismissed; permanent deletion cascades cleanup.
-Backups/rehearsal support schema 14 and preserve this curation state; metadata
-export remains v5 and excludes it. See Operations for safety and coverage details.
+Backups/rehearsal support schemas through 15 and preserve this curation state; metadata
+export v6 still excludes duplicate curation state. See Operations for safety and coverage details.
 
 Uploads retain the authoritative SHA-256 duplicate check. After it finds no
 exact match, the lifecycle service calculates the Pillow-only `phash64-v1`
@@ -180,11 +180,13 @@ recoverability failure and exit `2` means usage, target, permission, disk, or
 other setup failure.
 
 Backup format v1 and database recovery versions are independent. This version
-explicitly supports schema 9 through schema 13 backups. Schema-9
+explicitly supports schema 9 through schema 15 backups. Schema-9
 rehearsals migrate to empty Collection tables; schema-10 rehearsals compare
 Collection metadata and membership exactly; schema-11 rehearsals additionally
 compare all persisted Photo capture metadata. Schema-12 adds review timestamps;
-schema-13 additionally compares saved Smart Collection definitions exactly.
+schema-13 additionally compares saved Smart Collection definitions exactly;
+schema-14 retains duplicate curation; schema-15 preserves extracted capture/GPS
+and manual override state.
 A later application schema must retain the
 frozen schema-9 verifier and migration rehearsal unless compatibility is
 intentionally removed and documented. The operations guide contains the compatibility
@@ -219,6 +221,18 @@ upload ingestion. It defaults to dry-run, includes active and Trash rows, fills
 only null fields without an overwrite mode, treats capture/offset, dimensions,
 and GPS as atomic groups, and commits `--apply` work in batches of 25. Missing or
 unreadable originals are isolated row errors. Stop the backend for the scan.
+
+Schema 15 retains extracted capture/GPS separately from effective values and
+marks manual overrides, including intentional null clears. Backfill can fill
+missing retained extraction but cannot overwrite overridden effective groups.
+Conditional writes skip stale rows and advance `updated_at` when applied.
+Individual `PATCH /photos/{id}` capture/GPS updates require complete groups and
+`expected_updated_at`; source fields/flags are read-only. The same PATCH accepts
+`restore_original_metadata: true` to re-read both groups from a trusted original,
+without writing original bytes. Capture-only edits preserve AI review state.
+Backup-v1 verification/rehearsal supports schemas 9–15; portable format v6 exports
+effective values, source values, and override markers. See
+[capture editing semantics](../docs/OPERATIONS.md#editable-capture-metadata-v02).
 
 Exit `0` means healthy with optional warnings, `1` means integrity errors or
 repairable defects remain, and `2` means usage/configuration/startup failure.

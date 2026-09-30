@@ -21,6 +21,12 @@ export type Photo = {
   media_type: string | null;
   captured_at: string | null;
   captured_at_offset_minutes: number | null;
+  extracted_captured_at: string | null;
+  extracted_captured_at_offset_minutes: number | null;
+  extracted_latitude: number | null;
+  extracted_longitude: number | null;
+  capture_metadata_overridden: boolean;
+  location_metadata_overridden: boolean;
   camera_make: string | null;
   camera_model: string | null;
   lens_model: string | null;
@@ -260,6 +266,11 @@ export type CollectionRemovePhotosResponse = {
 };
 
 export type PhotoUpdate = Partial<{
+  captured_at: string | null;
+  captured_at_offset_minutes: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  restore_original_metadata: boolean;
   display_title: string | null;
   common_name: string | null;
   breed_guess: string | null;

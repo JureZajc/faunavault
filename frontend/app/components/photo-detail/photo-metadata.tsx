@@ -6,6 +6,9 @@ import {
   formatCameraLocalDate,
   formatUtcOffset,
   parseTags,
+  editableUtcOffset,
+  parseCaptureFields,
+  parseLocationFields,
 } from "../../lib/photo-metadata";
 
 const photoStatuses: PhotoStatus[] = ["pending", "classified", "needs_review"];
@@ -16,6 +19,10 @@ const statusLabels: Record<PhotoStatus, string> = {
 };
 
 type MetadataFormState = {
+  captured_at: string;
+  capture_offset: string;
+  latitude: string;
+  longitude: string;
   display_title: string;
   common_name: string;
   breed_guess: string;
@@ -43,6 +50,10 @@ export function confidenceLabel(value: number | null) {
 
 function formStateFromPhoto(photo: Photo): MetadataFormState {
   return {
+    captured_at: photo.captured_at ?? "",
+    capture_offset: editableUtcOffset(photo.captured_at_offset_minutes),
+    latitude: photo.latitude === null ? "" : String(photo.latitude),
+    longitude: photo.longitude === null ? "" : String(photo.longitude),
     display_title: photo.display_title ?? "",
     common_name: photo.common_name ?? "",
     breed_guess: photo.breed_guess ?? "",
@@ -113,9 +124,7 @@ export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
   return (
     <>
       <dl className="mt-5 rounded-lg border border-stone-200 px-4">
-        {photo.captured_at ? (
-          <MetadataRow label="Taken" value={capturedAtLabel(photo)} />
-        ) : null}
+        <MetadataRow label="Taken" value={`${capturedAtLabel(photo) ?? "Not recorded"}${photo.capture_metadata_overridden ? (photo.captured_at ? " · Manually edited" : " · Manually cleared") : ""}`} />
         {cameraLabel(photo) ? (
           <MetadataRow label="Camera" value={cameraLabel(photo)} />
         ) : null}
@@ -128,12 +137,7 @@ export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
             value={`${photo.image_width} × ${photo.image_height}`}
           />
         ) : null}
-        {photo.latitude !== null && photo.longitude !== null ? (
-          <MetadataRow
-            label="Location"
-            value={`${photo.latitude.toFixed(5)}, ${photo.longitude.toFixed(5)}`}
-          />
-        ) : null}
+        <MetadataRow label="Location" value={`${photo.latitude !== null && photo.longitude !== null ? `${photo.latitude.toFixed(5)}, ${photo.longitude.toFixed(5)}` : "Not recorded"}${photo.location_metadata_overridden ? (photo.latitude !== null ? " · Manually edited" : " · Manually cleared") : ""}`} />
         <MetadataRow label="Original file" value={photo.original_filename} />
         <MetadataRow label="Display title" value={photo.display_title} />
         <MetadataRow label="Common name" value={photo.common_name} />
@@ -197,6 +201,11 @@ export function PhotoMetadataEditor({
 }: PhotoMetadataEditorProps) {
   const [form, setForm] = useState(() => formStateFromPhoto(photo));
   const [isSaving, setIsSaving] = useState(false);
+  const [restoreOriginal, setRestoreOriginal] = useState(false);
+  const [clearCapture, setClearCapture] = useState(false);
+  const [clearLocation, setClearLocation] = useState(false);
+  const [editingVersion] = useState(() => expectedUpdatedAt ?? photo.updated_at);
+  const [initialForm] = useState(() => formStateFromPhoto(photo));
 
   function updateField<Field extends keyof MetadataFormState>(
     field: Field,
@@ -207,7 +216,7 @@ export function PhotoMetadataEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (JSON.stringify(form) === JSON.stringify(formStateFromPhoto(photo))) {
+    if (!restoreOriginal && !clearCapture && !clearLocation && JSON.stringify(form) === JSON.stringify(initialForm)) {
       onSaved(photo);
       return;
     }
@@ -238,14 +247,33 @@ export function PhotoMetadataEditor({
       tags: parseTags(form.tags),
       status: form.status,
     };
+    const classificationChanged = Object.keys(metadata).some((key) =>
+      form[key as keyof MetadataFormState] !== initialForm[key as keyof MetadataFormState],
+    );
+    if (!classificationChanged) {
+      for (const key of Object.keys(metadata)) delete metadata[key as keyof PhotoUpdate];
+    }
+    try {
+      if (restoreOriginal) {
+        metadata.restore_original_metadata = true;
+      } else {
+        if (clearCapture || form.captured_at !== initialForm.captured_at || form.capture_offset !== initialForm.capture_offset) {
+          Object.assign(metadata, parseCaptureFields(form.captured_at, form.capture_offset));
+        }
+        if (clearLocation || form.latitude !== initialForm.latitude || form.longitude !== initialForm.longitude) {
+          Object.assign(metadata, parseLocationFields(form.latitude, form.longitude));
+        }
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Invalid capture metadata.");
+      return;
+    }
 
     setIsSaving(true);
     onBusyChange(true);
     onError(null);
     try {
-      onSaved(await (expectedUpdatedAt
-        ? updatePhoto(photo.id, metadata, expectedUpdatedAt)
-        : updatePhoto(photo.id, metadata)));
+      onSaved(await updatePhoto(photo.id, metadata, editingVersion));
     } catch (nextError) {
       const message =
         nextError instanceof Error ? nextError.message : "Save failed";
@@ -259,6 +287,23 @@ export function PhotoMetadataEditor({
   return (
     <form onSubmit={save} className="mt-5 min-w-0 border-t border-stone-200 pt-5">
       <div className="grid gap-4">
+        <fieldset disabled={isSaving || restoreOriginal} className="grid min-w-0 gap-4 rounded-md border border-stone-200 p-3">
+          <legend className="px-1 text-sm font-semibold">Capture date and location</legend>
+          <p className="text-xs leading-5 text-stone-600">Use the camera-local time. Leave the UTC offset empty if unknown. Corrections change archive metadata; original files remain untouched.</p>
+          <label className="block">
+            <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">Capture date/time</span>
+            <input type="datetime-local" step="any" value={form.captured_at} onChange={(event) => updateField("captured_at", event.target.value)} className={inputClassName} />
+          </label>
+          <MetadataInput label="UTC offset" value={form.capture_offset} disabled={isSaving || restoreOriginal} placeholder="+02:00 or leave empty" onChange={(value) => updateField("capture_offset", value)} />
+          <button type="button" className="min-h-10 text-left text-sm font-semibold text-emerald-800" onClick={() => { updateField("captured_at", ""); updateField("capture_offset", ""); setClearCapture(true); }}>Clear capture date</button>
+          <MetadataInput label="Latitude" value={form.latitude} disabled={isSaving || restoreOriginal} placeholder="-90 to 90" onChange={(value) => updateField("latitude", value)} />
+          <MetadataInput label="Longitude" value={form.longitude} disabled={isSaving || restoreOriginal} placeholder="-180 to 180" onChange={(value) => updateField("longitude", value)} />
+          <button type="button" className="min-h-10 text-left text-sm font-semibold text-emerald-800" onClick={() => { updateField("latitude", ""); updateField("longitude", ""); setClearLocation(true); }}>Remove location</button>
+        </fieldset>
+        <div>
+          <button type="button" disabled={isSaving} onClick={() => setRestoreOriginal((current) => !current)} className="min-h-10 text-sm font-semibold text-emerald-800">{restoreOriginal ? "Cancel restore" : "Restore original metadata"}</button>
+          {restoreOriginal ? <p role="status" className="text-sm text-stone-600">Save will re-read capture date, UTC offset, and location from the original file and remove both manual overrides. Other edits will also be saved.</p> : null}
+        </div>
         <MetadataInput
           label="Display title"
           value={form.display_title}
