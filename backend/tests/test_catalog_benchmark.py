@@ -210,6 +210,55 @@ def test_statistics_and_warmups():
     assert result["iterations"] == 3
 
 
+@pytest.mark.parametrize("kind", ["catalog", "smart"])
+def test_capture_zero_count_has_no_items_and_keeps_roles_and_cleanup(archive, kind):
+    engine, dataset, _ = archive
+    query = CatalogSavedQuery(search="no-such-benchmark-match")
+    with Session(engine) as session:
+        if kind == "smart":
+            session.add(
+                SmartCollection(
+                    id=90,
+                    name="Absent",
+                    name_key="absent",
+                    query_version=1,
+                    query_json=query.model_dump_json(),
+                )
+            )
+            session.commit()
+    scenario = Scenario(
+        "absent", "text search", kind=kind, query=query, collection_id=90
+    )
+    response, calls = runner.capture(engine, scenario)
+    Oracle(dataset).verify(scenario, response)
+    expected = [role for role in runner.ROLES[kind] if role != "items"]
+    assert [role for role, _, _ in calls] == expected
+    assert response.total == 0
+    assert response.facets.active_total > 0
+    assert len(runner.profile(engine, calls, 1, {})) == len(expected)
+    assert len(engine.dispatch.before_cursor_execute) == 0
+
+
+def test_capture_rejects_extra_statement_even_for_zero_count(archive, monkeypatch):
+    engine, _, _ = archive
+    original = catalog.list_catalog_photos
+
+    def extra_query(session, **kwargs):
+        response = original(session, **kwargs)
+        session.exec(select(Photo.id).limit(1)).all()
+        return response
+
+    monkeypatch.setattr(catalog, "list_catalog_photos", extra_query)
+    scenario = Scenario(
+        "absent", "text search", query=CatalogSavedQuery(search="absent")
+    )
+    with pytest.raises(
+        safety.BenchmarkError, match="Unexpected production query shape"
+    ):
+        runner.capture(engine, scenario)
+    assert len(engine.dispatch.before_cursor_execute) == 0
+
+
 def test_isolation_ignores_hostile_environment_and_cleans_up(tmp_path, monkeypatch):
     live = tmp_path / "live"
     live.mkdir()

@@ -23,54 +23,103 @@ from app.schemas import (
 
 TIMELINE_PREVIEW_LIMIT = 4
 
+_PHOTO_SEARCH_FIELDS = (
+    Photo.display_title,
+    Photo.common_name,
+    Photo.breed_guess,
+    Photo.species_guess,
+    Photo.category,
+    Photo.description,
+    Photo.original_filename,
+    Photo.camera_make,
+    Photo.camera_model,
+    Photo.lens_model,
+    cast(Photo.tags, String),
+)
+_ANIMAL_SEARCH_FIELDS = (
+    Animal.display_name,
+    Animal.identifier,
+    Animal.legacy_common_name,
+    Animal.legacy_species_name,
+)
+_TAXON_SEARCH_FIELDS = (
+    Taxon.common_name,
+    Taxon.scientific_name,
+    Taxon.canonical_name,
+    Taxon.kingdom,
+    Taxon.phylum,
+    Taxon.taxonomic_class,
+    Taxon.taxonomic_order,
+    Taxon.family,
+    Taxon.genus,
+    Taxon.species,
+)
+
 
 def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _search_conditions(search: str) -> list:
-    fields = (
-        Photo.display_title,
-        Photo.common_name,
-        Photo.breed_guess,
-        Photo.species_guess,
-        Photo.category,
-        Photo.description,
-        Photo.original_filename,
-        Photo.camera_make,
-        Photo.camera_model,
-        Photo.lens_model,
-        cast(Photo.tags, String),
-        Animal.display_name,
-        Animal.identifier,
-        Animal.legacy_common_name,
-        Animal.legacy_species_name,
-        Taxon.common_name,
-        Taxon.scientific_name,
-        Taxon.canonical_name,
-        Taxon.kingdom,
-        Taxon.phylum,
-        Taxon.taxonomic_class,
-        Taxon.taxonomic_order,
-        Taxon.family,
-        Taxon.genus,
-        Taxon.species,
+def _term_condition(fields, term: str):
+    pattern = f"%{_escape_like(term.lower())}%"
+    return or_(
+        *(
+            func.lower(func.coalesce(field, "")).like(pattern, escape="\\")
+            for field in fields
+        )
     )
+
+
+def _search_conditions(search: str) -> list:
+    fields = (*_PHOTO_SEARCH_FIELDS, *_ANIMAL_SEARCH_FIELDS, *_TAXON_SEARCH_FIELDS)
+    return [_term_condition(fields, term) for term in search.split()]
+
+
+def _search_count_conditions(search: str) -> list:
+    # Match each term independently: different terms can match different tables.
     conditions = []
     for term in search.split():
-        pattern = f"%{_escape_like(term.lower())}%"
+        taxon_ids = (
+            select(Taxon.id)
+            .where(_term_condition(_TAXON_SEARCH_FIELDS, term))
+            .correlate(None)
+        )
+        animal_ids = (
+            select(Animal.id)
+            .where(
+                or_(
+                    _term_condition(_ANIMAL_SEARCH_FIELDS, term),
+                    Animal.taxon_id.in_(taxon_ids),
+                )
+            )
+            .correlate(None)
+        )
         conditions.append(
             or_(
-                *(
-                    func.lower(func.coalesce(field, "")).like(
-                        pattern,
-                        escape="\\",
-                    )
-                    for field in fields
-                )
+                _term_condition(_PHOTO_SEARCH_FIELDS, term),
+                Photo.animal_id.in_(animal_ids),
             )
         )
     return conditions
+
+
+def _active_photo_ids():
+    # A covering active-ID lookup lets the outer query fetch Photos by rowid,
+    # rather than traversing the capture index and fetching rows out of order.
+    return select(Photo.id).where(Photo.deleted_at.is_(None)).correlate(None)
+
+
+def _taxon_photo_ids(taxon_id: int):
+    # No active predicate here: start with the existing relationship indexes.
+    # The outer count applies active-photo exclusion and any search predicates.
+    return (
+        select(Photo.id)
+        .select_from(Photo)
+        .join(Animal, Photo.animal_id == Animal.id)
+        .join(Taxon, Animal.taxon_id == Taxon.id)
+        .where(Taxon.id == taxon_id)
+        .correlate(None)
+    )
 
 
 def _name_expression():
@@ -183,6 +232,7 @@ def list_catalog_photos(
     sort: str,
     order: str,
 ) -> CatalogPhotoPage:
+    has_search = bool(search and search.strip())
     items_query = select(Photo).select_from(Photo)
     count_query = select(func.count(Photo.id)).select_from(Photo)
     if taxon_id is not None:
@@ -194,7 +244,7 @@ def list_catalog_photos(
             Animal,
             Photo.animal_id == Animal.id,
         ).join(Taxon, Animal.taxon_id == Taxon.id)
-    elif search and search.strip():
+    elif has_search:
         items_query = items_query.outerjoin(
             Animal, Photo.animal_id == Animal.id
         ).outerjoin(
@@ -207,7 +257,7 @@ def list_catalog_photos(
         ).outerjoin(Taxon, Animal.taxon_id == Taxon.id)
 
     conditions = [Photo.deleted_at.is_(None)]
-    if search and search.strip():
+    if has_search:
         conditions.extend(_search_conditions(search.strip()))
     if status:
         conditions.append(Photo.status == status)
@@ -229,15 +279,47 @@ def list_catalog_photos(
         )
         conditions.append(Photo.captured_at < upper_bound)
 
-    total = session.exec(count_query.where(*conditions)).one()
-    items = list(
-        session.exec(
-            items_query.where(*conditions)
-            .order_by(*_order_by(sort, order))
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        ).all()
+    selective_photo_filters = bool(
+        status
+        or category
+        or uncategorized
+        or taken_from is not None
+        or taken_to is not None
     )
+    filtered_count = count_query.where(*conditions)
+    # Keep selective Photo filters on their existing index paths. Broad text
+    # counts instead reuse relationship matches, while Taxon counts start from
+    # relationship IDs rather than looking up an Animal for every active Photo.
+    if not selective_photo_filters:
+        if taxon_id is not None:
+            filtered_count = (
+                select(func.count(Photo.id))
+                .select_from(Photo)
+                .where(
+                    Photo.deleted_at.is_(None), Photo.id.in_(_taxon_photo_ids(taxon_id))
+                )
+            )
+            if has_search:
+                filtered_count = (
+                    filtered_count.join(Animal, Photo.animal_id == Animal.id)
+                    .join(Taxon, Animal.taxon_id == Taxon.id)
+                    .where(*_search_conditions(search))
+                )
+        elif has_search:
+            filtered_count = select(func.count(Photo.id)).where(
+                Photo.id.in_(_active_photo_ids()), *_search_count_conditions(search)
+            )
+    total = session.exec(filtered_count).one()
+    items = []
+    if total:
+        items = list(
+            session.exec(
+                items_query.where(*conditions)
+                .order_by(*_order_by(sort, order))
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            ).all()
+        )
     return CatalogPhotoPage(
         items=items,
         page=page,
@@ -417,26 +499,26 @@ def list_catalog_taxa(
         Taxon.scientific_name,
     )
     active_join = and_(Photo.animal_id == Animal.id, Photo.deleted_at.is_(None))
-    base = (
+    counts = (
         select(
-            Taxon.id,
-            label.label("label"),
-            Taxon.scientific_name,
+            Animal.taxon_id.label("taxon_id"),
             func.count(Photo.id).label("photo_count"),
         )
-        .select_from(Taxon)
-        .join(Animal, Animal.taxon_id == Taxon.id)
-        .join(Photo, active_join)
-        .group_by(Taxon.id, label, Taxon.scientific_name)
+        .select_from(Photo)
+        .join(Animal, Photo.animal_id == Animal.id)
+        .where(Photo.id.in_(_active_photo_ids()), Animal.taxon_id.is_not(None))
+        .group_by(Animal.taxon_id)
+        .subquery()
     )
     total = session.exec(
-        select(func.count(func.distinct(Taxon.id)))
-        .select_from(Taxon)
-        .join(Animal, Animal.taxon_id == Taxon.id)
-        .join(Photo, active_join)
+        select(func.count(Taxon.id)).join(counts, counts.c.taxon_id == Taxon.id)
     ).one()
     rows = session.exec(
-        base.order_by(
+        select(
+            Taxon.id, label.label("label"), Taxon.scientific_name, counts.c.photo_count
+        )
+        .join(counts, counts.c.taxon_id == Taxon.id)
+        .order_by(
             label.collate("NOCASE"),
             Taxon.scientific_name.collate("NOCASE"),
             Taxon.id,

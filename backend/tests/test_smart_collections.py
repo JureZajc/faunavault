@@ -4,13 +4,14 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlmodel import Session, SQLModel, select
 
 import app.main as main
 from app.config import Settings
 from app.database import create_database_engine
 from app.models import CollectionPhoto, Photo, SmartCollection
-from tests.test_catalog import add_photo
+from tests.test_catalog import add_photo, add_taxon
 
 
 @pytest.fixture()
@@ -208,6 +209,65 @@ def test_results_match_catalog_and_change_with_photo_lifecycle(smart_app):
     with Session(engine) as session:
         assert session.get(Photo, first_id) is not None
         assert session.exec(select(CollectionPhoto)).all() == []
+
+
+@pytest.mark.parametrize(
+    "criteria",
+    [
+        {"search": "common"},
+        {"search": "rare"},
+        {"search": "absent"},
+        {"search": "animalprobe common"},
+        {"search": "taxonprobe common"},
+        {"search": "100% fox_under \\"},
+        {"taxon_id": 1},
+        {"taxon_id": 1, "search": "common"},
+        {"search": "common", "status": "classified"},
+        {"taxon_id": 1, "category": "mammal", "taken_from": "2026-01-01"},
+    ],
+)
+def test_optimized_counts_preserve_complete_smart_catalog_parity(smart_app, criteria):
+    client, engine = smart_app
+    with Session(engine) as session:
+        taxon = add_taxon(session, "taxonprobe species")
+        assert taxon.id == 1
+        first = add_photo(
+            session,
+            1,
+            taxon=taxon,
+            animal_name="animalprobe",
+            display_title="common rare 100% fox_under \\",
+            category="mammal",
+            status="classified",
+            captured_at=datetime(2026, 1, 1),
+        )
+        second = add_photo(session, 2, display_title="common")
+        second.animal_id = first.animal_id
+        add_photo(session, 3, display_title="common", deleted_at=datetime(2026, 1, 1))
+        session.commit()
+    smart = create(client, query=criteria)
+    url = f"/smart-collections/{smart['id']}/photos"
+    for page in (1, 2, 3):
+        params = {"page": page, "page_size": 1}
+        normal = client.get("/catalog/photos", params={**criteria, **params}).json()
+        saved = client.get(url, params=params).json()
+        assert saved == normal
+
+    statements = []
+
+    def capture(_connection, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        saved = client.get(url).json()
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert len(statements) == (5 if saved["total"] == 0 else 6)
+    if saved["total"] == 0:
+        assert not any("LIMIT" in statement.upper() for statement in statements[1:])
+    assert saved["facets"]["active_total"] == 2
 
 
 def test_invalid_saved_definition_is_isolated_and_repairable(smart_app):

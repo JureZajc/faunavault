@@ -563,3 +563,256 @@ def test_catalog_taxa_are_bounded_counted_and_resolve_selected(catalog_app):
         is None
     )
     assert client.get("/catalog/taxa", params={"page_size": 101}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    "model,field",
+    [
+        (Photo, field)
+        for field in (
+            "display_title",
+            "common_name",
+            "breed_guess",
+            "species_guess",
+            "category",
+            "description",
+            "original_filename",
+            "camera_make",
+            "camera_model",
+            "lens_model",
+            "tags",
+        )
+    ]
+    + [
+        (Animal, field)
+        for field in (
+            "display_name",
+            "identifier",
+            "legacy_common_name",
+            "legacy_species_name",
+        )
+    ]
+    + [
+        (Taxon, field)
+        for field in (
+            "common_name",
+            "scientific_name",
+            "canonical_name",
+            "kingdom",
+            "phylum",
+            "taxonomic_class",
+            "taxonomic_order",
+            "family",
+            "genus",
+            "species",
+        )
+    ],
+)
+def test_search_count_and_items_match_every_searchable_field(catalog_app, model, field):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        taxon = add_taxon(session, "Unrelated species")
+        photo = add_photo(session, 1, taxon=taxon, status="classified")
+        record = (
+            photo
+            if model is Photo
+            else session.get(Animal, photo.animal_id)
+            if model is Animal
+            else taxon
+        )
+        setattr(record, field, ["fieldprobe"] if field == "tags" else "fieldprobe")
+        add_photo(session, 2, status="classified")
+        session.commit()
+        photo_id, taxon_id = photo.id, taxon.id
+
+    # Broad, Taxon/text, and selective-filter count formulations must agree.
+    for filters in ({}, {"taxon_id": taxon_id}, {"status": "classified"}):
+        result = client.get(
+            "/catalog/photos", params={"search": "FIELDPROBE", **filters}
+        ).json()
+        assert result["total"] == 1
+        assert [item["id"] for item in result["items"]] == [photo_id]
+
+
+def test_search_literal_terms_missing_relationships_and_sqlite_case(catalog_app):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        taxon = add_taxon(session, "taxonprobe species")
+        first = add_photo(
+            session,
+            1,
+            taxon=taxon,
+            animal_name="animalprobe",
+            display_title="common 100% fox_under \\ alpine-rare",
+            category="mammal",
+            status="classified",
+            captured_at=datetime(2026, 4, 1),
+        )
+        second = add_photo(session, 2, display_title="common 100X foxXunder élan")
+        second.animal_id = first.animal_id
+        third = add_photo(session, 3, display_title="common Élan")
+        third.animal_id = None
+        add_photo(session, 4, display_title="common", deleted_at=datetime(2026, 1, 1))
+        session.commit()
+        ids, taxon_id = [first.id, second.id, third.id], taxon.id
+
+    for term, expected in (
+        ("common", ids[::-1]),
+        ("alpine-rare", ids[:1]),
+        ("100%", ids[:1]),
+        ("fox_under", ids[:1]),
+        ("\\", ids[:1]),
+        ("animalprobe", ids[1::-1]),
+        ("taxonprobe", ids[1::-1]),
+        ("taxonprobe\tcommon\n100%", ids[:1]),
+        ("ÉLAN", ids[1:2]),
+        ("no-match", []),
+    ):
+        result = client.get("/catalog/photos", params={"search": term}).json()
+        assert result["total"] == len(expected)
+        assert [item["id"] for item in result["items"]] == expected
+        assert result["facets"]["active_total"] == 3
+
+    filters = {
+        "search": "taxonprobe common",
+        "taxon_id": taxon_id,
+        "category": "mammal",
+        "status": "classified",
+        "taken_from": "2026-04-01",
+        "taken_to": "2026-04-01",
+    }
+    result = client.get("/catalog/photos", params=filters).json()
+    assert result["total"] == 1
+    assert [item["id"] for item in result["items"]] == ids[:1]
+    for page, expected in ((1, ids[1:2]), (2, ids[:1]), (3, [])):
+        result = client.get(
+            "/catalog/photos",
+            params={"taxon_id": taxon_id, "page_size": 1, "page": page},
+        ).json()
+        assert result["total"] == 2
+        assert [item["id"] for item in result["items"]] == expected
+
+    with Session(engine) as session:
+        session.get(Photo, ids[0]).deleted_at = datetime(2026, 5, 1)
+        session.commit()
+    assert (
+        client.get("/catalog/photos", params={"taxon_id": taxon_id}).json()["total"]
+        == 1
+    )
+    with Session(engine) as session:
+        session.get(Photo, ids[0]).deleted_at = None
+        session.commit()
+    assert (
+        client.get("/catalog/photos", params={"taxon_id": taxon_id}).json()["total"]
+        == 2
+    )
+
+
+def test_search_unlinked_animal_and_trash_only_matches(catalog_app):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        active = add_photo(session, 1, animal_name="unlinkedprobe", tags=["photoprobe"])
+        add_photo(session, 2, animal_name="trashprobe", deleted_at=datetime(2026, 1, 1))
+        no_animal = add_photo(session, 3)
+        no_animal.animal_id = None
+        session.commit()
+        active_id = active.id
+    for term, expected in (
+        ("unlinkedprobe", [active_id]),
+        ("unlinkedprobe photoprobe", [active_id]),
+        ("trashprobe", []),
+    ):
+        for filters in ({}, {"uncategorized": True}):
+            result = client.get(
+                "/catalog/photos", params={"search": term, **filters}
+            ).json()
+            assert result["total"] == len(expected)
+            assert [item["id"] for item in result["items"]] == expected
+            assert result["facets"]["active_total"] == 2
+
+
+@pytest.mark.parametrize("params", [{}, {"search": "absent"}, {"taxon_id": 99999}])
+def test_zero_count_skips_items_but_keeps_global_facets(catalog_app, params):
+    client, engine = catalog_app
+    if params:
+        with Session(engine) as session:
+            add_photo(session, 1, category="bird")
+            session.commit()
+    statements = []
+
+    def capture(_connection, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        result = client.get("/catalog/photos", params=params).json()
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert result["items"] == []
+    assert result["total"] == result["total_pages"] == 0
+    assert result["facets"]["active_total"] == int(bool(params))
+    assert len(statements) == 4  # Exact count and the three global facets.
+    assert not any("LIMIT" in statement.upper() for statement in statements)
+
+
+def test_positive_count_out_of_range_page_still_queries_items(catalog_app):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        add_photo(session, 1)
+        session.commit()
+    statements = []
+
+    def capture(_connection, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        result = client.get("/catalog/photos", params={"page": 2}).json()
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert result["total"] == result["total_pages"] == 1
+    assert result["items"] == []
+    assert len(statements) == 5
+    assert "LIMIT" in statements[1].upper()
+
+
+def test_taxa_count_photos_not_animals_and_preserve_availability(catalog_app):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        alpha = add_taxon(session, "Alpha species", " alpha ")
+        beta = add_taxon(session, "Beta species", "   ")
+        unused = add_taxon(session, "Unused species")
+        trash = add_taxon(session, "Trash species")
+        first = add_photo(session, 1, taxon=alpha)
+        second = add_photo(session, 2)
+        second.animal_id = first.animal_id
+        third = add_photo(session, 3, deleted_at=datetime(2026, 1, 1))
+        third.animal_id = first.animal_id
+        add_photo(session, 4, taxon=beta)
+        add_photo(session, 5, taxon=trash, deleted_at=datetime(2026, 1, 1))
+        unlinked = add_photo(session, 6)
+        unlinked.animal_id = None
+        session.commit()
+        alpha_id, beta_id, unused_id, trash_id = alpha.id, beta.id, unused.id, trash.id
+    result = client.get(
+        "/catalog/taxa", params={"page_size": 1, "include_id": beta_id}
+    ).json()
+    assert result["total"] == result["total_pages"] == 2
+    assert [
+        (item["taxon_id"], item["label"], item["count"]) for item in result["items"]
+    ] == [(alpha_id, "alpha", 2)]
+    assert result["selected"]["taxon_id"] == beta_id
+    assert result["selected"]["count"] == 1
+    second = client.get("/catalog/taxa", params={"page_size": 1, "page": 2}).json()
+    assert second["items"][0]["taxon_id"] == beta_id
+    assert second["items"][0]["label"] == "Beta species"
+    assert (
+        client.get("/catalog/taxa", params={"page": 3, "page_size": 1}).json()["items"]
+        == []
+    )
+    for selected in (unused_id, trash_id):
+        result = client.get("/catalog/taxa", params={"include_id": selected}).json()
+        assert result["selected"]["count"] == 0
+        assert result["total"] == 2
