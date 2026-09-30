@@ -236,7 +236,7 @@ def test_heic_original_and_jpeg_derivatives_verify_and_rehearse(archive, tmp_pat
     ).read_bytes() == payload
 
 
-def test_schema10_backup_rehearsal_preserves_collections(archive):
+def test_current_schema_backup_rehearsal_preserves_collections(archive):
     settings, destination, _ = archive
     backup_path, _ = create_backup(destination, settings)
     target = destination.parent / "schema10-rehearsal"

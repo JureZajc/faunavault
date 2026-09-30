@@ -1,6 +1,6 @@
 # FaunaVault Engineering Improvement Roadmap
 
-Reviewed against `master` on 2026-08-23.
+Release-readiness baseline reviewed against `master` on 2026-09-30.
 
 ## Purpose
 
@@ -10,8 +10,9 @@ has clear value for a local-first personal archive.
 
 The current product is a single-user, single-machine application. SQLite owns
 metadata and durable classification jobs, originals and reproducible derivatives
-remain on local storage, Ollama is optional and local, and GBIF is the only
-network-backed product integration. That boundary remains appropriate.
+remain on local storage, Ollama is optional and local, and GBIF taxonomy lookup
+and remote OpenStreetMap basemap tiles are the network-backed product
+integrations. That boundary remains appropriate.
 
 ## Completed hardening baseline (P0-P4)
 
@@ -123,12 +124,13 @@ Photos, and remove one or many memberships without changing Photo files or
 metadata. Recoverable Trash preserves membership, while permanent Photo deletion
 cascades only the join rows.
 
-Backup format v1 now explicitly verifies and rehearses database schemas 9, 10,
-and 11. Schema-9 archives migrate to empty Collection tables; schema-10
+Backup format v1 explicitly verifies and rehearses database schemas 9 through
+13. Schema-9 archives migrate to empty Collection tables; schema-10
 rehearsals compare Collection metadata and membership exactly; schema-11 also
-compares durable capture metadata. Portable metadata export v3 includes those
-capture fields after original identity fields while retaining deterministic
-Collection records and Trash memberships.
+compares durable capture metadata; schema 12 preserves review timestamps and
+schema 13 preserves Smart Collection definitions. Current metadata export v5
+includes capture fields, review timestamps, deterministic Collection records,
+Trash memberships, and versioned Smart Collection definitions.
 
 ## Current product feature: Photo capture metadata / EXIF
 
@@ -197,6 +199,12 @@ AVIF, HIF/sequence formats, auxiliary/depth browsing, HDR/gain-map processing,
 and conversion UI remain deferred.
 
 ## Recommended next (in order)
+
+The v0.1.0 source-release preparation retains this product baseline, adds portable
+first-run defaults and composed setup diagnostics, and strengthens fresh-run and
+historical recovery coverage. See [Operations](OPERATIONS.md),
+[release notes](../CHANGELOG.md), and the [maintainer release procedure](RELEASE.md).
+R1–R5 below are completed historical slices; their measurements are preserved.
 
 ### R1 - Isolated restore rehearsal and backup compatibility — Complete
 

@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 import app.backup.rehearsal as rehearsal_module
 import app.cli.backup as backup_cli
+import app.migrations as migrations_module
 from app.backup.compatibility import SUPPORTED_BACKUP_SCHEMA_VERSIONS
 from app.backup.manifest import DATABASE_BACKUP_PATH, read_manifest
 from app.backup.rehearsal import (
@@ -28,6 +29,143 @@ from app.services.albums import list_albums
 from app.services.archive_maintenance import Finding, HealthResult
 
 FIXTURE = Path(__file__).parent / "fixtures" / "backup_v1_schema9"
+
+
+def _intermediate_backup(tmp_path, monkeypatch, schema):
+    backup = _copy_fixture(tmp_path)
+    database = backup / DATABASE_BACKUP_PATH
+    settings = Settings(
+        _env_file=None,
+        data_dir=database.parent,
+        image_dir=backup / "images",
+        database_url=f"sqlite:///{database}",
+    )
+    engine = create_database_engine(settings)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(migrations_module, "LATEST_SCHEMA_VERSION", schema)
+            assert migrations_module.run_migrations(engine, settings) == list(
+                range(10, schema + 1)
+            )
+    finally:
+        engine.dispose()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO collection VALUES (1, 'Preserved collection', 'preserved collection', "
+            "'2026-09-01T12:00:00', '2026-09-01T12:00:00')"
+        )
+        connection.executemany(
+            "INSERT INTO collection_photo VALUES (1, ?)", [(1,), (2,)]
+        )
+        connection.execute(
+            "INSERT INTO classification_job "
+            "(photo_id, status, batch_id, batch_kind, requested_model, fallback_attempted, "
+            "prompt_version, attempt_count, created_at, queued_at, started_at, source_photo_updated_at) "
+            "VALUES (1, 'running', 'compatibility', 'single', 'offline-test', 0, 'v1', 1, "
+            "'2026-09-01T12:00:00', '2026-09-01T12:00:00', '2026-09-01T12:00:00', '2026-09-01T12:00:00')"
+        )
+        if schema >= 11:
+            connection.execute(
+                "UPDATE photo SET captured_at='2024-05-24T18:42:00', "
+                "captured_at_offset_minutes=120, camera_make='SONY', "
+                "image_width=10, image_height=10, latitude=46.05, longitude=14.50 WHERE id=1"
+            )
+        if schema >= 12:
+            connection.execute(
+                "UPDATE photo SET reviewed_at='2026-09-01T12:00:00' WHERE id=2"
+            )
+        if schema >= 13:
+            connection.execute(
+                "INSERT INTO smart_collection VALUES "
+                "(1, 'All photos', 'all photos', 1, '{}', '2026-09-01T12:00:00', '2026-09-01T12:00:00')"
+            )
+    manifest_path = backup / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["database"]["schema_version"] = schema
+    payload["database"]["applied_migrations"] = list(range(1, schema + 1))
+    payload["counts"]["classification_jobs"].update(total=1, running=1)
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    _refresh_database_manifest(backup)
+    return backup
+
+
+@pytest.mark.parametrize("schema", [10, 11, 12, 13])
+def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
+    tmp_path, monkeypatch, schema
+):
+    fixture_before = _fingerprint(FIXTURE)
+    backup = _intermediate_backup(tmp_path, monkeypatch, schema)
+    source_before = _fingerprint(backup)
+    assert verify_backup(backup).valid
+    target = tmp_path / "rehearsal"
+    result = rehearse_backup(backup, target)
+    assert result.source_schema_version == schema
+    assert result.current_schema_version == LATEST_SCHEMA_VERSION
+    assert result.applied_migrations == tuple(
+        range(schema + 1, LATEST_SCHEMA_VERSION + 1)
+    )
+    assert result.doctor_status == "HEALTHY"
+    assert (
+        result.active_photos,
+        result.trashed_photos,
+        result.collection_memberships,
+    ) == (1, 1, 2)
+    assert result.recovered_classification_jobs == 1
+    with sqlite3.connect(target / "data" / "faunavault.db") as connection:
+        assert (
+            connection.execute("SELECT name FROM collection").fetchone()[0]
+            == "Preserved collection"
+        )
+        assert connection.execute(
+            "SELECT status, failure_code FROM classification_job"
+        ).fetchone() == ("failed", "worker_interrupted")
+        if schema >= 11:
+            assert connection.execute(
+                "SELECT camera_make, captured_at_offset_minutes, latitude FROM photo WHERE id=1"
+            ).fetchone() == ("SONY", 120, 46.05)
+        if schema >= 12:
+            assert (
+                connection.execute(
+                    "SELECT reviewed_at FROM photo WHERE id=2"
+                ).fetchone()[0]
+                == "2026-09-01T12:00:00"
+            )
+        if schema >= 13:
+            assert connection.execute(
+                "SELECT name, query_version, query_json FROM smart_collection"
+            ).fetchone() == ("All photos", 1, "{}")
+    for role in ("original", "resized", "thumbs"):
+        for source in (backup / "images" / role).iterdir():
+            assert (
+                target / "images" / role / source.name
+            ).read_bytes() == source.read_bytes()
+    assert _fingerprint(backup) == source_before
+    assert _fingerprint(FIXTURE) == fixture_before
+
+
+@pytest.mark.parametrize(
+    "schema,table,column",
+    [
+        (12, "photo", "reviewed_at"),
+        (13, "photo", "reviewed_at"),
+        (13, "smart_collection", "query_json"),
+        (13, "smart_collection", "query_version"),
+    ],
+)
+def test_schema_claim_requires_actual_review_and_smart_columns(
+    tmp_path, monkeypatch, schema, table, column
+):
+    backup = _intermediate_backup(tmp_path, monkeypatch, schema)
+    with sqlite3.connect(backup / DATABASE_BACKUP_PATH) as connection:
+        connection.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+    _refresh_database_manifest(backup)
+    verification = verify_backup(backup)
+    assert not verification.valid
+    assert any(column in error for error in verification.errors)
+    target = tmp_path / "must-not-exist"
+    with pytest.raises(RehearsalIntegrityError):
+        rehearse_backup(backup, target)
+    assert not target.exists()
 
 
 def _digest(path: Path) -> str:

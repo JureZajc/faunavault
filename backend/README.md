@@ -3,8 +3,8 @@
 The FastAPI backend owns local SQLite metadata, image lifecycle operations, migrations, taxonomy behavior, and durable Ollama classification jobs. Run it from this directory with:
 
 ```powershell
-uv sync
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv sync --frozen
+uv run --no-sync uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 As an optional repository-root shortcut, run `python scripts/dev.py backend`.
@@ -12,12 +12,26 @@ As an optional repository-root shortcut, run `python scripts/dev.py backend`.
 Validation:
 
 ```powershell
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
+uv run --no-sync ruff check .
+uv run --no-sync ruff format --check .
+uv run --no-sync pytest
 ```
 
-Configuration is loaded through `pydantic-settings` from `backend/.env`. Relative SQLite paths resolve against this directory. See the root README for storage, backup, migration, and recovery details.
+Configuration is loaded through `pydantic-settings` from `backend/.env` with
+process environment precedence. A root `.env` is not loaded. Relative SQLite
+paths resolve against this directory; portable defaults use `data/faunavault.db`
+and `data/images`. Startup initializes and migrates storage without a reset.
+Existing storage overrides remain authoritative. See the
+[operations guide](../docs/OPERATIONS.md) for configuration, upgrade protection,
+import, classification, backup, migration, and recovery details.
+
+`project.version` in `pyproject.toml` is authoritative. `/health`, OpenAPI, and
+backup manifests share it through `app.version` without requiring Git.
+
+Use `python scripts/dev.py doctor` from the root for setup diagnostics, or
+`uv run --no-sync faunavault-maintenance doctor --environment-only` here.
+`--ollama` explicitly probes optional AI; plain `doctor` remains a full cold
+archive integrity scan. Core readiness does not depend on Ollama.
 
 `/smart-collections` stores version-one, validated catalog criteria separately
 from manual Collection memberships. Create and PATCH use `query_version: 1`
@@ -39,18 +53,18 @@ See [Catalog benchmark methodology and results](../docs/CATALOG_BENCHMARK.md).
 After the backend has initialized the archive, stop it before importing:
 
 ```powershell
-uv run faunavault-import "E:\Photos\Wildlife" --recursive --dry-run
-uv run faunavault-import "E:\Photos\Wildlife" --recursive --classify
+uv run --no-sync faunavault-import "E:\Photos\Wildlife" --recursive --dry-run
+uv run --no-sync faunavault-import "E:\Photos\Wildlife" --recursive --classify
 ```
 
 On Unix-like systems, use
-`uv run faunavault-import ~/Pictures/Wildlife --recursive` from this directory.
+`uv run --no-sync faunavault-import ~/Pictures/Wildlife --recursive` from this directory.
 Omit `--recursive` for the top level only.
 Dry runs are read-only and may run while the backend is online. Imports copy
 supported photos into managed storage and never change source files. Exact
 duplicates are skipped; possible visual duplicates are skipped unless
 `--allow-visual-duplicates` is supplied. `--classify` queues jobs for new photos
-that the backend processes after restart. See the root README for details.
+that the backend processes after restart. See the operations guide for details.
 
 ## Portable metadata export
 
@@ -58,8 +72,8 @@ Create a deterministic JSON metadata and original-file inventory in a new local
 directory, with an optional flattened Photo CSV:
 
 ```powershell
-uv run faunavault-export E:\FaunaVaultExports\metadata-2026-08-20
-uv run faunavault-export E:\FaunaVaultExports\metadata-2026-08-20-with-csv --csv
+uv run --no-sync faunavault-export E:\FaunaVaultExports\metadata-2026-08-20
+uv run --no-sync faunavault-export E:\FaunaVaultExports\metadata-2026-08-20-with-csv --csv
 ```
 
 Unlike backup creation and archive maintenance, export is snapshot-based and may
@@ -71,7 +85,8 @@ permanent deletion may cause a safe failure and retry; no locking is added.
 
 `archive-metadata.json` is authoritative and includes all active/Trash Photos,
 Animals, local Taxa, manual Collections, Collection memberships (including Trash
-memberships). `photos.csv` is optional. Neither contains media,
+memberships), Smart Collection definitions, capture metadata, and review timestamps.
+`photos.csv` is optional. Neither contains media,
 derivative paths, derived albums, perceptual hashes, classification jobs, absolute source
 paths, secrets, or a generation timestamp. The destination must not exist;
 same-parent staging is atomically renamed only after JSON and optional CSV
@@ -79,8 +94,8 @@ round-trip validation. Exit `0` means complete, `1` means source/artifact
 integrity failure, and `2` means usage, configuration, destination, permission,
 disk, or publication failure.
 
-See the root README for the user workflow and
-[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v3
+See the operations guide for the user workflow and
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v5
 field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
 does not replace a verified backup and is not an import or restore mechanism.
 
@@ -110,9 +125,9 @@ Keep the backend stopped for the entire backup creation command, and provide an
 existing local destination directory:
 
 ```powershell
-uv run faunavault-backup create E:\FaunaVaultBackups
-uv run faunavault-backup verify E:\FaunaVaultBackups\faunavault-backup-<timestamp>-<id>
-uv run faunavault-backup rehearse E:\FaunaVaultBackups\faunavault-backup-<timestamp>-<id> E:\FaunaVaultRehearsals\recent-backup
+uv run --no-sync faunavault-backup create E:\FaunaVaultBackups
+uv run --no-sync faunavault-backup verify E:\FaunaVaultBackups\faunavault-backup-<timestamp>-<id>
+uv run --no-sync faunavault-backup rehearse E:\FaunaVaultBackups\faunavault-backup-<timestamp>-<id> E:\FaunaVaultRehearsals\recent-backup
 ```
 
 `create` resolves the configured SQLite and image locations, rejects active
@@ -149,7 +164,7 @@ compare all persisted Photo capture metadata. Schema-12 adds review timestamps;
 schema-13 additionally compares saved Smart Collection definitions exactly.
 A later application schema must retain the
 frozen schema-9 verifier and migration rehearsal unless compatibility is
-intentionally removed and documented. The root README contains the compatibility
+intentionally removed and documented. The operations guide contains the compatibility
 table, target layout, limitations, and unchanged manual production-restore
 procedure.
 
@@ -158,11 +173,11 @@ procedure.
 Stop the backend before operating on the configured live archive:
 
 ```powershell
-uv run faunavault-maintenance doctor
-uv run faunavault-maintenance repair-derived
-uv run faunavault-maintenance repair-derived --apply
-uv run faunavault-maintenance backfill-photo-metadata
-uv run faunavault-maintenance backfill-photo-metadata --apply
+uv run --no-sync faunavault-maintenance doctor
+uv run --no-sync faunavault-maintenance repair-derived
+uv run --no-sync faunavault-maintenance repair-derived --apply
+uv run --no-sync faunavault-maintenance backfill-photo-metadata
+uv run --no-sync faunavault-maintenance backfill-photo-metadata --apply
 ```
 
 `doctor` is read-only and covers SQLite/schema integrity, active and Trash
@@ -185,7 +200,7 @@ unreadable originals are isolated row errors. Stop the backend for the scan.
 Exit `0` means healthy with optional warnings, `1` means integrity errors or
 repairable defects remain, and `2` means usage/configuration/startup failure.
 Missing or damaged originals require recovery from a verified backup; the
-maintenance CLI cannot recreate them. See the root README for the complete cold
+maintenance CLI cannot recreate them. See the operations guide for the complete cold
 operation, interruption, and Windows atomic-replacement guidance.
 
 Classification is asynchronous and local-first. One lifespan-owned in-process worker claims SQLite jobs in `queued_at` order and processes them serially. Status and safe failures survive browser refresh and backend restart; interrupted running jobs are marked failed for explicit retry. The worker records requested/actual model, fallback use, durable attempt count, duration, and prompt version. FaunaVault supports one backend process, not multiple Uvicorn workers.
