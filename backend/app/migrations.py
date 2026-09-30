@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 13
+LATEST_SCHEMA_VERSION = 14
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -438,6 +438,13 @@ def _migration_13(connection) -> None:
     )
 
 
+def _migration_14(connection) -> None:
+    from app.models import DuplicatePair, DuplicateScanState
+
+    DuplicatePair.__table__.create(connection, checkfirst=True)
+    DuplicateScanState.__table__.create(connection, checkfirst=True)
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -499,6 +506,8 @@ def run_migrations(
                 _migration_12(connection)
             elif version == 13:
                 _migration_13(connection)
+            elif version == 14:
+                _migration_14(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

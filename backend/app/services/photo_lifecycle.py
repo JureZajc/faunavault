@@ -303,6 +303,7 @@ async def create_photo_from_upload(
     settings: Settings,
     *,
     allow_visual_duplicate: bool = False,
+    reviewed_candidate_ids: list[int] | None = None,
 ) -> Photo:
     async def chunks() -> AsyncIterator[bytes]:
         while chunk := await file.read(1024 * 1024):
@@ -315,6 +316,7 @@ async def create_photo_from_upload(
         file.content_type or "",
         settings,
         allow_visual_duplicate=allow_visual_duplicate,
+        reviewed_candidate_ids=reviewed_candidate_ids,
     )
 
 
@@ -328,7 +330,19 @@ async def create_photo_from_source(
     allow_visual_duplicate: bool = False,
     classify: bool = False,
     visual_lookup: Callable[[Session, str], list] | None = None,
+    reviewed_candidate_ids: list[int] | None = None,
 ) -> Photo:
+    reviewed_ids = reviewed_candidate_ids or []
+    if (
+        len(reviewed_ids) > 3
+        or len(set(reviewed_ids)) != len(reviewed_ids)
+        or any(value < 1 for value in reviewed_ids)
+        or (reviewed_ids and not allow_visual_duplicate)
+    ):
+        raise HTTPException(
+            422,
+            detail="Reviewed candidates require an override and up to three distinct positive Photo IDs",
+        )
     prepared = await prepare_source(chunks, filename, media_type, settings)
     staged = [
         prepared.staged_original,
@@ -387,6 +401,15 @@ async def create_photo_from_source(
                 longitude=prepared.metadata.longitude,
             )
             session.add(photo)
+            session.flush()
+            from app.services.duplicate_review import record_ingestion_pairs
+
+            record_ingestion_pairs(
+                session,
+                photo,
+                [candidate.photo_id for candidate in visual_candidates],
+                reviewed_ids,
+            )
             if classify:
                 session.flush()
                 jobs, rejected = enqueue_classification_jobs(

@@ -70,12 +70,14 @@ def create_photo_lifecycle_router(
         session: SessionDep,
         file: UploadFile = File(...),
         allow_visual_duplicate: bool = Form(default=False),
+        reviewed_candidate_ids: list[int] = Form(default=[]),
     ) -> Photo:
         return await create_photo_from_upload(
             session,
             file,
             settings_provider(),
             allow_visual_duplicate=allow_visual_duplicate,
+            reviewed_candidate_ids=reviewed_candidate_ids,
         )
 
     @router.post("/photos/upload-batch", response_model=BatchUploadResponse)

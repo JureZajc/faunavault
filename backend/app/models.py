@@ -237,6 +237,66 @@ class SmartCollection(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class DuplicatePair(SQLModel, table=True):
+    __tablename__ = "duplicate_pair"
+    __table_args__ = (
+        CheckConstraint(
+            "left_photo_id < right_photo_id", name="ck_duplicate_pair_order"
+        ),
+        CheckConstraint("distance BETWEEN 0 AND 4", name="ck_duplicate_pair_distance"),
+        Index(
+            "ix_duplicate_pair_queue",
+            "detector",
+            "dismissed_at",
+            "distance",
+            "left_photo_id",
+            "right_photo_id",
+        ),
+        Index("ix_duplicate_pair_right", "right_photo_id"),
+    )
+
+    left_photo_id: int = Field(
+        sa_column=Column(
+            Integer, ForeignKey("photo.id", ondelete="CASCADE"), primary_key=True
+        )
+    )
+    right_photo_id: int = Field(
+        sa_column=Column(
+            Integer, ForeignKey("photo.id", ondelete="CASCADE"), primary_key=True
+        )
+    )
+    detector: str = Field(primary_key=True)
+    left_hash: str = Field(sa_column=Column(String(16), nullable=False))
+    right_hash: str = Field(sa_column=Column(String(16), nullable=False))
+    distance: int
+    discovered_at: datetime = Field(default_factory=utc_now)
+    dismissed_at: datetime | None = None
+
+
+class DuplicateScanState(SQLModel, table=True):
+    __tablename__ = "duplicate_scan_state"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('incomplete', 'complete')", name="ck_duplicate_scan_status"
+        ),
+        CheckConstraint(
+            "processed >= 0 AND skipped >= 0 AND pairs >= 0 AND probes >= 0",
+            name="ck_duplicate_scan_counts",
+        ),
+    )
+
+    detector: str = Field(primary_key=True)
+    status: str = "incomplete"
+    started_at: datetime = Field(default_factory=utc_now)
+    completed_at: datetime | None = None
+    last_successful_at: datetime | None = None
+    processed: int = 0
+    skipped: int = 0
+    pairs: int = 0
+    probes: int = 0
+    reason: str | None = None
+
+
 class ClassificationJob(SQLModel, table=True):
     __tablename__ = "classification_job"
 

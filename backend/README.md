@@ -101,6 +101,29 @@ does not replace a verified backup and is not an import or restore mechanism.
 
 ## Perceptual duplicate detection
 
+The v0.2 Duplicate Review Center persists canonical pairs in schema 14, using the
+same `phash64-v1` threshold (distance ≤4). `GET /duplicates/summary` returns
+counts/coverage; `GET /duplicates/review?left=…&right=…` returns one pair with
+bounded previous/next navigation. `POST /duplicates/pairs/{left}/{right}/dismiss`
+records Keep both with `detector` and `expected_discovered_at` stale-evidence
+checks. Trash/restore/delete remain the existing Photo lifecycle endpoints.
+
+Stop the backend/importer, then use `uv run --no-sync faunavault-maintenance
+duplicates-scan` (dry run) or add `--apply`. The scanner reuses the importer's
+five-part index, streams 500-pair writes, defaults to 50 million bucket probes
+and one million pairs, and reports incomplete coverage on interruption/limits.
+No images are decoded or modified. Missing hashes await the existing startup
+backfill. Ordinary page requests only query persisted candidates.
+
+Ingestion's existing three-result lookup persists detected matches. Browser
+Keep both supplies repeated optional `reviewed_candidate_ids` multipart fields
+(up to three positive distinct IDs, with an override) to save displayed decisions
+atomically. Bare overrides and importer overrides leave matches unresolved.
+Dismissals preserve both Photo metadata and AI-review timestamps. Trash hides
+pairs; restore reopens them unless dismissed; permanent deletion cascades cleanup.
+Backups/rehearsal support schema 14 and preserve this curation state; metadata
+export remains v5 and excludes it. See Operations for safety and coverage details.
+
 Uploads retain the authoritative SHA-256 duplicate check. After it finds no
 exact match, the lifecycle service calculates the Pillow-only `phash64-v1`
 fingerprint and scans persisted active and Trash hashes. Matches at Hamming

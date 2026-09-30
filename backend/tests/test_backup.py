@@ -11,6 +11,7 @@ import pytest
 from PIL import Image
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app.archive_integrity import read_duplicate_signature
 from app.backup.integrity import BackupError
 from app.backup.manifest import read_manifest
 from app.backup.rehearsal import rehearse_backup
@@ -24,11 +25,14 @@ from app.models import (
     ClassificationJob,
     Collection,
     CollectionPhoto,
+    DuplicatePair,
+    DuplicateScanState,
     Photo,
     SmartCollection,
     Taxon,
     utc_now,
 )
+from app.services.duplicate_review import DETECTOR
 from app.services.image_codecs import open_image
 from app.services.image_variants import JPEG, save_variant
 from tests.heic_fixtures import heic_bytes
@@ -66,7 +70,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for migration in range(1, 14):
+        for migration in range(1, 15):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (migration,),
@@ -153,8 +157,8 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert backup_path.name.startswith("faunavault-backup-")
     manifest = read_manifest(backup_path / "manifest.json")
     assert manifest.backup_format_version == 1
-    assert manifest.database.schema_version == 13
-    assert manifest.database.applied_migrations == list(range(1, 14))
+    assert manifest.database.schema_version == 14
+    assert manifest.database.applied_migrations == list(range(1, 15))
     assert manifest.counts.photos == 2
     assert manifest.counts.active_photos == 1
     assert manifest.counts.trashed_photos == 1
@@ -236,6 +240,66 @@ def test_heic_original_and_jpeg_derivatives_verify_and_rehearse(archive, tmp_pat
     ).read_bytes() == payload
 
 
+def _add_duplicate_curation(settings):
+    engine = create_database_engine(settings)
+    with Session(engine) as session:
+        for photo_id, value in ((1, "0000000000000000"), (2, "0000000000000001")):
+            photo = session.get(Photo, photo_id)
+            photo.perceptual_hash = value
+            session.add(photo)
+        now = utc_now()
+        session.add(
+            DuplicatePair(
+                left_photo_id=1,
+                right_photo_id=2,
+                detector=DETECTOR,
+                left_hash="0000000000000000",
+                right_hash="0000000000000001",
+                distance=1,
+                dismissed_at=now,
+            )
+        )
+        session.add(
+            DuplicateScanState(
+                detector=DETECTOR,
+                status="complete",
+                completed_at=now,
+                last_successful_at=now,
+                processed=2,
+                pairs=1,
+            )
+        )
+        session.commit()
+    engine.dispose()
+
+
+def test_schema14_backup_rehearsal_preserves_duplicate_curation(archive):
+    settings, destination, _ = archive
+    _add_duplicate_curation(settings)
+    expected = read_duplicate_signature(settings.database_path)
+    backup, verified = create_backup(destination, settings)
+    assert verified.valid
+    result = rehearse_backup(backup, destination.parent / "duplicate-rehearsal")
+    assert result.source_schema_version == 14 and result.doctor_status == "HEALTHY"
+    assert (
+        read_duplicate_signature(result.target / "data" / "faunavault.db") == expected
+    )
+    assert read_duplicate_signature(settings.database_path) == expected
+
+
+def test_backup_rejects_duplicate_decision_changes_before_publication(archive):
+    settings, destination, _ = archive
+    _add_duplicate_curation(settings)
+
+    def mutate():
+        with sqlite3.connect(settings.database_path) as connection:
+            connection.execute("UPDATE duplicate_pair SET dismissed_at=NULL")
+
+    with pytest.raises(BackupError, match="duplicate review state changed"):
+        create_backup(destination, settings, before_publish=mutate)
+    assert list(destination.iterdir()) == []
+
+
 def test_current_schema_backup_rehearsal_preserves_collections(archive):
     settings, destination, _ = archive
     backup_path, _ = create_backup(destination, settings)
@@ -243,7 +307,7 @@ def test_current_schema_backup_rehearsal_preserves_collections(archive):
 
     result = rehearse_backup(backup_path, target)
 
-    assert result.source_schema_version == 13
+    assert result.source_schema_version == 14
     assert result.collections == 1
     assert result.collection_memberships == 2
     recovered_settings = Settings(
@@ -286,7 +350,7 @@ def test_schema13_backup_verifies_and_rehearses_smart_definitions(archive):
     assert verify_backup(backup_path).valid
     target = destination.parent / "smart-rehearsal"
     rehearsal = rehearse_backup(backup_path, target)
-    assert rehearsal.source_schema_version == 13
+    assert rehearsal.source_schema_version == 14
     restored = create_database_engine(
         Settings(
             _env_file=None,

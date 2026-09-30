@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -348,12 +349,115 @@ def _inspect_schema_13(
     )
 
 
+def duplicate_state_records(connection: sqlite3.Connection):
+    pairs = connection.execute(
+        "SELECT left_photo_id, right_photo_id, detector, left_hash, right_hash, distance, discovered_at, dismissed_at "
+        "FROM duplicate_pair ORDER BY left_photo_id, right_photo_id, detector"
+    )
+    scans = connection.execute(
+        "SELECT detector, status, started_at, completed_at, last_successful_at, processed, skipped, pairs, probes, reason "
+        "FROM duplicate_scan_state ORDER BY detector"
+    )
+    return pairs, scans
+
+
+def duplicate_state_signature(connection: sqlite3.Connection) -> tuple[str, str]:
+    signatures = []
+    for rows in duplicate_state_records(connection):
+        digest = hashlib.sha256()
+        for row in rows:
+            digest.update(
+                json.dumps(tuple(row), ensure_ascii=True, separators=(",", ":")).encode(
+                    "utf-8"
+                )
+                + b"\n"
+            )
+        signatures.append(digest.hexdigest())
+    return tuple(signatures)
+
+
+def read_duplicate_signature(path: Path) -> tuple:
+    connection = open_read_only_database(path)
+    try:
+        return duplicate_state_signature(connection)
+    finally:
+        connection.close()
+
+
+def _inspect_schema_14(
+    connection: sqlite3.Connection, migrations: list[int]
+) -> DatabaseInventory:
+    base = _inspect_schema_13(connection, migrations)
+    pairs, scans = duplicate_state_records(connection)
+    for (
+        left,
+        right,
+        detector,
+        left_hash,
+        right_hash,
+        distance,
+        discovered,
+        dismissed,
+    ) in pairs:
+        if (
+            left >= right
+            or not detector
+            or any(
+                PERCEPTUAL_HASH_PATTERN.fullmatch(value or "") is None
+                for value in (left_hash, right_hash)
+            )
+        ):
+            raise ArchiveIntegrityError(
+                "Invalid duplicate pair identity or fingerprint"
+            )
+        if (
+            not 0 <= distance <= 4
+            or (int(left_hash, 16) ^ int(right_hash, 16)).bit_count() != distance
+        ):
+            raise ArchiveIntegrityError("Invalid duplicate pair distance")
+        try:
+            datetime.fromisoformat(discovered)
+            if dismissed is not None:
+                datetime.fromisoformat(dismissed)
+        except (ValueError, TypeError) as exc:
+            raise ArchiveIntegrityError("Invalid duplicate review timestamp") from exc
+    for (
+        detector,
+        status,
+        started,
+        completed,
+        successful,
+        processed,
+        skipped,
+        count,
+        probes,
+        _reason,
+    ) in scans:
+        if (
+            not detector
+            or status not in {"complete", "incomplete"}
+            or min(processed, skipped, count, probes) < 0
+        ):
+            raise ArchiveIntegrityError("Invalid duplicate scan state")
+        try:
+            datetime.fromisoformat(started)
+            for value in (completed, successful):
+                if value is not None:
+                    datetime.fromisoformat(value)
+            if status == "complete" and (completed is None or successful is None):
+                raise ValueError("completed scan requires timestamps")
+        except (ValueError, TypeError) as exc:
+            raise ArchiveIntegrityError("Invalid duplicate scan timestamp") from exc
+    return base
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
     11: _inspect_schema_11,
     12: _inspect_schema_12,
     13: _inspect_schema_13,
+    14: _inspect_schema_14,
 }
 
 

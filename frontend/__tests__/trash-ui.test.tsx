@@ -197,7 +197,7 @@ test("keeps permanent deletion open and interactive when submission fails", asyn
   expect(
     retry.disabled,
   ).toBe(false);
-  expect(document.activeElement).toBe(input);
+  await waitFor(() => expect(document.activeElement).toBe(input));
 });
 
 test("moves an active photo without navigating", async () => {

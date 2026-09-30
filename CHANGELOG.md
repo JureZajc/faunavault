@@ -6,6 +6,10 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Duplicate Review Center for persistent pairwise visual review, Keep both decisions,
+  recoverable Trash actions, and explicit guarded archive scans. Schema 14 retains
+  review decisions in verified backups and recovery rehearsals.
+
 ## 0.1.0
 
 First intentional public, source-based FaunaVault release.

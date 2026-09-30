@@ -365,7 +365,7 @@ export function usePhotoUpload({
 
     let reviewResolved = false;
     try {
-      const photo = await uploadPhoto(review.file, true);
+      const photo = await uploadPhoto(review.file, true, review.possibleDuplicate.candidates.slice(0, 3).map((candidate) => candidate.photo_id));
       if (!operationIsCurrent(operationId)) return;
       catalogDirty.current = true;
       updateItem(review.id, (item) => ({

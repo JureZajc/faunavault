@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 const ORIGINAL_FILENAME = "faunavault-e2e-original.jpg";
@@ -26,6 +26,8 @@ function testRoot() {
 function fixturePath(filename: string) {
   return path.join(testRoot(), "fixtures", filename);
 }
+
+
 
 function uploadProgress(page: Page) {
   return page.getByRole("region", { name: "Upload progress" });
@@ -461,4 +463,37 @@ test("Timeline groups capture months and opens the filtered List", async ({ page
   await page.goBack();
   await expect(page).toHaveURL(/\/timeline$/);
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+});
+
+test("persistent visual duplicate review", async ({ page, request }) => {
+  const ids: number[] = [];
+  try {
+    for (const filename of [ORIGINAL_FILENAME, RECOMPRESSED_FILENAME]) {
+      const uploaded = await request.post("http://127.0.0.1:8001/photos/upload", {
+        multipart: { file: { name: filename, mimeType: "image/jpeg", buffer: await readFile(fixturePath(filename)) }, allow_visual_duplicate: "true" },
+      });
+      expect(uploaded.ok()).toBe(true);
+      ids.push((await uploaded.json()).id);
+    }
+    await page.goto(`/duplicates?left=${ids[0]}&right=${ids[1]}`);
+    await expect(page.getByRole("heading", { name: "Duplicate Review Center" })).toBeVisible();
+    await expect(page.getByText(/Fingerprint distance \d; review threshold 4/)).toBeVisible();
+    await expectDecodedImage(page.getByRole("region", { name: "Left photo" }).getByRole("img"));
+    await expectDecodedImage(page.getByRole("region", { name: "Right photo" }).getByRole("img"));
+    await page.screenshot({ path: test.info().outputPath("duplicates-desktop.png"), fullPage: true });
+    await page.setViewportSize({ width: 360, height: 760 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath("duplicates-mobile.png"), fullPage: true });
+    await page.getByRole("button", { name: "Keep both / Not duplicates" }).click();
+    await expect(page.getByRole("heading", { name: "No possible duplicates need review." })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "No possible duplicates need review." })).toBeVisible();
+    const summary = await request.get("http://127.0.0.1:8001/duplicates/summary");
+    expect((await summary.json()).dismissed).toBe(1);
+  } finally {
+    for (const id of ids) {
+      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
+      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+    }
+  }
 });
