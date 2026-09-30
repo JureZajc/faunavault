@@ -24,6 +24,7 @@ function photo(title: string): Photo {
   return {
     id: 1,
     original_filename: "fox.jpg",
+    is_favorite: false, rating: null,
     stored_filename: "fox.jpg",
     resized_filename: "fox-resized.jpg",
     thumbnail_filename: "fox-thumb.jpg",
@@ -180,6 +181,39 @@ test("writes capture dates to the URL and reset clears both", async () => {
   await waitFor(() => expect(window.location.search).not.toContain("catalog_taken_"));
 });
 
+test("restores, edits, saves and clears curation criteria through URL state", async () => {
+  window.history.replaceState(null, "", "/?catalog_favorites_only=1&catalog_rating_min=4&catalog_sort=rating");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+  expect(screen.getByRole<HTMLInputElement>("checkbox", { name: "Favorites only" }).checked).toBe(true);
+  expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Rating filter" }).value).toBe("min:4");
+  expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Sort" }).value).toBe("rating_desc");
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
+  await userEvent.click(screen.getByRole("button", { name: "Save as Smart Collection" }));
+  const dialog = screen.getByRole("dialog", { name: "Create Smart Collection" });
+  await userEvent.type(within(dialog).getByRole("textbox", { name: "Smart Collection name" }), "Best photos");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Create Smart Collection" }));
+  expect(api.createSmartCollection).toHaveBeenCalledWith(expect.objectContaining({ query_version: 1, query: expect.objectContaining({ favorites_only: true, rating_min: 4, sort: "rating" }) }));
+});
+
+test("switches exact/minimum/unrated filters without combining them and follows history", async () => {
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+  await userEvent.click(screen.getByRole("checkbox", { name: "Favorites only" }));
+  await waitFor(() => expect(window.location.search).toContain("catalog_favorites_only=1"));
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Rating filter" }), "exact:5");
+  await waitFor(() => expect(window.location.search).toContain("catalog_rating=5"));
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Rating filter" }), "unrated");
+  await waitFor(() => expect(window.location.search).toContain("catalog_unrated=1"));
+  expect(window.location.search).not.toContain("catalog_rating=");
+  window.history.pushState(null, "", "/?catalog_rating_min=3&catalog_sort=rating&catalog_order=asc");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  await waitFor(() => expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Rating filter" }).value).toBe("min:3"));
+  expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Sort" }).value).toBe("rating_asc");
+  await userEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+  await waitFor(() => expect(window.location.search).not.toMatch(/catalog_(rating|favorites|unrated)/));
+});
+
 test("preserves catalog parameters while switching collection views", async () => {
   window.history.replaceState(null, "", "/?catalog_page=2&catalog_status=classified");
   render(<Home />);
@@ -212,5 +246,5 @@ test("List opens Map with supported membership filters and disables pending text
   expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toBe("/map?catalog_status=classified&catalog_category=bird&catalog_taxon=7&catalog_taken_from=2026-01-01");
   await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "f");
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
-  expect(screen.getByText("Clear text search to view these filters on Map.")).toBeTruthy();
+  expect(screen.getByText("Clear text search and Favorite/Rating filters to view these filters on Map.")).toBeTruthy();
 });

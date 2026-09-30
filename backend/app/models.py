@@ -83,6 +83,26 @@ class Photo(SQLModel, table=True):
     resized_filename: str
     thumbnail_filename: str
     display_title: str | None = None
+    is_favorite: bool = Field(
+        default=False,
+        sa_column=Column(
+            Boolean,
+            CheckConstraint("is_favorite IN (0, 1)", name="ck_photo_favorite"),
+            nullable=False,
+            server_default="0",
+        ),
+    )
+    rating: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            CheckConstraint(
+                "rating IS NULL OR (typeof(rating) = 'integer' AND rating BETWEEN 1 AND 5)",
+                name="ck_photo_rating",
+            ),
+            nullable=True,
+        ),
+    )
     common_name: str | None = None
     breed_guess: str | None = None
     species_guess: str | None = None

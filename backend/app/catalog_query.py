@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.metadata_types import PhotoRating
+
 CatalogStatus = Literal["pending", "classified", "needs_review"]
 CatalogSort = Literal[
     "created_at",
@@ -13,6 +15,7 @@ CatalogSort = Literal[
     "name",
     "species",
     "confidence",
+    "rating",
     "needs_review",
     "pending",
 ]
@@ -31,6 +34,10 @@ class CatalogSavedQuery(BaseModel):
     taxon_id: int | None = Field(default=None, ge=1)
     taken_from: date | None = Field(default=None, strict=False)
     taken_to: date | None = Field(default=None, strict=False)
+    favorites_only: bool = False
+    rating: PhotoRating | None = None
+    rating_min: PhotoRating | None = None
+    unrated: bool = False
     sort: CatalogSort = "created_at"
     order: CatalogOrder = "desc"
 
@@ -50,6 +57,11 @@ class CatalogSavedQuery(BaseModel):
 
     @model_validator(mode="after")
     def validate_combinations(self) -> CatalogSavedQuery:
+        if (
+            sum((self.rating is not None, self.rating_min is not None, self.unrated))
+            > 1
+        ):
+            raise ValueError("rating, rating_min and unrated cannot be combined")
         if self.category and self.uncategorized:
             raise ValueError("category and uncategorized cannot be combined")
         if self.taken_from and self.taken_to and self.taken_from > self.taken_to:

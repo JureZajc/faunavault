@@ -26,6 +26,7 @@ function photo(id: number, filename = `photo-${id}.jpg`): Photo {
   return {
     id,
     original_filename: filename,
+    is_favorite: false, rating: null,
     stored_filename: `${id}.jpg`,
     resized_filename: `${id}-resized.jpg`,
     thumbnail_filename: `${id}-thumb.jpg`,

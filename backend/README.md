@@ -95,7 +95,7 @@ integrity failure, and `2` means usage, configuration, destination, permission,
 disk, or publication failure.
 
 See the operations guide for the user workflow and
-[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v6
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v7
 field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
 does not replace a verified backup and is not an import or restore mechanism.
 
@@ -121,8 +121,8 @@ Keep both supplies repeated optional `reviewed_candidate_ids` multipart fields
 atomically. Bare overrides and importer overrides leave matches unresolved.
 Dismissals preserve both Photo metadata and AI-review timestamps. Trash hides
 pairs; restore reopens them unless dismissed; permanent deletion cascades cleanup.
-Backups/rehearsal support schemas through 15 and preserve this curation state; metadata
-export v6 still excludes duplicate curation state. See Operations for safety and coverage details.
+Backups/rehearsal support schemas through 16 and preserve this curation state; metadata
+export v7 still excludes duplicate curation state. See Operations for safety and coverage details.
 
 Uploads retain the authoritative SHA-256 duplicate check. After it finds no
 exact match, the lifecycle service calculates the Pillow-only `phash64-v1`
@@ -180,7 +180,7 @@ recoverability failure and exit `2` means usage, target, permission, disk, or
 other setup failure.
 
 Backup format v1 and database recovery versions are independent. This version
-explicitly supports schema 9 through schema 15 backups. Schema-9
+explicitly supports schema 9 through schema 16 backups. Schema-9
 rehearsals migrate to empty Collection tables; schema-10 rehearsals compare
 Collection metadata and membership exactly; schema-11 rehearsals additionally
 compare all persisted Photo capture metadata. Schema-12 adds review timestamps;
@@ -230,7 +230,7 @@ Individual `PATCH /photos/{id}` capture/GPS updates require complete groups and
 `expected_updated_at`; source fields/flags are read-only. The same PATCH accepts
 `restore_original_metadata: true` to re-read both groups from a trusted original,
 without writing original bytes. Capture-only edits preserve AI review state.
-Backup-v1 verification/rehearsal supports schemas 9–15; portable format v6 exports
+Backup-v1 verification/rehearsal supports schemas 9–16; portable format v7 exports
 effective values, source values, and override markers. See
 [capture editing semantics](../docs/OPERATIONS.md#editable-capture-metadata-v02).
 
@@ -305,3 +305,25 @@ explicitly, so backend tests use deterministic fakes or `httpx.MockTransport`
 and never require internet access. Remote resolution finishes before short
 SQLite write transactions; accepted GBIF taxa are reused through the existing
 unique provider/external-ID constraint.
+
+## Photo curation contract
+
+Schema 16 adds `Photo.is_favorite` (non-null boolean, default false) and `rating`
+(nullable integer 1–5, default null). `PATCH /photos/{id}` accepts these fields:
+omission preserves a value; `rating: null` clears it. JSON mutations reject
+coercible strings, floats, boolean ratings, and invalid ranges. Detail requests
+use the existing `expected_updated_at` conflict guard. Curation-only edits change
+`updated_at` while preserving classification status and `reviewed_at`; existing
+queued/running AI stale-result guards continue to apply.
+
+`GET /catalog/photos` and query-v1 Smart Collections accept `favorites_only`,
+`rating`, `rating_min`, and `unrated`. Rating criteria are mutually exclusive.
+`sort=rating` supports both directions with nulls last; ties use newest added,
+case-insensitive filename ascending, then ID descending. These fields do not
+participate in text search. Map rejects active curation criteria.
+
+`POST /photos/bulk` adds `set_favorite` with required boolean `is_favorite`,
+`set_rating` with required integer `rating`, and `clear_rating`. Existing
+250-ID limits, atomicity, active-photo checks, and selection semantics apply.
+Export v7 includes JSON/CSV curation values; backup format v1 supports schemas
+9–16 and validates schema-16 structure even for empty archives.

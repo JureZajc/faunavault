@@ -21,6 +21,7 @@ function photo(overrides: Partial<Photo> = {}): Photo {
   return {
     id: 7,
     original_filename: "fox.jpg",
+    is_favorite: false, rating: null,
     stored_filename: "fox.jpg",
     resized_filename: "fox-resized.jpg",
     thumbnail_filename: "fox-thumb.jpg",

@@ -125,12 +125,12 @@ metadata. Recoverable Trash preserves membership, while permanent Photo deletion
 cascades only the join rows.
 
 Backup format v1 explicitly verifies and rehearses database schemas 9 through
-15. Schema-9 archives migrate to empty Collection tables; schema-10
+16. Schema-9 archives migrate to empty Collection tables; schema-10
 rehearsals compare Collection metadata and membership exactly; schema-11 also
 compares durable capture metadata; schema 12 preserves review timestamps and
 schema 13 preserves Smart Collection definitions; schema 14 preserves duplicate
 curation; schema 15 retains extracted capture/GPS and manual override state.
-Current metadata export v6
+Current metadata export v7
 includes capture fields, review timestamps, deterministic Collection records,
 Trash memberships, versioned Smart Collection definitions, and capture/GPS
 correction provenance.
@@ -144,7 +144,7 @@ Schema 15 retains original extracted values separately and marks manual edits or
 intentional clears per group. Backfill preserves those overrides, including
 nulls. Restore original metadata reuses trusted original decoding and extraction
 without changing image bytes. Capture-only edits preserve AI review state.
-Backup verification/rehearsal and portable export v6 retain correction provenance.
+Backup verification/rehearsal and portable export v7 retain correction provenance.
 Bulk capture correction remains a later product evaluation.
 
 ## Current product feature: Photo capture metadata / EXIF
@@ -428,3 +428,13 @@ these measurements do not mandate a production FTS migration.
 
 These are product-boundary decisions, not unfinished work. Reconsider them only
 when FaunaVault's actual requirements change.
+
+## Current product feature: Photo Favorites and Ratings
+
+Schema 16 adds independent personal Favorite and optional 1–5 Rating values to
+Photo metadata. List and query-v1 Smart Collections share Favorites, exact/minimum
+rating, and Unrated criteria with URL restoration and null-last rating sorting.
+Detail edits and explicit atomic bulk actions preserve AI review state. Cards
+and duplicate comparisons show compact indicators. Trash/restore, export v7,
+and backup-v1 verification/rehearsal preserve both fields; schemas 9–16 remain
+supported. Map and Timeline retain their limited filtering contracts.

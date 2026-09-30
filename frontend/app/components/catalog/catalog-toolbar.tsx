@@ -5,7 +5,7 @@ import { CatalogTaxonOption } from "../../lib/api";
 import { CatalogLayout, CatalogSortOption } from "../../lib/catalog-query";
 
 import {
-  CatalogCategoryFilter, CatalogDateFilters, CatalogStatusFilter, CatalogTaxonFilter,
+  CatalogCurationFilters, CatalogCategoryFilter, CatalogDateFilters, CatalogStatusFilter, CatalogTaxonFilter,
   StatusFilter,
 } from "./catalog-filter-controls";
 export { UNKNOWN_CATEGORY_VALUE } from "./catalog-filter-controls";
@@ -16,6 +16,8 @@ const sortLabels: Record<CatalogSortOption, string> = {
   oldest: "Added, oldest first",
   taken_newest: "Date taken, newest first",
   taken_oldest: "Date taken, oldest first",
+  rating_desc: "Rating high to low",
+  rating_asc: "Rating low to high",
   confidence_desc: "Confidence high to low",
   confidence_asc: "Confidence low to high",
   name_asc: "Name A-Z",
@@ -27,6 +29,10 @@ const sortLabels: Record<CatalogSortOption, string> = {
 };
 
 type CatalogToolbarProps = {
+  favoritesOnly?: boolean;
+  ratingFilter?: string;
+  onFavoritesOnlyChange: (value: boolean) => void;
+  onRatingFilterChange: (value: string) => void;
   searchQuery: string;
   statusFilter: StatusFilter;
   categoryFilter: string;
@@ -63,6 +69,7 @@ type CatalogToolbarProps = {
 };
 
 export default function CatalogToolbar({
+  favoritesOnly, ratingFilter, onFavoritesOnlyChange, onRatingFilterChange,
   searchQuery,
   statusFilter,
   categoryFilter,
@@ -145,6 +152,7 @@ export default function CatalogToolbar({
         </label>
       </div>
 
+      <CatalogCurationFilters favoritesOnly={favoritesOnly} ratingFilter={ratingFilter} onFavoritesOnlyChange={onFavoritesOnlyChange} onRatingFilterChange={onRatingFilterChange} />
       <CatalogDateFilters {...filterProps} />
 
       <div className="mt-4 flex flex-col gap-3 border-t border-stone-100 pt-4 text-sm text-stone-500 lg:flex-row lg:items-center lg:justify-between">
@@ -158,7 +166,7 @@ export default function CatalogToolbar({
           {mapHref ? <div>
             {mapDisabled ? <button type="button" disabled aria-describedby="map-search-explanation" className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold opacity-50">View on Map</button>
               : <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">View on Map</Link>}
-            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear text search to view these filters on Map.</p> : null}
+            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear text search and Favorite/Rating filters to view these filters on Map.</p> : null}
           </div> : null}
           {onSaveSmartCollection ? <button type="button" onClick={onSaveSmartCollection} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Save as Smart Collection</button> : null}
           {hasActiveFilters ? (

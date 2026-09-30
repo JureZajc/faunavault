@@ -10,11 +10,14 @@ from app.models import Photo, utc_now
 from app.schemas import (
     BulkAddTagsRequest,
     BulkClearCategoryRequest,
+    BulkClearRatingRequest,
     BulkMoveToTrashRequest,
     BulkPhotoMutationResponse,
     BulkPhotoRequest,
     BulkRemoveTagsRequest,
     BulkSetCategoryRequest,
+    BulkSetFavoriteRequest,
+    BulkSetRatingRequest,
 )
 from app.services.classification import normalize_metadata_text, normalize_tags
 from app.services.photo_lifecycle import mark_photos_trashed
@@ -160,6 +163,27 @@ def apply_bulk_photo_action(
                 if photo.category is not None:
                     photo.category = None
                     record_manual_photo_change(photo, now)
+                    session.add(photo)
+        elif isinstance(
+            request,
+            (BulkSetFavoriteRequest, BulkSetRatingRequest, BulkClearRatingRequest),
+        ):
+            field = (
+                "is_favorite"
+                if isinstance(request, BulkSetFavoriteRequest)
+                else "rating"
+            )
+            value = (
+                request.is_favorite
+                if isinstance(request, BulkSetFavoriteRequest)
+                else request.rating
+                if isinstance(request, BulkSetRatingRequest)
+                else None
+            )
+            for photo in photos:
+                if getattr(photo, field) != value:
+                    setattr(photo, field, value)
+                    photo.updated_at = now
                     session.add(photo)
         elif isinstance(request, BulkMoveToTrashRequest):
             mark_photos_trashed(photos, session)

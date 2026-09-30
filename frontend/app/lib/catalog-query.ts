@@ -3,6 +3,7 @@ import {
   CatalogQuery,
   CatalogSort,
   PhotoStatus,
+  PhotoRating,
 } from "./api";
 
 export type CatalogLayout = "flat" | "grouped";
@@ -12,6 +13,8 @@ export type CatalogSortOption =
   | "oldest"
   | "taken_newest"
   | "taken_oldest"
+  | "rating_desc"
+  | "rating_asc"
   | "confidence_desc"
   | "confidence_asc"
   | "name_asc"
@@ -47,6 +50,7 @@ export function mapCatalogHref(state: MapCatalogQuery) {
 export function mapListHref(state: CatalogState) {
   const query = writeCatalogState(new URLSearchParams(), {
     ...DEFAULT_CATALOG_STATE, ...mapCatalogQuery(state), search: state.search,
+    favorites_only: state.favorites_only, rating: state.rating, rating_min: state.rating_min, unrated: state.unrated,
   }).toString();
   return query ? `/?${query}` : "/";
 }
@@ -69,6 +73,7 @@ const sorts = new Set<CatalogSort>([
   "captured_at",
   "name",
   "species",
+  "rating",
   "confidence",
   "needs_review",
   "pending",
@@ -83,6 +88,8 @@ const sortOptionMap: Record<
   oldest: { sort: "created_at", order: "asc" },
   taken_newest: { sort: "captured_at", order: "desc" },
   taken_oldest: { sort: "captured_at", order: "asc" },
+  rating_desc: { sort: "rating", order: "desc" },
+  rating_asc: { sort: "rating", order: "asc" },
   confidence_desc: { sort: "confidence", order: "desc" },
   confidence_asc: { sort: "confidence", order: "asc" },
   name_asc: { sort: "name", order: "asc" },
@@ -97,6 +104,14 @@ function positiveInteger(value: string | null) {
   if (!value || !/^\d+$/.test(value)) return undefined;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+export function parseRating(value: string | null): PhotoRating | undefined {
+  return value && /^[1-5]$/.test(value) ? Number(value) as PhotoRating : undefined;
+}
+
+export function hasCurationFilters(state: Pick<CatalogQuery, "favorites_only" | "rating" | "rating_min" | "unrated">) {
+  return Boolean(state.favorites_only || state.rating || state.rating_min || state.unrated);
 }
 
 function isoDate(value: string | null) {
@@ -116,7 +131,14 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   const category = uncategorized
     ? undefined
     : params.get("catalog_category")?.trim() || undefined;
+  const rating = parseRating(params.get("catalog_rating"));
+  const ratingMin = parseRating(params.get("catalog_rating_min"));
+  const unrated = params.get("catalog_unrated") === "1";
   return {
+    favorites_only: params.get("catalog_favorites_only") === "1" || undefined,
+    rating,
+    rating_min: ratingMin,
+    unrated: unrated || undefined,
     page: positiveInteger(params.get("catalog_page")) ?? 1,
     page_size: 48,
     search,
@@ -141,6 +163,10 @@ export function writeCatalogState(
     if (value) params.set(key, value);
     else params.delete(key);
   };
+  setOrDelete("catalog_favorites_only", state.favorites_only ? "1" : undefined);
+  setOrDelete("catalog_rating", state.rating ? String(state.rating) : undefined);
+  setOrDelete("catalog_rating_min", state.rating_min ? String(state.rating_min) : undefined);
+  setOrDelete("catalog_unrated", state.unrated ? "1" : undefined);
   setOrDelete("catalog_page", state.page > 1 ? String(state.page) : undefined);
   setOrDelete("catalog_search", state.search);
   setOrDelete("catalog_status", state.status);

@@ -1,8 +1,12 @@
 import type { MapCatalogQuery } from "./catalog-query";
 
+export type PhotoRating = 1 | 2 | 3 | 4 | 5;
+
 export type PhotoStatus = "pending" | "classified" | "needs_review";
 
 export type Photo = {
+  is_favorite: boolean;
+  rating: PhotoRating | null;
   id: number;
   original_filename: string;
   stored_filename: string;
@@ -140,6 +144,7 @@ export type CatalogSort =
   | "captured_at"
   | "name"
   | "species"
+  | "rating"
   | "confidence"
   | "needs_review"
   | "pending";
@@ -147,6 +152,10 @@ export type CatalogSort =
 export type CatalogOrder = "asc" | "desc";
 
 export type CatalogQuery = {
+  favorites_only?: boolean;
+  rating?: PhotoRating;
+  rating_min?: PhotoRating;
+  unrated?: boolean;
   page: number;
   page_size: number;
   search?: string;
@@ -268,6 +277,8 @@ export type CollectionRemovePhotosResponse = {
 };
 
 export type PhotoUpdate = Partial<{
+  is_favorite: boolean;
+  rating: PhotoRating | null;
   captured_at: string | null;
   captured_at_offset_minutes: number | null;
   latitude: number | null;
@@ -301,6 +312,9 @@ export type ReviewAcceptResponse = {
 };
 
 export type BulkPhotoOperation =
+  | "set_favorite"
+  | "set_rating"
+  | "clear_rating"
   | "add_tags"
   | "remove_tags"
   | "set_category"
@@ -308,6 +322,9 @@ export type BulkPhotoOperation =
   | "move_to_trash";
 
 export type BulkPhotoActionRequest =
+  | { operation: "set_favorite"; is_favorite: boolean }
+  | { operation: "set_rating"; rating: PhotoRating }
+  | { operation: "clear_rating" }
   | { operation: "add_tags"; tags: string[] }
   | { operation: "remove_tags"; tags: string[] }
   | { operation: "set_category"; category: string }
@@ -744,6 +761,10 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
   if (query.search) params.set("search", query.search);
   if (query.status) params.set("status", query.status);
   if (query.category) params.set("category", query.category);
+  if (query.favorites_only) params.set("favorites_only", "true");
+  if (query.rating) params.set("rating", String(query.rating));
+  if (query.rating_min) params.set("rating_min", String(query.rating_min));
+  if (query.unrated) params.set("unrated", "true");
   if (query.uncategorized) params.set("uncategorized", "true");
   if (query.taxon_id) params.set("taxon_id", String(query.taxon_id));
   if (query.taken_from) params.set("taken_from", query.taken_from);

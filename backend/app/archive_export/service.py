@@ -46,6 +46,8 @@ CSV_FILENAME = "photos.csv"
 CSV_NULL = r"\N"
 CSV_COLUMNS = (
     "photo_id",
+    "is_favorite",
+    "rating",
     "lifecycle_state",
     "original_filename",
     "archive_relative_original_path",
@@ -123,6 +125,8 @@ class ResolvedExportSource:
 
 @dataclass(frozen=True)
 class SnapshotPhoto:
+    is_favorite: bool
+    rating: int | None
     id: int
     original_filename: str
     stored_filename: str
@@ -392,7 +396,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             "reviewed_at, created_at, updated_at, "
             "extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden "
+            "location_metadata_overridden, is_favorite, rating "
             "FROM photo ORDER BY id"
         ).fetchall()
         photos: list[SnapshotPhoto] = []
@@ -400,6 +404,8 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             photo_id = _required_id(row["id"], "photo.id")
             photos.append(
                 SnapshotPhoto(
+                    is_favorite=_override_flag(row["is_favorite"]),
+                    rating=row["rating"],
                     id=photo_id,
                     original_filename=_required_text(
                         row["original_filename"], f"photo {photo_id} original_filename"
@@ -691,6 +697,8 @@ def _inventory_photos(
             missing_identity += 1
         exported.append(
             PhotoExport(
+                is_favorite=photo.is_favorite,
+                rating=photo.rating,
                 id=photo.id,
                 original_filename=photo.original_filename,
                 archive_relative_original_path=(
@@ -803,6 +811,8 @@ def _csv_rows(document: ArchiveMetadataExport) -> list[list[str]]:
         )
         values = (
             photo.id,
+            photo.is_favorite,
+            photo.rating,
             photo.lifecycle_state,
             photo.original_filename,
             photo.archive_relative_original_path,

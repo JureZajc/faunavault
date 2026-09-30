@@ -1,4 +1,4 @@
-# FaunaVault metadata export format v6
+# FaunaVault metadata export format v7
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, manual Collections and their
@@ -12,7 +12,7 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v6 is `6`. |
+| `format_version` | Metadata export representation version; v7 is `7`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
 | `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
@@ -27,7 +27,7 @@ lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
 adds the durable Photo capture-metadata contract. Version 4 adds human review
-timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. FaunaVault emits only v6.
+timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. FaunaVault emits only v7.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -39,6 +39,8 @@ Each Photo contains these fields:
 
 ```text
 id
+is_favorite
+rating
 original_filename
 archive_relative_original_path
 media_type
@@ -88,7 +90,14 @@ outcome, not classification-job execution state. `tags` is always a JSON string
 array and retains its stored order.
 `reviewed_at` records when a person accepted or changed classification metadata; null
 means no human review is recorded. A new AI result clears it.
-Capture/GPS-only edits and Restore do not change this review timestamp.
+Capture/GPS-only edits, Restore, and Favorite/Rating-only edits do not change this review timestamp.
+
+`is_favorite` is a required JSON boolean. `rating` is a required nullable integer:
+null means unrated; 1–5 means an explicit personal rating. The two fields are
+independent, survive Trash/restore, and never encode AI confidence. CSV uses
+`true`/`false` for Favorite, integers for ratings, and the existing `\N` null
+sentinel for unrated. Historical v1–v6 artifacts remain unchanged; consumers must
+explicitly support v7.
 
 `captured_at` is the effective camera-local wall time, extracted or manually supplied, or null. It is never
 derived from upload time, filesystem metadata, a filename, or `created_at`.
@@ -263,6 +272,7 @@ JSON. Override flags use lowercase `true`/`false` in CSV.
 - v4: nullable Photo human review timestamp.
 - v5: versioned Smart Collection query definitions.
 - v6: effective capture/GPS values with retained extraction and manual override state.
+- v7: required Photo Favorite boolean and nullable integer Rating from 1–5.
 
 ## Deliberate exclusions
 

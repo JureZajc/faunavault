@@ -46,6 +46,7 @@ function photo(overrides: Partial<Photo> = {}): Photo {
   return {
     id: 44,
     original_filename: "lion.jpg",
+    is_favorite: false, rating: null,
     stored_filename: "lion.jpg",
     resized_filename: "lion-resized.jpg",
     thumbnail_filename: "lion-thumb.jpg",
@@ -116,6 +117,55 @@ beforeEach(() => {
   });
   api.selectAnimalTaxon.mockResolvedValue({});
   api.deletePhoto.mockResolvedValue({ status: "trashed", photo_id: 44 });
+});
+
+test("curates a photo directly with accessible Favorite and rating controls", async () => {
+  let current = photo({ status: "needs_review", reviewed_at: null });
+  api.getPhoto.mockResolvedValue(current);
+  api.updatePhoto.mockImplementation(async (_id, values) => {
+    current = { ...current, ...values, updated_at: "2026-08-12T10:00:00Z" };
+    return current;
+  });
+  render(<PhotoDetail id="44" />);
+  const favorite = await screen.findByRole("button", { name: "Favorite", pressed: false });
+  await userEvent.click(favorite);
+  await screen.findByRole("button", { name: "Favorite", pressed: true });
+  expect(api.updatePhoto).toHaveBeenLastCalledWith(44, { is_favorite: true }, "2026-08-12T08:00:00Z");
+  await userEvent.click(screen.getByRole("radio", { name: "Rate 5 stars" }));
+  await screen.findByText("5 out of 5 stars");
+  await userEvent.click(screen.getByRole("radio", { name: "Rate 2 stars" }));
+  await screen.findByText("2 out of 5 stars");
+  expect(screen.getByRole<HTMLInputElement>("radio", { name: "Rate 2 stars" }).checked).toBe(true);
+  screen.getByRole("radio", { name: "Rate 3 stars" }).focus();
+  await userEvent.keyboard(" ");
+  await screen.findByText("3 out of 5 stars");
+  await userEvent.click(screen.getByRole("button", { name: "Clear rating" }));
+  await screen.findByText("Unrated");
+  expect(api.updatePhoto).toHaveBeenLastCalledWith(44, { rating: null }, current.updated_at);
+  await userEvent.click(screen.getByRole("button", { name: "Favorite", pressed: true }));
+  await screen.findByRole("button", { name: "Favorite", pressed: false });
+  expect(current.status).toBe("needs_review");
+  expect(current.reviewed_at).toBeNull();
+  expect(screen.queryByRole("button", { name: "Editing metadata" })).toBeNull();
+});
+
+test("curation failures and pending saves retain confirmed values and block overlapping edits", async () => {
+  api.updatePhoto.mockRejectedValue(new Error("Photo changed. Refresh before saving."));
+  render(<PhotoDetail id="44" />);
+  const favorite = await screen.findByRole("button", { name: "Favorite" });
+  await userEvent.click(favorite);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("Refresh before saving"));
+  expect(favorite.getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByText("Unrated")).toBeTruthy();
+  let finish!: (value: Photo) => void;
+  api.updatePhoto.mockReturnValue(new Promise<Photo>((resolve) => { finish = resolve; }));
+  await userEvent.click(screen.getByRole("radio", { name: "Rate 5 stars" }));
+  expect(screen.getByText("Saving…")).toBeTruthy();
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Edit metadata" }).disabled).toBe(true);
+  expect(favorite.getAttribute("aria-pressed")).toBe("false");
+  finish(photo({ rating: 5 }));
+  await screen.findByText("5 out of 5 stars");
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Edit metadata" }).disabled).toBe(false);
 });
 
 test("capture parsers preserve camera-local time and reject invalid groups", () => {

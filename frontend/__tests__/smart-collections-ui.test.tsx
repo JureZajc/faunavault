@@ -48,6 +48,17 @@ test("Smart detail shows criteria, empty results, URL page correction, and edit 
   expect(api.getSmartCollectionPhotos).toHaveBeenCalledWith(7, 4, expect.any(AbortSignal));
 });
 
+test("Smart detail displays curation criteria and preserves them in its edit link", async () => {
+  api.getSmartCollection.mockResolvedValue({ ...smart, query: { favorites_only: true, rating_min: 4, sort: "rating", order: "desc" } });
+  render(<SmartCollectionDetail collectionId={7} />);
+  await screen.findByRole("heading", { name: "Foxes" });
+  expect(screen.getByText(/Favorites only.*Rating: at least 4.*Sort: rating desc/)).toBeTruthy();
+  const href = screen.getByRole("link", { name: "Edit criteria" }).getAttribute("href");
+  expect(href).toContain("catalog_favorites_only=1");
+  expect(href).toContain("catalog_rating_min=4");
+  expect(href).toContain("catalog_sort=rating");
+});
+
 test("Smart detail renames and deletes without a membership action", async () => {
   window.history.replaceState(null, "", "/collections/smart/7");
   render(<SmartCollectionDetail collectionId={7} />);

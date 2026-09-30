@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ArchiveNavigation from "../components/archive-navigation";
 import MoveToTrashButton from "../components/move-to-trash-button";
+import PhotoCurationSummary from "../components/photo-curation-summary";
 import PhotoMedia from "../components/photo-detail/photo-media";
 import { PhotoMetadataDetails } from "../components/photo-detail/photo-metadata";
 import { dismissDuplicate, DuplicateIdentity, DuplicateReview, DuplicateSummary, getDuplicateReview, getDuplicateSummary, Photo } from "../lib/api";
@@ -143,7 +144,7 @@ export default function DuplicateBrowser() {
               <MoveToTrashButton photo={photo} label={`Move ${side.toLowerCase()} photo to Trash`} disabled={busy || loading} onBusyChange={dialogBusy} onMoved={trashed} className={buttonClass + " text-red-700"} />
             </div></div>
             <PhotoMedia photo={photo} />
-            <div className="mt-3 rounded-lg border border-stone-200 bg-white p-4"><p className="text-sm text-stone-600">Original size: {photo.original_size_bytes === null ? "Not available" : `${new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(photo.original_size_bytes / 1024 / 1024)} MB`} · Active archive</p><PhotoMetadataDetails photo={photo} /></div>
+            <div className="mt-3 rounded-lg border border-stone-200 bg-white p-4"><p className="text-sm text-stone-600">Original size: {photo.original_size_bytes === null ? "Not available" : `${new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(photo.original_size_bytes / 1024 / 1024)} MB`} · Active archive</p><PhotoCurationSummary photo={photo} /><PhotoMetadataDetails photo={photo} /></div>
           </section>)}
         </div>
       </> : !error ? <section className="mt-8 rounded-lg border border-stone-200 bg-white p-6"><h2 className="text-xl font-semibold">No possible duplicates need review.</h2><p className="mt-2 text-sm text-stone-600">This reflects discovered candidates under the configured rules and scan coverage above.</p></section> : null}

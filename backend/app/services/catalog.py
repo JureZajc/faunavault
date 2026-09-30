@@ -167,6 +167,14 @@ def _order_by(sort: str, order: str) -> list:
             filename,
             Photo.id.desc(),
         ]
+    if sort == "rating":
+        return [
+            case((Photo.rating.is_(None), 1), else_=0).asc(),
+            direction(Photo.rating),
+            Photo.created_at.desc(),
+            filename,
+            Photo.id.desc(),
+        ]
     if sort == "confidence":
         return [
             case((Photo.confidence.is_(None), 1), else_=0).asc(),
@@ -232,6 +240,14 @@ def _catalog_joins(query, criteria: CatalogSavedQuery):
 
 def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
     conditions = [Photo.deleted_at.is_(None)]
+    if criteria.favorites_only:
+        conditions.append(Photo.is_favorite.is_(True))
+    if criteria.rating is not None:
+        conditions.append(Photo.rating == criteria.rating)
+    elif criteria.rating_min is not None:
+        conditions.append(Photo.rating >= criteria.rating_min)
+    elif criteria.unrated:
+        conditions.append(Photo.rating.is_(None))
     if criteria.search:
         conditions.extend(_search_conditions(criteria.search))
     if criteria.status:
@@ -272,6 +288,10 @@ def list_catalog_photos(
     taken_to: date | None,
     sort: str,
     order: str,
+    favorites_only: bool = False,
+    rating: int | None = None,
+    rating_min: int | None = None,
+    unrated: bool = False,
 ) -> CatalogPhotoPage:
     criteria = CatalogSavedQuery(
         search=search,
@@ -283,6 +303,10 @@ def list_catalog_photos(
         taken_to=taken_to,
         sort=sort,
         order=order,
+        favorites_only=favorites_only,
+        rating=rating,
+        rating_min=rating_min,
+        unrated=unrated,
     )
     search = criteria.search
     has_search = bool(search)
@@ -293,7 +317,11 @@ def list_catalog_photos(
     conditions = _catalog_conditions(criteria)
 
     selective_photo_filters = bool(
-        status
+        favorites_only
+        or rating is not None
+        or rating_min is not None
+        or unrated
+        or status
         or category
         or uncategorized
         or taken_from is not None

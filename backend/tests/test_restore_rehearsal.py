@@ -96,6 +96,9 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
                 "UPDATE photo SET captured_at='2025-03-14T23:45:12', "
                 "capture_metadata_overridden=1, location_metadata_overridden=1 WHERE id=2"
             )
+        if schema >= 16:
+            connection.execute("UPDATE photo SET is_favorite=1, rating=5 WHERE id=1")
+            connection.execute("UPDATE photo SET rating=2 WHERE id=2")
     manifest_path = backup / "manifest.json"
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     payload["database"]["schema_version"] = schema
@@ -106,7 +109,7 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
     return backup
 
 
-@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14, 15])
+@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14, 15, 16])
 def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
     tmp_path, monkeypatch, schema
 ):
@@ -166,6 +169,14 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
                 "SELECT captured_at, extracted_captured_at, capture_metadata_overridden, "
                 "location_metadata_overridden FROM photo WHERE id=2"
             ).fetchone() == ("2025-03-14T23:45:12", None, 1, 1)
+        if schema >= 16:
+            assert connection.execute(
+                "SELECT is_favorite, rating FROM photo ORDER BY id"
+            ).fetchall() == [(1, 5), (0, 2)]
+        else:
+            assert connection.execute(
+                "SELECT is_favorite, rating FROM photo ORDER BY id"
+            ).fetchall() == [(0, None), (0, None)]
     for role in ("original", "resized", "thumbs"):
         for source in (backup / "images" / role).iterdir():
             assert (
@@ -190,6 +201,8 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
         (15, "photo", "extracted_longitude"),
         (15, "photo", "capture_metadata_overridden"),
         (15, "photo", "location_metadata_overridden"),
+        (16, "photo", "is_favorite"),
+        (16, "photo", "rating"),
     ],
 )
 def test_schema_claim_requires_actual_review_and_smart_columns(
@@ -264,7 +277,9 @@ def test_frozen_schema9_fixture_verifies_rehearses_and_remains_immutable(tmp_pat
     assert verification.valid
     assert verification.manifest is not None
     assert verification.manifest.database.schema_version == 9
-    assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset({9, 10, 11, 12, 13, 14, 15})
+    assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset(
+        {9, 10, 11, 12, 13, 14, 15, 16}
+    )
     assert result.source_schema_version == 9
     assert result.current_schema_version == LATEST_SCHEMA_VERSION
     assert result.applied_migrations == tuple(range(10, LATEST_SCHEMA_VERSION + 1))

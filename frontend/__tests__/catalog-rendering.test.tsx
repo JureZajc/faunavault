@@ -17,7 +17,7 @@ vi.mock("../app/lib/api", async (importOriginal) => ({
 function photo(id: number, title: string, category: string | null): Photo {
   return {
     id,
-    original_filename: `${id}.jpg`, stored_filename: `${id}.jpg`,
+    original_filename: `${id}.jpg`, is_favorite: false, rating: null, stored_filename: `${id}.jpg`,
     resized_filename: `${id}-resized.jpg`, thumbnail_filename: `${id}-thumb.jpg`,
     display_title: title, common_name: null, breed_guess: null,
     species_guess: null, category, confidence: null, description: null, tags: [],
@@ -40,6 +40,16 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/");
   api.getCatalogTaxa.mockResolvedValue({ items: [], selected: null, page: 1, page_size: 50, total: 0, total_pages: 0 });
   api.getClassificationJobs.mockResolvedValue({ jobs: [], summary: { total: 0, queued: 0, running: 0, succeeded: 0, failed: 0 } });
+});
+
+test("cards show curation without interactive curation controls", async () => {
+  const curated = { ...photo(1, "Favorite fox", "mammal"), is_favorite: true, rating: 5 as const };
+  api.getCatalogPhotos.mockResolvedValue({ items: [curated], total: 1, total_pages: 1, page: 1, page_size: 48, facets: { active_total: 1, status_counts: { classified: 1, pending: 0, needs_review: 0 }, categories: [], uncategorized_count: 0 } });
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Favorite fox" });
+  expect(screen.getByLabelText("Rated 5 out of 5 stars")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Favorite$/ })).toBeNull();
+  expect(screen.queryByRole("radio")).toBeNull();
 });
 
 test("renders one shared card path grouped by sorted category", async () => {

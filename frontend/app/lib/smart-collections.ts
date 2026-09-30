@@ -4,6 +4,7 @@ import { CatalogState, DEFAULT_CATALOG_STATE, writeCatalogState } from "./catalo
 export function savedQueryFromState(state: CatalogState, searchInput: string): SmartCollectionQuery {
   return {
     search: searchInput.trim() || undefined,
+    favorites_only: state.favorites_only, rating: state.rating, rating_min: state.rating_min, unrated: state.unrated,
     status: state.status,
     category: state.uncategorized ? undefined : state.category,
     uncategorized: state.uncategorized ?? false,
@@ -24,6 +25,10 @@ export function smartCollectionEditHref(id: number, query: SmartCollectionQuery 
 
 export function smartCollectionCriteria(query: SmartCollectionQuery): string {
   const parts: string[] = [];
+  if (query.favorites_only) parts.push("Favorites only");
+  if (query.rating) parts.push(`Rating: exactly ${query.rating}`);
+  if (query.rating_min) parts.push(`Rating: at least ${query.rating_min}`);
+  if (query.unrated) parts.push("Unrated");
   if (query.search) parts.push(`Search: ${query.search}`);
   if (query.status) parts.push(`Status: ${query.status.replaceAll("_", " ")}`);
   if (query.category) parts.push(`Category: ${query.category}`);

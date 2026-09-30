@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 from fastapi import HTTPException
 from pydantic import (
     ConfigDict,
+    StrictBool,
     field_validator,
     model_validator,
 )
@@ -15,6 +16,7 @@ from pydantic import Field as PydanticField
 from sqlmodel import Field, SQLModel
 
 from app.catalog_query import CatalogSavedQuery
+from app.metadata_types import PhotoRating
 from app.models import Animal, DuplicateScanState, Photo
 
 ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}
@@ -24,6 +26,9 @@ BulkPhotoOperation = Literal[
     "set_category",
     "clear_category",
     "move_to_trash",
+    "set_favorite",
+    "set_rating",
+    "clear_rating",
 ]
 
 
@@ -45,6 +50,8 @@ class PhotoUpdate(SQLModel):
     model_config = ConfigDict(extra="forbid")
 
     display_title: str | None = None
+    is_favorite: StrictBool = False
+    rating: PhotoRating | None = None
     common_name: str | None = None
     breed_guess: str | None = None
     species_guess: str | None = None
@@ -378,6 +385,20 @@ class BulkClearCategoryRequest(BulkPhotoRequestBase):
     operation: Literal["clear_category"]
 
 
+class BulkSetFavoriteRequest(BulkPhotoRequestBase):
+    operation: Literal["set_favorite"]
+    is_favorite: StrictBool
+
+
+class BulkSetRatingRequest(BulkPhotoRequestBase):
+    operation: Literal["set_rating"]
+    rating: PhotoRating
+
+
+class BulkClearRatingRequest(BulkPhotoRequestBase):
+    operation: Literal["clear_rating"]
+
+
 class BulkMoveToTrashRequest(BulkPhotoRequestBase):
     operation: Literal["move_to_trash"]
 
@@ -387,6 +408,9 @@ BulkPhotoRequest = Annotated[
     | BulkRemoveTagsRequest
     | BulkSetCategoryRequest
     | BulkClearCategoryRequest
+    | BulkSetFavoriteRequest
+    | BulkSetRatingRequest
+    | BulkClearRatingRequest
     | BulkMoveToTrashRequest,
     PydanticField(discriminator="operation"),
 ]

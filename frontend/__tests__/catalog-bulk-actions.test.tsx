@@ -27,6 +27,7 @@ function photo(id: number, title: string, filename = "duplicate.jpg"): Photo {
   return {
     id,
     original_filename: filename,
+    is_favorite: false, rating: null,
     stored_filename: `${id}.jpg`,
     resized_filename: `${id}-resized.jpg`,
     thumbnail_filename: `${id}-thumb.jpg`,
@@ -125,6 +126,33 @@ async function enterAndSelectPage() {
   await userEvent.click(screen.getByRole("checkbox", { name: "Select page" }));
   expect(screen.getByText("2 selected")).toBeTruthy();
 }
+
+test.each([
+  ["favorite", "favorite", { operation: "set_favorite", is_favorite: true }, "Favorite selected"],
+  ["favorite", "unfavorite", { operation: "set_favorite", is_favorite: false }, "Unfavorite selected"],
+  ["rating", "4", { operation: "set_rating", rating: 4 }, "Set rating"],
+  ["rating", "clear", { operation: "clear_rating" }, "Clear rating"],
+])("bulk curation %s %s uses explicitly selected IDs", async (action, value, expected, submitLabel) => {
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  await userEvent.click(screen.getByRole("button", { name: action === "favorite" ? "Favorite / Unfavorite" : "Set rating" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: action === "favorite" ? "Favorite action" : "Rating action" }), value);
+  await userEvent.click(within(dialog).getByRole("button", { name: submitLabel }));
+  await waitFor(() => expect(api.bulkUpdatePhotos).toHaveBeenCalledWith({ ...expected, photo_ids: [1, 2] }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.getByRole("button", { name: "Select photos" })).toBeTruthy();
+});
+
+test("changing a curation criterion clears selection", async () => {
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  await userEvent.click(screen.getByRole("checkbox", { name: "Favorites only" }));
+  await waitFor(() => expect(screen.queryByText("2 selected")).toBeNull());
+  expect(screen.getByRole("button", { name: "Select photos" })).toBeTruthy();
+});
 
 test("selection uses photo IDs so duplicate filenames remain independent", async () => {
   render(<Home />);

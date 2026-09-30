@@ -213,3 +213,14 @@ restore/permanent deletion, and one explicit two-photo bulk Move to Trash
 contract. Tile requests are fulfilled inside Playwright, so the smoke has no
 external map dependency. It makes no Ollama or GBIF request. Playwright traces and screenshots
 are retained only for failures; they are ignored by Git.
+
+## Photo curation
+
+Photo detail offers an accessible Favorite toggle, native five-star radio group,
+and Clear rating. Saves retain confirmed values until the server responds;
+errors leave those values intact and overlapping edits are disabled. Cards and
+duplicate comparisons display compact indicators without curation controls.
+List supports Favorites only and a single exact/minimum/Unrated rating dropdown,
+plus rating sorting. URL state and Smart Collection criteria preserve them.
+Bulk dialogs Favorite/Unfavorite or set/clear Rating on explicitly selected IDs.
+Map blocks unsupported curation URLs and preserves criteria when returning to List.
