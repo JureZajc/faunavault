@@ -2,6 +2,10 @@
 
 Release entries describe user-visible milestones rather than individual commits.
 
+## [Unreleased]
+
+### Added
+
 ## 0.1.0
 
 First intentional public, source-based FaunaVault release.
