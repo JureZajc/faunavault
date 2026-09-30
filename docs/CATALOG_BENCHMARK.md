@@ -95,8 +95,10 @@ JSON encoding, browser rendering, image loading, and networking. These are
 and median are always reported; nearest-rank p95 is null below 20 iterations and
 is a limited tail estimate even at 20 runs.
 
-Catalog responses contain five statements: filtered count, bounded items,
-global status facets, global category facets, and active total. Smart pages add
+Catalog responses with positive totals contain five statements: filtered count,
+bounded items, global status facets, global category facets, and active total.
+R5 omits bounded items after an exact zero count, retaining all three global facet
+statements; R4 always executed five. Smart pages add
 saved-definition lookup/validation before this same path. The detail page displays
 the response's `total`: there is **no separate live-count endpoint**. Isolated
 filtered-count latency therefore differs from time until the displayed count is
@@ -127,7 +129,7 @@ reporting guideline: an over-budget result needs dedicated investigation until
 measurements and plans establish a small safe fix. The harness does not claim a
 small optimization exists solely because a scan or sort appears in a plan.
 
-## Representative measured results
+## R4 representative measured results (preserved baseline)
 
 Runs on 2026-09-29 used Windows 11/AMD64, Python 3.12.10, SQLite 3.49.1,
 schema 13, and the working tree based on revision
@@ -319,3 +321,238 @@ Production queries/schema are unchanged; there is no before/after optimization
 claim. Experimental FTS was deliberately not tested in this measurement-only
 slice. Follow-up search/count experiments must preserve current substring,
 escaped-literal, conjunctive-term, relationship-field, and Trash semantics.
+
+## R5: Catalog count access and substring-search scaling
+
+R5 measurements on 2026-09-30 use the same runtime, SQLite settings, schema 13,
+dataset version 1, seed, correctness oracle, warm-cache boundaries, fresh sessions,
+two warmups, and 20 measured iterations as R4. The original R4 tables and reports
+above remain the historical baseline. New complete before/after reports are
+`catalog-benchmark-r5-before.json` and `catalog-benchmark-r5-after.json`; the
+separate ablation report is `catalog-benchmark-r5-ablations.json`. These local
+reports are ignored by Git and retain full SQL, parameters, plans, counts,
+median/p95/min/max, distributions, and schema/index metadata. The full baseline
+was completed before editing production queries. Runs are sequential, without
+concurrent tests or benchmarks. The harness's `production_changes: false` flag
+means the harness itself adds no production changes or experimental indexes;
+the after report measures the modified R5 production service.
+
+### Root causes and selected changes
+
+- Broad counts selected the active capture-time index, fetched Photo records out
+  of row order, and looked up Animal and Taxon rows for each candidate. A count
+  with the same joins but no text predicate is already expensive. The existing
+  covering active-ID and relationship indexes are sufficient for better access.
+- Unrestricted text counts now obtain active IDs with a covering lookup and
+  fetch Photo rows through primary-key access. Per-term Animal/Taxon membership
+  subqueries reuse relationship matches instead of repeating joined lookups for
+  every Photo. Predicates still use the original 25 fields, JSON tags cast,
+  lower/coalesce, escaped literal substring matching, and conjunctive terms.
+  Different terms can still match different Photo/Animal/Taxon fields.
+- Taxon counts without additional Photo filters use a Photo-ID subquery driven
+  by the Taxon primary key, `ix_animal_taxon_id`, and `ix_photo_animal_id`. The
+  outer count excludes Trash through existing active access. Text on this path
+  retains the original joined predicates over those matching candidates.
+- Status/category/uncategorized/date filters retain their original count
+  formulations and selective access. Item-query SQL, sorting, and pagination
+  remain unchanged. After an exact zero count, the items query is omitted while
+  global facets still execute. Positive out-of-range pages retain the items query.
+- Taxonomy counts group active Photos by Animal's Taxon ID through primary-key
+  Photo access, then join those small groups to Taxon for availability, labels,
+  counts, sorting, and pagination. No records are grouped in Python. This removes
+  broad Taxon/label grouping and `count(DISTINCT Taxon.id)` from the old paths.
+  The selected-Taxon lookup remains unchanged, including zero-count selections.
+- Smart Collections still perform one saved-definition lookup before calling
+  the shared catalog service. No Smart-specific query or endpoint was added.
+
+### Experiments and rejected approaches
+
+Exploratory 50k/100k comparisons used the existing disposable dataset, oracle,
+statement replay, timer, and EXPLAIN tooling, initially with five measured runs.
+Those exploratory medians do not replace the paired 20-run production tables.
+They compared unchanged counts, forced table scans, per-term membership,
+membership plus active Photo-ID access, Taxon Photo-ID access, and taxonomy
+correlated counts versus grouping. Full-service prototypes then checked all 56
+scenarios and Smart parity at 10k/50k/100k before selecting production changes.
+
+- `NOT INDEXED` reduced scattered Photo access, but forcing a scan unnecessarily
+  constrains future planner choices and selective paths. Equivalent improvement
+  is available through existing indexed active-ID/primary-key access, so no
+  production hint is included.
+- Simple Animal-ID membership alone retained broad capture-index Photo access.
+  For example, the exploratory 100k rare count fell from about 847 ms to 476 ms,
+  but active-ID/primary-key access plus membership reduced it to about 283 ms.
+  Membership alone was therefore not selected.
+- Correlated taxonomy counts with inner joins caused a broad Photo traversal per
+  Taxon and measured about 2003 ms for items at 100k. Grouping once per statement
+  by Taxon ID measured about 49 ms and scales without repeating that traversal
+  for every displayed Taxon. The grouped SQL formulation was selected.
+- Zero-result skipping alone removes the redundant item traversal but leaves the
+  original dominant count. The ablation below measures it separately from count
+  access changes and their combined effect.
+- No new-index experiment or index addition was needed after these comparisons.
+  Schema version, migrations, backup verification/rehearsal, fresh-schema
+  contracts, and dataset setup remain unchanged.
+- FTS5 was not investigated or introduced in R5. These small SQL changes produce
+  material gains while retaining exact substring semantics. A possible later
+  FTS comparison remains separate and must establish literal-character, short
+  substring, case, conjunction, and relationship-field compatibility before any
+  migration recommendation.
+
+### R5 validation
+
+The focused catalog/Smart Collection/benchmark/taxonomy suite passed **109 tests**
+with **one** platform skip. R5 adds **45** collected cases: all 25 searchable
+fields on broad, Taxon/text, and selective count paths; literal escapes and
+conjunctive cross-table terms; SQLite's current non-ASCII case behavior; missing
+relationships, shared Animals, Trash/restore, combined filters, pagination,
+taxonomy availability/labels/selected zero counts; complete Smart/catalog parity;
+and zero-count query omission with global facets retained. Positive out-of-range
+pages still execute items. Capture tests also reject unexpected extra statements
+and verify listener cleanup. No brittle plan assertions or timing thresholds were
+added to CI.
+
+`python scripts/dev.py check` passed on 2026-09-30: backend Ruff lint/format,
+**401 backend tests passed with six platform skips**, frontend lint/typecheck,
+**111 frontend tests**, and the production build. Existing Starlette, frontend
+navigation lint, and Vite plugin warnings remain outside this branch's scope.
+
+### R5 paired measurements
+
+Cells show **before → after median / p95 milliseconds**, rounded to two decimals.
+
+| Full service | 1k | 10k | 50k | 100k |
+| --- | ---: | ---: | ---: | ---: |
+| Taxon common | 1.98 / 2.31 → 1.92 / 2.36 | 29.26 / 30.52 → 3.44 / 4.23 | 202.58 / 204.91 → 14.06 / 14.61 | 462.99 / 473.15 → 28.00 / 32.25 |
+| Taxon rare | 1.74 / 2.35 → 1.65 / 2.22 | 31.75 / 32.21 → 6.31 / 7.06 | 202.12 / 203.75 → 13.58 / 13.84 | 471.35 / 495.32 → 22.69 / 24.10 |
+| Taxonomy selector | 1.77 / 1.97 → 1.67 / 2.07 | 56.48 / 71.76 → 11.32 / 12.17 | 451.24 / 663.91 → 52.13 / 53.20 | 898.12 / 906.72 → 106.62 / 108.15 |
+| Common search | 4.53 / 5.01 → 4.97 / 5.35 | 42.12 / 43.56 → 18.95 / 20.96 | 266.11 / 271.66 → 79.47 / 82.26 | 588.31 / 613.78 → 153.95 / 155.74 |
+| Rare search | 11.26 / 11.79 → 10.59 / 11.18 | 117.38 / 118.08 → 79.85 / 81.72 | 651.27 / 654.08 → 387.88 / 391.78 | 1154.59 / 1185.61 → 533.98 / 540.54 |
+| No-result search | 10.74 / 11.32 → 5.12 / 6.72 | 115.87 / 117.22 → 32.54 / 33.97 | 648.77 / 673.32 → 152.58 / 154.34 | 1382.43 / 1421.35 → 298.38 / 301.65 |
+| Multiple-term search | 8.39 / 8.71 → 8.69 / 9.70 | 66.61 / 67.93 → 35.84 / 37.07 | 381.38 / 387.33 → 154.37 / 157.65 | 825.44 / 835.84 → 301.34 / 303.47 |
+| Search + Taxon | 4.47 / 5.23 → 4.70 / 5.21 | 41.18 / 41.96 → 11.56 / 12.66 | 253.85 / 256.79 → 41.46 / 42.76 | 569.57 / 579.04 → 80.92 / 81.97 |
+| Smart text page | 4.51 / 4.79 → 5.22 / 6.58 | 43.31 / 46.55 → 19.39 / 20.10 | 292.88 / 389.82 → 79.65 / 81.85 | 568.72 / 615.05 → 156.01 / 157.70 |
+| Smart Taxon page | 2.23 / 2.80 → 2.17 / 3.09 | 29.64 / 30.63 → 3.63 / 4.85 | 211.74 / 214.99 → 14.44 / 16.48 | 439.21 / 446.95 → 27.73 / 28.62 |
+
+Component diagnostics are measured separately; they are not additive service totals.
+
+| Component | 10k | 50k | 100k |
+| --- | ---: | ---: | ---: |
+| Taxon common count | 25.88 / 26.71 → 0.76 / 1.00 | 192.12 / 194.23 → 3.68 / 4.12 | 442.86 / 451.19 → 9.53 / 9.98 |
+| Taxon rare count | 25.74 / 26.55 → 0.17 / 0.37 | 191.38 / 193.40 → 0.27 / 0.44 | 451.58 / 470.21 → 0.43 / 0.52 |
+| Rare search count | 68.43 / 69.48 → 29.03 / 30.03 | 401.24 / 406.46 → 140.60 / 142.89 | 891.09 / 907.39 → 282.48 / 286.38 |
+| Common search count | 37.54 / 38.21 → 13.56 / 14.40 | 254.21 / 264.92 → 67.83 / 69.98 | 569.02 / 577.30 → 133.85 / 136.58 |
+| No-result search count | 67.51 / 68.70 → 28.87 / 31.43 | 408.29 / 418.28 → 142.62 / 144.01 | 879.58 / 886.88 → 279.99 / 282.68 |
+| Smart text live count | 37.54 / 38.21 → 13.56 / 14.40 | 254.21 / 264.92 → 67.83 / 69.98 | 569.02 / 577.30 → 133.85 / 136.58 |
+| Rare search items | 45.87 / 46.64 → 47.07 / 48.59 | 233.26 / 234.93 → 232.38 / 236.59 | 237.64 / 238.82 → 229.94 / 233.33 |
+| Taxonomy availability count | 26.13 / 26.45 → 5.09 / 5.64 | 211.55 / 219.05 → 24.49 / 24.93 | 429.10 / 444.22 → 51.45 / 52.00 |
+| Taxonomy page/grouping | 29.30 / 31.90 → 4.98 / 5.28 | 229.29 / 234.95 → 25.19 / 26.55 | 460.18 / 466.70 → 51.97 / 52.64 |
+| Selected Taxon | 0.18 / 0.19 → 0.18 / 0.20 | 0.30 / 0.54 → 0.30 / 0.33 | 2.36 / 3.02 → 2.37 / 2.78 |
+
+### Regression measurements
+
+| Full service | 1k | 10k | 50k | 100k |
+| --- | ---: | ---: | ---: | ---: |
+| Default first page | 1.54 / 2.02 → 1.58 / 1.77 | 2.68 / 3.25 → 2.88 / 3.44 | 10.68 / 11.27 → 10.28 / 11.00 | 20.50 / 21.80 → 19.44 / 19.99 |
+| Deep page (~90%) | 1.58 / 1.79 → 1.62 / 2.02 | 2.87 / 3.38 → 2.95 / 3.54 | 12.29 / 12.96 → 12.53 / 13.03 | 23.91 / 24.80 → 23.16 / 24.00 |
+| Category mammal | 1.58 / 1.91 → 1.60 / 1.79 | 2.64 / 3.26 → 2.67 / 3.51 | 10.00 / 10.57 → 10.54 / 11.42 | 20.62 / 21.52 → 20.18 / 21.84 |
+| Capture date range | 1.77 / 2.23 → 1.80 / 2.17 | 5.25 / 5.64 → 5.19 / 6.42 | 21.36 / 22.06 → 22.59 / 23.50 | 46.70 / 49.07 → 44.13 / 45.85 |
+| Name descending | 2.26 / 2.86 → 2.35 / 3.32 | 8.18 / 8.67 → 8.14 / 9.00 | 31.59 / 32.72 → 32.73 / 33.49 | 66.23 / 67.51 → 63.46 / 65.25 |
+| Search + date | 3.46 / 4.51 → 3.53 / 4.21 | 13.01 / 13.72 → 13.63 / 14.15 | 65.39 / 68.66 → 67.39 / 68.65 | 142.84 / 147.05 → 135.46 / 137.92 |
+| Combined filter | 1.52 / 2.09 → 1.54 / 1.69 | 6.75 / 7.37 → 7.42 / 8.12 | 33.04 / 34.20 → 34.71 / 35.63 | 74.99 / 77.11 → 70.58 / 71.84 |
+| Smart combined | 3.21 / 3.81 → 3.24 / 3.72 | 10.47 / 11.26 → 10.80 / 11.58 | 50.52 / 52.51 → 47.27 / 48.10 | 93.09 / 95.52 → 94.20 / 96.05 |
+
+### Zero-result ablation and traversal diagnostics
+
+The same disposable database is used for four sequential service variants at each size,
+with two warmups, 20 iterations, fresh sessions, and the independent oracle. Baseline
+source was saved before production edits. `Count only` forces execution of the unchanged
+items query; `skip only` uses the old count; `combined` is the production service.
+
+| No-result full service | 10k | 50k | 100k |
+| --- | ---: | ---: | ---: |
+| baseline | 115.96 / 118.29 | 639.93 / 644.36 | 1316.68 / 1329.58 |
+| count only | 77.00 / 78.63 | 377.93 / 380.84 | 751.82 / 760.22 |
+| zero only | 71.71 / 72.85 | 417.12 / 421.68 | 855.94 / 869.52 |
+| combined | 31.57 / 32.70 | 149.51 / 150.75 | 298.55 / 300.85 |
+
+| Diagnostic count (not service latency) | 10k | 50k | 100k |
+| --- | ---: | ---: | ---: |
+| active covering count | 0.32 / 0.34 | 1.06 / 1.19 | 2.00 / 2.03 |
+| joined active count without search | 26.42 / 27.10 | 196.26 / 198.07 | 424.01 / 433.88 |
+
+These diagnostics change the queried work and cannot be subtracted to assign exact
+CPU durations to individual operators. They show that candidate/relationship access
+is expensive even before substring predicates are added. No-result items are
+absent from the final production capture, rather than assigned a synthetic zero timing.
+
+### Plan changes and remaining costs
+
+Representative captured count plans changed as follows (the JSON retains full
+plans, node IDs, SQL, and parameters for every scenario):
+
+```text
+Broad search before:
+  SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)
+  SEARCH animal USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH taxon USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+Broad search after:
+  SEARCH photo USING INTEGER PRIMARY KEY (rowid=?)
+  LIST SUBQUERY: SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)
+  LIST SUBQUERY: SCAN animal
+  LIST SUBQUERY: SCAN taxon
+
+Taxon count before:
+  SEARCH taxon USING INTEGER PRIMARY KEY (rowid=?)
+  SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)
+  SEARCH animal USING INTEGER PRIMARY KEY (rowid=?)
+Taxon count after:
+  SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=? AND rowid=?)
+  LIST SUBQUERY:
+    SEARCH taxon USING INTEGER PRIMARY KEY (rowid=?)
+    SEARCH animal USING COVERING INDEX ix_animal_taxon_id (taxon_id=?)
+    SEARCH photo USING COVERING INDEX ix_photo_animal_id (animal_id=?)
+```
+
+The taxonomy selector now groups only Taxon IDs before joining labels, using
+Photo primary-key access plus a covering active-ID list. It retains a temporary
+GROUP BY B-tree and a small label ORDER BY B-tree, but removes the old broad
+Taxon/Photo joins and distinct-Taxon count. Availability/page component medians
+at 100k fell from 429.10/460.18 ms to 51.45/51.97 ms; selected lookup remained
+2.36/2.37 ms. Item query plans and selective Photo-filter count plans are unchanged.
+
+At 100k, common/rare Taxon counts fell from 442.86/451.58 ms to 9.53/0.43 ms.
+Rare/common/no-result search counts fell from 891.09/569.02/879.58 ms to
+282.48/133.85/279.99 ms. Smart's saved-definition lookup remained about 0.15 ms;
+all five 100k saved/catalog pairs differed by less than 1 ms, and their shared
+component SQL/counts agree. The UI still receives its exact live count with the
+complete page, without a separate endpoint or asynchronous count mechanism.
+
+All 56 scenarios passed the independent correctness oracle at each size, including
+adjacent-page continuity and complete saved/catalog parity. Before/after reports
+have identical scenario criteria/counts, distributions, schema/index definitions,
+and methodology. No material regression was observed in already-fast paths:
+100k first/deep/category/date/name-desc medians changed from
+20.50/23.91/20.62/46.70/66.23 ms to 19.44/23.16/20.18/44.13/63.46 ms.
+All 14 ordinary sort medians improved at 100k. Some 50k sorts varied upward by
+up to 2.74 ms, with unchanged SQL. Small-archive count construction adds modest
+overhead: 1k common/Smart text pages changed from 4.53/4.51 ms to 4.97/5.22 ms.
+These sequential measurements are bounded synthetic evidence, not a latency
+guarantee for every archive or concurrency pattern.
+
+Under the same 500 ms median reporting guideline, measured catalog counts and
+Smart result/live-count scenarios no longer require count-access follow-up.
+Positive sparse text results remain expensive: 100k rare search is 533.98 ms,
+including a 282.48 ms diagnostic count and 229.94 ms diagnostic items query.
+The slowest 100k text service is literal backslash search at 757.74 ms, compared
+with 1295.44 ms before R5. Those positive results still execute the original
+leading-wildcard item traversal; no-result searches avoid it entirely.
+Relationship membership and Photo substring evaluation remain linear, and
+taxonomy aggregation is still evaluated once for total and once for the page.
+
+The recommended next step is to keep these measured SQL changes and assess
+whether sparse positive-result latency needs further work. If it does, use a
+separate branch to isolate item traversal and residual substring matching with
+the same harness. An FTS comparison is conditional, not an established remedy;
+production FTS, new indexes, caching, cursor pagination, and unrelated fast-path
+optimization are not justified by this R5 result alone.

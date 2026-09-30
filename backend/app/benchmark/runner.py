@@ -89,6 +89,8 @@ def capture(engine, scenario):
             event.remove(engine, "before_cursor_execute", cursor_execute)
             event.remove(session, "do_orm_execute", orm_execute)
     roles = ROLES[scenario.kind]
+    if scenario.kind in ("catalog", "smart") and response.total == 0:
+        roles = tuple(role for role in roles if role != "items")
     if len(statements) != len(roles) or len(sql_calls) != len(roles):
         raise BenchmarkError(
             f"Unexpected production query shape for {scenario.name}; update profiling roles."

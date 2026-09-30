@@ -334,29 +334,47 @@ No production optimization, new index, schema migration, caching, cursor rewrite
 or FTS experiment was included. This replaces an unmeasured search-scale assumption
 with bounded synthetic evidence, not a guarantee for every archive or machine.
 
-### R5 - Catalog count access and substring-search scaling
+### R5 - Catalog count access and substring-search scaling — Complete
 
-Investigate broad joined-count candidate access and predicate evaluation using the
-same harness, including the taxonomy selector and shared Smart Collection counts.
-Compare existing indexed access paths in disposable state and evaluate skipping
-the items query after an exact zero count. Preserve current counts, ordering,
-literal substring/term-conjunction/relationship-field semantics, and Trash behavior.
-Only include a production fix after focused tests and before/after measurements
-demonstrate improvement. An experimental FTS comparison is conditional on residual
-matching costs and semantic compatibility; these results do not prescribe FTS,
-new indexes, caching, or cursor pagination.
+**Status:** Completed on 2026-09-30. Full before/after benchmarks passed all 56
+scenarios at 1k/10k/50k/100k with 20 measured iterations, identical datasets,
+schema/indexes, and methodology. At 100k, common/rare Taxon pages improved from
+462.99/471.35 ms to 28.00/22.69 ms, taxonomy selection from 898.12 to 106.62 ms,
+common search from 588.31 to 153.95 ms, and no-result search from 1382.43 to
+298.38 ms. Shared Smart text page/count medians improved from 568.72/569.02 ms
+to 156.01/133.85 ms. `python scripts/dev.py check` passed with 401 backend tests,
+six platform skips, all 111 frontend tests, lint/typecheck, and production build.
 
-The independent classifications are: **no action needed** for default browsing,
-filtered browsing under the median guideline, and default deep pagination;
-**requires a dedicated follow-up** for text search, search-driven catalog counts,
-Smart Collection text results, and shared Smart Collection live counts. No area is
-called a small optimization without demonstrated fix evidence.
+R5 changes broad count access using existing SQLite indexes. Unrestricted text
+counts select active Photo IDs and reuse per-term Animal/Taxon matches; broad
+Taxon counts obtain Photo IDs through relationship indexes. Selective Photo
+filters and item-query sorting/pagination retain their existing formulations.
+An exact zero count now skips the items query while retaining global facets.
+The taxonomy selector groups active Photos by Taxon ID before joining labels.
+Smart Collections benefit through the same catalog service.
+
+There is no schema migration, new index, FTS, cache, frontend, or pagination
+change. Escaped literal substring, current case behavior, conjunctive terms,
+all searchable fields, active/Trash behavior, counts, and selected-Taxon semantics
+are covered by focused tests and the independent benchmark oracle. The
+[benchmark guide](CATALOG_BENCHMARK.md) retains R4 and records R5 root causes,
+rejected experiments, separate count/zero-result ablations, full paired timings,
+plans, regressions, and validation.
+
+Default/filtered browsing, sorting, and deep pagination retain healthy access.
+All measured catalog counts and Smart result/live-count scenarios are now below
+the 500 ms median reporting guideline. Text search still requires conditional
+follow-up for sparse positive results: rare search is 533.98 ms and the slowest
+100k text scenario is literal backslash search at 757.74 ms. Item retrieval still
+scans active candidates, and substring evaluation remains linear. Investigate
+those residual costs in a separate branch only if lower latency is required;
+these measurements do not mandate a production FTS migration.
 
 ## Conditional work
 
 | Candidate | Current conclusion | Trigger to reconsider |
 | --- | --- | --- |
-| SQLite FTS | Production migration remains deferred. Measured 10k synthetic searches were within the 500 ms median guideline; sparse/absent 50k searches reached about 680/671 ms. Broad joined counts also contribute substantially, so these results do not establish FTS as the remedy. See the [measurement report](CATALOG_BENCHMARK.md). | Isolate count/candidate access, joins, and substring predicate costs in a focused follow-up. Compare benchmark-only FTS only if remaining matching cost warrants it and current literal substring, term conjunction, relationship-field, and lifecycle semantics can be retained. |
+| SQLite FTS | Production migration remains deferred. R5 materially improved count/join access with existing indexes and SQL membership, without an FTS experiment. Sparse positive searches still have linear matching and item-traversal costs; the slowest measured 100k text scenario remains 757.74 ms. See the preserved R4 and new R5 [measurement report](CATALOG_BENCHMARK.md). | If lower sparse-search latency is required, isolate remaining substring and item costs in a separate branch. Compare benchmark-only FTS only when matching warrants it and literal characters, short substrings, current case behavior, conjunctive terms, relationship fields, and active/Trash semantics can be retained. |
 | Derivative force regeneration or format/quality migration | Not needed while current dimensions, formats, and quality settings remain valid. Doctor and repair already handle missing or invalid derivatives and deliberately preserve healthy files. | The variant algorithm, size, quality, or output format changes and existing healthy derivatives must be upgraded deliberately. |
 | Backup format v2 | Not needed for the current complete, portable, uncompressed cold backup. Schema compatibility should be solved without changing the container format unless necessary. | A requirement such as compression, encryption, incremental storage, or incompatible payload layout cannot be added safely within v1 compatibility. |
 | Persistent local diagnostic logs | Not scheduled. Durable job records, focused domain warnings/errors, Uvicorn output, and explicit backup/maintenance reports cover current operations without enterprise observability. | Repeated upload, lifecycle, classification, backup, or maintenance failures cannot be diagnosed from current state and console output, or a packaged runtime no longer has a useful console. Use bounded local logs and operation IDs only; no telemetry or external collector. |
