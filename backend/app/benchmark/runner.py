@@ -316,8 +316,9 @@ def benchmark_size(
                         "area": scenario.area,
                         "kind": scenario.kind,
                         "criteria": scenario.query.model_dump(mode="json")
-                        if scenario.kind in ("catalog", "smart")
+                        if scenario.kind in ("catalog", "smart", "map")
                         else None,
+                        "query_count": len(calls),
                         "page": scenario.page
                         if scenario.kind in ("catalog", "smart")
                         else None,

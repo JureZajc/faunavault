@@ -166,16 +166,26 @@ a compact one-marker Photo detail map and a dedicated `/map` archive destination
 The archive uses one lightweight projected `GET /catalog/map` query, Leaflet,
 and established marker clustering with maximum-zoom spiderfying, including for
 multiple Photos at identical coordinates. `?photo=<id>` focuses a point and the
-popup returns to the real Photo detail route; no List filtering or bulk-selection
-model is duplicated.
+popup returns to the real Photo detail route with its catalog filters preserved.
+Map now shares validated catalog predicates and reusable filter controls with List:
+category/Unknown, verified Taxon, classification status, and inclusive camera-local
+capture dates. URL state restores on reload and Back/Forward. View in List carries
+equivalent criteria; View on Map omits List presentation state and is disabled with
+an explanation during text search. Filter changes replace cluster data while keeping
+the Leaflet map and tile layer mounted. Counts come from the GPS projection, with
+no separate missing-location count or fully hydrated Photo response.
 
 No schema migration or geospatial backend was added. Trash membership is derived
 from `deleted_at`, so Trash removes a point and restore returns it without changing
 GPS. Photo records and thumbnails stay on the local FaunaVault API. Standard
 OpenStreetMap raster tiles are requested remotely only for the visible viewport,
 with attribution, and are intercepted in browser smoke coverage so CI has no live
-tile dependency. Reverse geocoding, search, GPS editing, viewport APIs, spatial
-indexes, alternate layers, and offline tile downloads remain explicitly deferred.
+tile dependency. Map consumes effective persisted capture/GPS values, including
+manual corrections and clears. GPS editing remains in Photo metadata. Reverse
+geocoding, Map text/location search, viewport APIs, spatial indexes, alternate
+layers, saved Map views, and offline tile downloads remain explicitly deferred.
+A bounded next v0.2 feature is opening compatible Smart Collections on Map,
+reusing these predicates without introducing another saved-query format.
 
 ## Current product feature: Photo Timeline
 

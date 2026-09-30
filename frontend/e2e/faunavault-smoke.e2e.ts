@@ -540,3 +540,66 @@ test("manual capture and GPS correction drives Timeline and Map", async ({ page,
     await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
   }
 });
+
+
+test("Map filters restore and open equivalent List including missing-GPS photos", async ({ page, request }, testInfo) => {
+  await page.route(/^https:\/\/tile\.openstreetmap\.org\/\d+\/\d+\/\d+\.png$/, (route) => route.fulfill({ status: 200, contentType: "image/png", body: TRANSPARENT_PNG }));
+  const photoIds: number[] = [];
+  const names = [TIMELINE_JANUARY_FILENAME, TIMELINE_FEBRUARY_FILENAME, CAPTURE_EDIT_FILENAME];
+  try {
+    for (const [index, filename] of names.entries()) {
+      const upload = await request.post("http://127.0.0.1:8001/photos/upload", {
+        multipart: { allow_visual_duplicate: "true", file: { name: `map-filter-${index}.jpg`, mimeType: "image/jpeg", buffer: Buffer.concat([await readFile(fixturePath(filename)), Buffer.from(`map-filter-fixture-${index}`)]) } },
+      });
+      expect(upload.ok()).toBe(true);
+      const photo = await upload.json();
+      photoIds.push(photo.id);
+      const update = await request.patch(`http://127.0.0.1:8001/photos/${photo.id}?expected_updated_at=${encodeURIComponent(photo.updated_at)}`, {
+        data: { category: index === 1 ? "mammal" : "bird", captured_at: index === 1 ? "2025-01-01T12:00:00" : "2026-01-01T12:00:00",
+          captured_at_offset_minutes: -600, latitude: index === 2 ? null : 46 + index, longitude: index === 2 ? null : 14 + index },
+      });
+      expect(update.ok()).toBe(true);
+    }
+    await page.goto("/map");
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    await page.getByRole("combobox", { name: "Category", exact: true }).selectOption("bird");
+    await page.getByLabel("Taken from", { exact: true }).fill("2026-01-01");
+    await page.getByLabel("Taken to", { exact: true }).fill("2026-01-31");
+    await expect(page.getByText("1 mapped photo", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open map preview for map-filter-0.jpg" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open map preview for map-filter-1.jpg" })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("filtered-map-desktop.png"), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByRole("region", { name: "Interactive archive map showing 1 geotagged photo" }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("button", { name: "Open map preview for map-filter-0.jpg" })).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath("filtered-map-mobile.png"), fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.reload();
+    await expect(page.getByText("1 mapped photo", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open map preview for map-filter-0.jpg" }).click();
+    await page.getByRole("link", { name: "Open photo", exact: true }).click();
+    await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+    await page.getByLabel("Latitude", { exact: true }).fill("45");
+    await page.getByLabel("Longitude", { exact: true }).fill("13");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Edit metadata", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Back to catalog", exact: true }).click();
+    await expect(page).toHaveURL(/catalog_category=bird/);
+    await expect(page.getByText("1 mapped photo", { exact: true })).toBeVisible();
+    const points = await request.get("http://127.0.0.1:8001/catalog/map?category=bird&taken_from=2026-01-01&taken_to=2026-01-31");
+    expect((await points.json()).map((point: { latitude: number }) => point.latitude)).toEqual([45]);
+    await page.getByRole("link", { name: "View in List", exact: true }).click();
+    await expect(page).toHaveURL(/\/\?catalog_category=bird&catalog_taken_from=2026-01-01&catalog_taken_to=2026-01-31$/);
+    await expect(catalogCard(page, "map-filter-0.jpg")).toHaveCount(1);
+    await expect(catalogCard(page, "map-filter-2.jpg")).toHaveCount(1);
+    await expect(catalogCard(page, "map-filter-1.jpg")).toHaveCount(0);
+    await page.getByRole("link", { name: "View on Map", exact: true }).click();
+    await expect(page.getByText("1 mapped photo", { exact: true })).toBeVisible();
+  } finally {
+    for (const id of photoIds) {
+      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
+      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+    }
+  }
+});

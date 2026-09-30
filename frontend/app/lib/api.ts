@@ -1,3 +1,5 @@
+import type { MapCatalogQuery } from "./catalog-query";
+
 export type PhotoStatus = "pending" | "classified" | "needs_review";
 
 export type Photo = {
@@ -751,8 +753,20 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
   return request<CatalogPhotoPage>(`/catalog/photos?${params}`, { signal });
 }
 
-export function getPhotoMapPoints(signal?: AbortSignal) {
-  return request<PhotoMapPoint[]>("/catalog/map", { signal });
+export function getCatalogFacets(signal?: AbortSignal) {
+  return request<CatalogFacets>("/catalog/facets", { signal });
+}
+
+export function getPhotoMapPoints(
+  query: MapCatalogQuery = {},
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== false && value !== "") params.set(key, String(value));
+  }
+  const suffix = params.size ? `?${params}` : "";
+  return request<PhotoMapPoint[]>(`/catalog/map${suffix}`, { signal });
 }
 
 export function getPhotoTimeline(signal?: AbortSignal) {

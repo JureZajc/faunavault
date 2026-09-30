@@ -203,3 +203,14 @@ test("preserves catalog parameters while switching collection views", async () =
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))
     .toBe("/map");
 });
+
+
+test("List opens Map with supported membership filters and disables pending text search", async () => {
+  window.history.replaceState(null, "", "/?catalog_page=2&catalog_category=bird&catalog_taxon=7&catalog_taken_from=2026-01-01&catalog_status=classified&catalog_sort=name&catalog_layout=grouped&smart_edit=7");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+  expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toBe("/map?catalog_status=classified&catalog_category=bird&catalog_taxon=7&catalog_taken_from=2026-01-01");
+  await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "f");
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
+  expect(screen.getByText("Clear text search to view these filters on Map.")).toBeTruthy();
+});

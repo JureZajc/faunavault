@@ -73,7 +73,7 @@ not the separate Unicode-folding Album search.
 
 ## Scenarios and timing boundaries
 
-There are 56 production scenarios per size:
+There are 67 production scenarios per size (the historical R5 reports retain 56):
 
 - Default pages 1 and 3; pages around 50% and 90% of active results, with 48 Photos
   per page; all seven sort modes in both directions.
@@ -86,6 +86,11 @@ There are 56 production scenarios per size:
   combined criteria, each paired with an equivalent normal catalog request.
 - Smart Collection detail metadata, Timeline, Map, and taxonomy selector with
   selected-Taxon lookup.
+- Eleven filtered Map projections: common/rare category and Taxon, Unknown,
+  each classification status, capture dates, combined criteria, and empty results.
+  The independent oracle applies catalog membership then complete GPS exclusion,
+  and verifies ascending IDs and every projected field. Reports include Map
+  criteria and query counts; each Map scenario executes one projection statement.
 
 The high-resolution monotonic `perf_counter_ns` timer measures fresh-session
 service calls after two warmups. Measurements include all service SQL, fetching,
@@ -556,3 +561,50 @@ separate branch to isolate item traversal and residual substring matching with
 the same harness. An FTS comparison is conditional, not an established remedy;
 production FTS, new indexes, caching, cursor pagination, and unrelated fast-path
 optimization are not justified by this R5 result alone.
+
+
+## v0.2 Map filter measurements — 2026-09-30
+
+The [Map-filter report](../catalog-benchmark-map-filters.json) runs all 67
+production scenarios at 1k, 10k, 50k, and 100k Photos with two warmups and 20
+measured iterations, fresh sessions, and the existing seed/schema-15 dataset.
+The independent oracle passed at every size, including catalog/Smart parity and
+filtered GPS projection membership, fields, and ascending order. Every Map
+scenario executes exactly **one SQL statement**, including Taxon and combined
+filters; there is no Photo hydration or N+1 access.
+
+Cells show median / p95 milliseconds for the full backend service. They include
+row retrieval and projection construction, but not HTTP serialization, browser
+marker construction, or remote tiles.
+
+| Map projection | 1k | 10k | 50k | 100k |
+| --- | ---: | ---: | ---: | ---: |
+| Unfiltered | 2.24 / 2.92 | 24.22 / 49.26 | 195.52 / 204.79 | 386.61 / 499.46 |
+| Common category | 1.28 / 1.79 | 12.29 / 26.99 | 65.16 / 132.24 | 235.84 / 264.13 |
+| Common Taxon | 0.79 / 1.01 | 7.91 / 8.97 | 39.79 / 105.20 | 79.99 / 191.68 |
+| Capture dates | 0.49 / 0.66 | 3.96 / 4.48 | 23.12 / 24.98 | 47.57 / 151.76 |
+| Combined | 0.43 / 0.70 | 2.19 / 2.59 | 14.47 / 15.45 | 30.26 / 31.77 |
+| Empty | 0.32 / 0.46 | 2.89 / 3.41 | 14.82 / 16.29 | 28.63 / 29.30 |
+
+The unfiltered 100k archive returns 33,287 points; combined criteria return 399.
+Unfiltered and all filtered Map medians remain below the existing 500 ms reporting
+guideline. List's SQL/count access paths remain intact: the latest 100k first-page
+median is 20.14 ms and combined-filter median is 74.74 ms (historical R5 after:
+19.44 and 70.58 ms). These sequential results are not a paired timing guarantee.
+The full JSON retains all existing catalog/Smart scenarios and their diagnostics.
+
+Map counts use projection length without a count query. Filter options use one
+separate global facet request per Map mount, not one per filter change; Taxon
+options retain the existing lazy paginated endpoint. No indexes, spatial database,
+viewport API, or schema migration were justified by these service measurements.
+The browser keeps its Leaflet map/tile layer and cancels owned marker-loading
+batches when filters change. Text search remains deliberately outside this Map
+iteration; its broader leading-wildcard costs are still visible in catalog timings.
+
+Validation: `python scripts/dev.py check` passed with 541 backend tests and seven
+platform skips, 146 frontend tests, Ruff, frontend lint/typecheck, and the production
+build. `npm run test:e2e` passed all six Chromium flows with intercepted tiles,
+including filtered Map reload, metadata correction and return, equivalent List
+results with missing GPS, reciprocal navigation, and mobile marker visibility
+without horizontal overflow. The existing Starlette, Vite-plugin, and Album
+navigation-lint warnings remain outside this feature.

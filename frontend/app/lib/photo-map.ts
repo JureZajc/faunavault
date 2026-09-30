@@ -25,7 +25,10 @@ export function photoMapCapturedDate(point: PhotoMapPoint) {
     : null;
 }
 
-export function photoMapDetailHref(point: PhotoMapPoint) {
-  const returnTo = `/map?photo=${point.id}`;
+export function photoMapDetailHref(point: PhotoMapPoint, mapHref = "/map") {
+  const [pathname, query] = mapHref.split("?");
+  const params = new URLSearchParams(query);
+  params.set("photo", String(point.id));
+  const returnTo = `${pathname}?${params}`;
   return `/photos/${point.id}?returnTo=${encodeURIComponent(returnTo)}`;
 }

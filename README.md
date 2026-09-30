@@ -26,6 +26,30 @@ and optional AI classification runs through local Ollama vision models.
 - Recoverable Trash, confirmed permanent deletion, archive diagnostics,
   verified cold backups, isolated recovery rehearsal, and portable metadata export.
 
+## Map filters and List navigation
+
+Photo Map supports the same category (including Unknown), verified Taxon,
+classification status, and inclusive camera-local capture dates as List and
+Smart Collections. Open **Filters** on Map to combine these criteria. Filters
+are stored in the URL; reload, copied links, and browser Back/Forward restore them.
+For example:
+
+```text
+/map?catalog_category=bird&catalog_taken_from=2026-01-01&catalog_taken_to=2026-12-31
+```
+
+**View in List** opens the normal catalog with equivalent filters. Its results
+also include matching Photos without GPS. **View on Map** in List carries the
+supported filters and omits pagination, sorting, and layout. Clear text search
+first: Map text search is deliberately deferred, and searched Lists explain why
+the action is disabled.
+
+The mapped-photo count includes only matching active Photos with complete
+location data. Manual GPS and capture corrections, clears, and Restore original
+metadata use the same effective values as List. Trash Photos remain excluded.
+Popup Photo links preserve filters when returning to Map. Map filters do not save
+viewport/zoom, selection, or Smart Collection definitions.
+
 ## Requirements
 
 Install [Python](https://www.python.org/downloads/) **3.12+**,

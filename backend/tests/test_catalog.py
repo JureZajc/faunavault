@@ -816,3 +816,170 @@ def test_taxa_count_photos_not_animals_and_preserve_availability(catalog_app):
         result = client.get("/catalog/taxa", params={"include_id": selected}).json()
         assert result["selected"]["count"] == 0
         assert result["total"] == 2
+
+
+@pytest.mark.parametrize(
+    "filters,expected",
+    [
+        ({}, [1, 2, 3, 4]),
+        ({"category": "bird"}, [1, 2]),
+        ({"category": " bird "}, [1, 2]),
+        ({"uncategorized": "true"}, [4]),
+        ({"taxon_id": 1}, [1, 3]),
+        ({"status": "needs_review"}, [2]),
+        ({"taken_from": "2026-01-01", "taken_to": "2026-12-31"}, [1, 2, 4]),
+        ({"taken_from": "2026-12-31", "taken_to": "2026-12-31"}, [2]),
+        ({"taken_to": "9999-12-31"}, [1, 2, 3, 4]),
+        (
+            {
+                "category": "bird",
+                "taxon_id": 1,
+                "status": "classified",
+                "taken_from": "2026-01-01",
+                "taken_to": "2026-12-31",
+            },
+            [1],
+        ),
+        ({"category": "fish"}, []),
+    ],
+)
+def test_map_filter_membership_matches_catalog_and_smart(
+    catalog_app, filters, expected
+):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        taxon = add_taxon(session, "Verified species")
+        metadata = [
+            ("bird", "classified", datetime(2026, 1, 1), taxon),
+            ("bird", "needs_review", datetime(2026, 12, 31, 23, 59, 59, 999999), None),
+            ("mammal", "pending", datetime(2025, 12, 31, 23, 59, 59), taxon),
+            (" ", "pending", datetime(2026, 6, 1), None),
+        ]
+        for index, (category, status, captured, linked) in enumerate(metadata, 1):
+            add_photo(
+                session,
+                index,
+                category=category,
+                status=status,
+                captured_at=captured,
+                captured_at_offset_minutes=-600,
+                taxon=linked,
+                latitude=0,
+                longitude=0,
+            )
+        add_photo(
+            session,
+            5,
+            category="bird",
+            taxon=taxon,
+            captured_at=datetime(2026, 2, 1),
+        )
+        add_photo(
+            session,
+            6,
+            category="bird",
+            taxon=taxon,
+            captured_at=datetime(2026, 2, 1),
+        )
+        add_photo(
+            session,
+            7,
+            category="bird",
+            taxon=taxon,
+            captured_at=datetime(2026, 2, 1),
+            latitude=12,
+            longitude=12,
+            deleted_at=datetime(2026, 2, 2),
+        )
+        add_photo(session, 8, category="fish")
+        session.commit()
+    with engine.begin() as connection:
+        connection.exec_driver_sql("UPDATE photo SET latitude=12 WHERE id=5")
+        connection.exec_driver_sql("UPDATE photo SET longitude=12 WHERE id=6")
+    statements = []
+
+    def capture(_connection, _cursor, statement, *_args):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        response = client.get("/catalog/map", params=filters)
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert response.status_code == 200
+    assert len(statements) == 1
+    points = response.json()
+    assert [point["id"] for point in points] == expected
+    catalog = client.get("/catalog/photos", params={**filters, "page_size": 100}).json()
+    assert (
+        sorted(
+            item["id"]
+            for item in catalog["items"]
+            if item["latitude"] is not None and item["longitude"] is not None
+        )
+        == expected
+    )
+    saved_filters = {**filters}
+    if "uncategorized" in saved_filters:
+        saved_filters["uncategorized"] = True
+    saved = client.post(
+        "/smart-collections",
+        json={
+            "name": "Map parity",
+            "query_version": 1,
+            "query": saved_filters,
+        },
+    )
+    assert saved.status_code == 201
+    smart = client.get(
+        f"/smart-collections/{saved.json()['id']}/photos", params={"page_size": 100}
+    ).json()
+    assert smart == catalog
+    assert client.get("/catalog/facets").json() == catalog["facets"]
+    if points:
+        assert set(points[0]) == {
+            "id",
+            "latitude",
+            "longitude",
+            "thumbnail_filename",
+            "original_filename",
+            "display_title",
+            "common_name",
+            "species_guess",
+            "captured_at",
+        }
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [
+        {"status": "unknown"},
+        {"taxon_id": 0},
+        {"taxon_id": "invalid"},
+        {"category": "bird", "uncategorized": "true"},
+        {"category": "a" * 201},
+        {"taken_from": "2026-02-30"},
+        {"taken_to": "invalid"},
+        {"taken_from": "2026-02-01", "taken_to": "2026-01-01"},
+    ],
+)
+def test_map_filter_validation_matches_catalog(catalog_app, filters):
+    client, _ = catalog_app
+    assert client.get("/catalog/map", params=filters).status_code == 422
+    assert client.get("/catalog/photos", params=filters).status_code == 422
+
+
+def test_map_rejects_search_and_preserves_lifecycle_filtering(catalog_app):
+    client, engine = catalog_app
+    assert client.get("/catalog/map", params={"search": "fox"}).status_code == 422
+    assert client.get("/catalog/map", params={"search": " "}).json() == []
+    with Session(engine) as session:
+        photo = add_photo(session, 1, category="bird", latitude=0, longitude=0)
+        session.commit()
+        photo_id = photo.id
+    params = {"category": "bird"}
+    assert len(client.get("/catalog/map", params=params).json()) == 1
+    assert client.delete(f"/photos/{photo_id}").status_code == 200
+    assert client.get("/catalog/map", params=params).json() == []
+    assert client.post(f"/trash/photos/{photo_id}/restore").status_code == 200
+    assert client.get("/catalog/map", params=params).json()[0]["id"] == photo_id
