@@ -86,6 +86,12 @@ class PhotoRecoveryRecord:
     latitude: float | None = None
     longitude: float | None = None
     reviewed_at: str | None = None
+    extracted_captured_at: str | None = None
+    extracted_captured_at_offset_minutes: int | None = None
+    extracted_latitude: float | None = None
+    extracted_longitude: float | None = None
+    capture_metadata_overridden: bool = False
+    location_metadata_overridden: bool = False
 
 
 @dataclass(frozen=True)
@@ -429,6 +435,8 @@ def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
 
 
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
+    if schema_version == 15:
+        return _read_schema_15_snapshot(database_path)
     if schema_version == 9:
         return _read_schema_9_snapshot(database_path)
     if schema_version == 10:
@@ -447,7 +455,32 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_14_snapshot(database_path)
+    return _read_schema_15_snapshot(database_path)
+
+
+def _read_schema_15_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_14_snapshot(database_path)
+    inventory = inspect_database(database_path, 15)
+    by_id = {photo.id: photo for photo in inventory.photos}
+    return replace(
+        base,
+        photos=tuple(
+            replace(
+                photo,
+                extracted_captured_at=by_id[photo.id].extracted_captured_at,
+                extracted_captured_at_offset_minutes=by_id[
+                    photo.id
+                ].extracted_captured_at_offset_minutes,
+                extracted_latitude=by_id[photo.id].extracted_latitude,
+                extracted_longitude=by_id[photo.id].extracted_longitude,
+                capture_metadata_overridden=by_id[photo.id].capture_metadata_overridden,
+                location_metadata_overridden=by_id[
+                    photo.id
+                ].location_metadata_overridden,
+            )
+            for photo in base.photos
+        ),
+    )
 
 
 def _verify_source(backup_path: Path) -> tuple[VerificationResult, str]:
@@ -702,6 +735,20 @@ def rehearse_backup(backup_path: Path, target: Path) -> RehearsalResult:
 
         stage = "semantic validation"
         current_snapshot = _read_current_snapshot(settings.database_path)
+        if manifest.database.schema_version < 15:
+            source_snapshot = replace(
+                source_snapshot,
+                photos=tuple(
+                    replace(
+                        photo,
+                        extracted_captured_at=photo.captured_at,
+                        extracted_captured_at_offset_minutes=photo.captured_at_offset_minutes,
+                        extracted_latitude=photo.latitude,
+                        extracted_longitude=photo.longitude,
+                    )
+                    for photo in source_snapshot.photos
+                ),
+            )
         _compare_recovery_snapshots(source_snapshot, current_snapshot)
         album_count = _exercise_albums(engine, source_snapshot)
 

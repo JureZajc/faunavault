@@ -4,13 +4,14 @@ import warnings
 from dataclasses import dataclass
 
 from PIL import Image, UnidentifiedImageError
+from sqlalchemy import update
 from sqlmodel import Session, select
 
 from app.archive_integrity import ArchiveIntegrityError, inspect_database
 from app.config import Settings
 from app.database import create_database_engine
 from app.migrations import LATEST_SCHEMA_VERSION
-from app.models import Photo
+from app.models import Photo, utc_now
 from app.services.image_codecs import open_image
 from app.services.photo_lifecycle import stored_image_path
 from app.services.photo_metadata import ExtractedPhotoMetadata, extract_photo_metadata
@@ -41,7 +42,16 @@ def _updates(
     photo: Photo, metadata: ExtractedPhotoMetadata
 ) -> dict[str, object | None]:
     values: dict[str, object | None] = {}
-    if photo.captured_at is None and metadata.captured_at is not None:
+    if photo.extracted_captured_at is None and metadata.captured_at is not None:
+        values["extracted_captured_at"] = metadata.captured_at
+        values["extracted_captured_at_offset_minutes"] = (
+            metadata.captured_at_offset_minutes
+        )
+    if (
+        not photo.capture_metadata_overridden
+        and photo.captured_at is None
+        and metadata.captured_at is not None
+    ):
         values["captured_at"] = metadata.captured_at
         values["captured_at_offset_minutes"] = metadata.captured_at_offset_minutes
     for field in ("camera_make", "camera_model", "lens_model"):
@@ -51,7 +61,16 @@ def _updates(
         values["image_width"] = metadata.image_width
         values["image_height"] = metadata.image_height
     if (
-        photo.latitude is None
+        photo.extracted_latitude is None
+        and photo.extracted_longitude is None
+        and metadata.latitude is not None
+        and metadata.longitude is not None
+    ):
+        values["extracted_latitude"] = metadata.latitude
+        values["extracted_longitude"] = metadata.longitude
+    if (
+        not photo.location_metadata_overridden
+        and photo.latitude is None
         and photo.longitude is None
         and metadata.latitude is not None
         and metadata.longitude is not None
@@ -140,11 +159,25 @@ def backfill_photo_metadata(
                     if not changes:
                         skipped += 1
                         continue
-                    updated += 1
                     if apply:
-                        for field, value in changes.items():
-                            setattr(photo, field, value)
-                        session.add(photo)
+                        changes["updated_at"] = utc_now()
+                        result = session.exec(
+                            update(Photo)
+                            .where(
+                                Photo.id == photo.id,
+                                Photo.updated_at == photo.updated_at,
+                                Photo.capture_metadata_overridden
+                                == photo.capture_metadata_overridden,
+                                Photo.location_metadata_overridden
+                                == photo.location_metadata_overridden,
+                            )
+                            .values(**changes)
+                            .execution_options(synchronize_session=False)
+                        )
+                        if result.rowcount != 1:
+                            skipped += 1
+                            continue
+                    updated += 1
                 if apply:
                     session.commit()
     finally:

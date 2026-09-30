@@ -52,6 +52,7 @@ export default function PhotoSidebar({
   onMoved,
 }: PhotoSidebarProps) {
   const [isEditingMetadata, setIsEditingMetadata] = useState(false);
+  const [editingVersion, setEditingVersion] = useState<string | null>(null);
   const [isMetadataBusy, setIsMetadataBusy] = useState(false);
   const [isTrashBusy, setIsTrashBusy] = useState(false);
   const isBusy =
@@ -93,6 +94,7 @@ export default function PhotoSidebar({
           type="button"
           onClick={() => {
             onError(null);
+            setEditingVersion(photo.updated_at);
             setIsEditingMetadata(true);
           }}
           disabled={isBusy || isEditingMetadata}
@@ -110,6 +112,7 @@ export default function PhotoSidebar({
       {isEditingMetadata ? (
         <PhotoMetadataEditor
           photo={photo}
+          expectedUpdatedAt={editingVersion ?? photo.updated_at}
           onSaved={(updatedPhoto) => {
             onPhotoUpdated(updatedPhoto);
             setIsEditingMetadata(false);

@@ -86,6 +86,16 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
             connection.execute(
                 "INSERT INTO duplicate_scan_state VALUES ('phash64-v1:d4', 'complete', '2026-09-01T12:00:00', '2026-09-01T12:00:00', '2026-09-01T12:00:00', 2, 0, 1, 5, NULL)"
             )
+        if schema >= 15:
+            connection.execute(
+                "UPDATE photo SET extracted_captured_at=captured_at, "
+                "extracted_captured_at_offset_minutes=captured_at_offset_minutes, "
+                "extracted_latitude=latitude, extracted_longitude=longitude"
+            )
+            connection.execute(
+                "UPDATE photo SET captured_at='2025-03-14T23:45:12', "
+                "capture_metadata_overridden=1, location_metadata_overridden=1 WHERE id=2"
+            )
     manifest_path = backup / "manifest.json"
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     payload["database"]["schema_version"] = schema
@@ -96,7 +106,7 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
     return backup
 
 
-@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14])
+@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14, 15])
 def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
     tmp_path, monkeypatch, schema
 ):
@@ -151,6 +161,11 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
             assert connection.execute(
                 "SELECT status, processed FROM duplicate_scan_state"
             ).fetchone() == ("complete", 2)
+        if schema >= 15:
+            assert connection.execute(
+                "SELECT captured_at, extracted_captured_at, capture_metadata_overridden, "
+                "location_metadata_overridden FROM photo WHERE id=2"
+            ).fetchone() == ("2025-03-14T23:45:12", None, 1, 1)
     for role in ("original", "resized", "thumbs"):
         for source in (backup / "images" / role).iterdir():
             assert (
@@ -169,6 +184,12 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
         (13, "smart_collection", "query_version"),
         (14, "duplicate_pair", "left_hash"),
         (14, "duplicate_scan_state", "reason"),
+        (15, "photo", "extracted_captured_at"),
+        (15, "photo", "extracted_captured_at_offset_minutes"),
+        (15, "photo", "extracted_latitude"),
+        (15, "photo", "extracted_longitude"),
+        (15, "photo", "capture_metadata_overridden"),
+        (15, "photo", "location_metadata_overridden"),
     ],
 )
 def test_schema_claim_requires_actual_review_and_smart_columns(
@@ -243,7 +264,7 @@ def test_frozen_schema9_fixture_verifies_rehearses_and_remains_immutable(tmp_pat
     assert verification.valid
     assert verification.manifest is not None
     assert verification.manifest.database.schema_version == 9
-    assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset({9, 10, 11, 12, 13, 14})
+    assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset({9, 10, 11, 12, 13, 14, 15})
     assert result.source_schema_version == 9
     assert result.current_schema_version == LATEST_SCHEMA_VERSION
     assert result.applied_migrations == tuple(range(10, LATEST_SCHEMA_VERSION + 1))

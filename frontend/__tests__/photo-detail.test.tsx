@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import PhotoDetail from "../app/photos/[id]/photo-detail";
 import { Animal, Photo } from "../app/lib/api";
+import { formatCameraLocalDate, parseCaptureFields, parseLocationFields } from "../app/lib/photo-metadata";
 
 const api = vi.hoisted(() => ({
   getPhoto: vi.fn(),
@@ -61,6 +62,9 @@ function photo(overrides: Partial<Photo> = {}): Photo {
     content_sha256: null,
     original_size_bytes: null,
     media_type: "image/jpeg",
+    extracted_captured_at: null, extracted_captured_at_offset_minutes: null,
+    extracted_latitude: null, extracted_longitude: null,
+    capture_metadata_overridden: false, location_metadata_overridden: false,
     captured_at: null, captured_at_offset_minutes: null,
     camera_make: null, camera_model: null, lens_model: null,
     image_width: null, image_height: null, latitude: null, longitude: null,
@@ -114,6 +118,111 @@ beforeEach(() => {
   api.deletePhoto.mockResolvedValue({ status: "trashed", photo_id: 44 });
 });
 
+test("capture parsers preserve camera-local time and reject invalid groups", () => {
+  expect(formatCameraLocalDate("0024-05-24T18:42:00")).toBe("May 24, 24");
+  expect(parseCaptureFields("2026-01-02T23:59:59.123456", "-05:30")).toEqual({ captured_at: "2026-01-02T23:59:59.123456", captured_at_offset_minutes: -330 });
+  expect(parseCaptureFields("2026-01-02T23:59", "")).toEqual({ captured_at: "2026-01-02T23:59:00", captured_at_offset_minutes: null });
+  expect(parseCaptureFields("", "")).toEqual({ captured_at: null, captured_at_offset_minutes: null });
+  expect(() => parseCaptureFields("2026-02-30T10:00", "")).toThrow();
+  expect(() => parseCaptureFields("2026-01-02T10:00Z", "")).toThrow();
+  expect(() => parseCaptureFields("2026-01-02T10:00", "+24:00")).toThrow();
+  expect(() => parseCaptureFields("", "+01:00")).toThrow();
+  expect(parseLocationFields("46.123456789", "14.987654321")).toEqual({ latitude: 46.123456789, longitude: 14.987654321 });
+  expect(parseLocationFields("0", "0")).toEqual({ latitude: 0, longitude: 0 });
+  for (const coordinates of [["1", ""], ["91", "0"], ["0", "-181"], ["NaN", "1"], ["Infinity", "0"]]) {
+    expect(() => parseLocationFields(...coordinates as [string, string])).toThrow();
+  }
+});
+
+test("adds capture/GPS values with the editing version and refreshes the detail map", async () => {
+  api.updatePhoto.mockImplementation(async (_id, update) => photo({ ...update, capture_metadata_overridden: true, location_metadata_overridden: true }));
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  fireEvent.change(screen.getByLabelText("Capture date/time"), { target: { value: "2026-01-02T23:59:59.123" } });
+  await userEvent.type(screen.getByLabelText("UTC offset"), "+02:30");
+  await userEvent.type(screen.getByLabelText("Latitude"), "46.123456789");
+  await userEvent.type(screen.getByLabelText("Longitude"), "14.987654321");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(api.updatePhoto).toHaveBeenCalledWith(44, expect.objectContaining({ captured_at: "2026-01-02T23:59:59.123", captured_at_offset_minutes: 150, latitude: 46.123456789, longitude: 14.987654321 }), "2026-08-12T08:00:00Z"));
+  expect(screen.getByRole("region", { name: "Test map for Lion" }).getAttribute("data-latitude")).toBe("46.123456789");
+  expect(screen.getAllByText(/Manually edited/)).toHaveLength(2);
+});
+
+test("clears date/offset and location and removes the detail map", async () => {
+  api.getPhoto.mockResolvedValue(photo({ captured_at: "2024-05-24T18:42:00", captured_at_offset_minutes: 120, latitude: 46, longitude: 14 }));
+  api.updatePhoto.mockImplementation(async (_id, update) => photo({ ...update, capture_metadata_overridden: true, location_metadata_overridden: true }));
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  await userEvent.click(screen.getByRole("button", { name: "Clear capture date" }));
+  await userEvent.click(screen.getByRole("button", { name: "Remove location" }));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(api.updatePhoto).toHaveBeenCalledWith(44, expect.objectContaining({ captured_at: null, captured_at_offset_minutes: null, latitude: null, longitude: null }), expect.any(String)));
+  expect(screen.queryByRole("region", { name: "Test map for Lion" })).toBeNull();
+  expect(screen.getAllByText(/Manually cleared/)).toHaveLength(2);
+});
+
+test("partial GPS keeps the draft without sending a request", async () => {
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  await userEvent.type(screen.getByLabelText("Latitude"), "46");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText(/Enter both latitude and longitude/)).toBeTruthy();
+  expect(api.updatePhoto).not.toHaveBeenCalled();
+  expect((screen.getByLabelText("Latitude") as HTMLInputElement).value).toBe("46");
+});
+
+test("restore is staged, cancellable, and sent without conflicting capture values", async () => {
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  await userEvent.click(screen.getByRole("button", { name: "Restore original metadata" }));
+  expect(screen.getByText(/Save will re-read/)).toBeTruthy();
+  expect(api.updatePhoto).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Cancel restore" }));
+  expect(screen.queryByText(/Save will re-read/)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Restore original metadata" }));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(api.updatePhoto).toHaveBeenCalled());
+  const update = api.updatePhoto.mock.calls[0][1];
+  expect(update.restore_original_metadata).toBe(true);
+  expect(update).not.toHaveProperty("captured_at");
+  expect(update).not.toHaveProperty("latitude");
+});
+
+test("cancel discards capture edits and a stale save keeps the draft", async () => {
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  await userEvent.type(screen.getByLabelText("Latitude"), "46");
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(api.updatePhoto).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  expect((screen.getByLabelText("Latitude") as HTMLInputElement).value).toBe("");
+  await userEvent.type(screen.getByLabelText("Latitude"), "46");
+  await userEvent.type(screen.getByLabelText("Longitude"), "14");
+  api.updatePhoto.mockRejectedValueOnce(new Error("Photo changed. Refresh before saving."));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText(/Refresh before saving/)).toBeTruthy();
+  expect((screen.getByLabelText("Latitude") as HTMLInputElement).value).toBe("46");
+});
+
+test("an unrelated edit preserves full capture precision and does not mark groups manual", async () => {
+  api.getPhoto.mockResolvedValue(photo({ captured_at: "2024-05-24T18:42:00.123456", captured_at_offset_minutes: -330, latitude: 46.123456789, longitude: 14.987654321 }));
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  expect((screen.getByLabelText("UTC offset") as HTMLInputElement).value).toBe("-05:30");
+  expect((screen.getByLabelText("Latitude") as HTMLInputElement).value).toBe("46.123456789");
+  await userEvent.type(screen.getByLabelText("Display title"), " edited");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(api.updatePhoto).toHaveBeenCalled());
+  expect(api.updatePhoto.mock.calls[0][1]).not.toHaveProperty("captured_at");
+  expect(api.updatePhoto.mock.calls[0][1]).not.toHaveProperty("latitude");
+});
+
 test("shows extracted capture metadata separately from the archive date", async () => {
   api.getPhoto.mockResolvedValue(
     photo({
@@ -154,7 +263,8 @@ test("omits absent extracted rows and labels unknown capture timezone", async ()
   expect(screen.getByText(/timezone not recorded/)).toBeTruthy();
   expect(screen.queryByText("Camera")).toBeNull();
   expect(screen.queryByText("Lens")).toBeNull();
-  expect(screen.queryByText("Location")).toBeNull();
+  expect(screen.getByText("Location")).toBeTruthy();
+  expect(screen.getByText("Not recorded")).toBeTruthy();
   expect(screen.queryByText("Location map")).toBeNull();
   expect(screen.queryByRole("link", { name: "View on map" })).toBeNull();
 });
@@ -185,7 +295,7 @@ test("loads the detail and preserves the exact metadata update payload", async (
       description: "Adult lion",
       tags: ["cat", "savanna"],
       status: "classified",
-    }),
+    }, "2026-08-12T08:00:00Z"),
   );
   expect(screen.getByRole("button", { name: "Edit metadata" })).toBeTruthy();
 });

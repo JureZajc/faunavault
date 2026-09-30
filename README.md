@@ -13,6 +13,8 @@ and optional AI classification runs through local Ollama vision models.
 
 - JPEG, PNG, WebP, HEIC, and HEIF uploads; recursive local folder import.
 - Untouched originals, local previews, capture/camera metadata, and GPS extraction.
+- Individual capture date/time, UTC offset, and GPS corrections, with retained
+  extracted values and Restore original metadata. [Editing guide](docs/OPERATIONS.md#editable-capture-metadata-v02).
 - Search, filters, sorting, Timeline, clustered Map, species Albums, manual
   Collections, and live Smart Collections.
 - Explicit cross-page selection for bulk tags, category, Collections, and Trash.
@@ -140,7 +142,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–13. Production restore remains manual.
+schemas 9–15. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)

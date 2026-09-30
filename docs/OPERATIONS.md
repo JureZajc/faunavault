@@ -287,8 +287,8 @@ Canonical pair records contain evidence snapshots and `phash64-v1:d4`. New
 evidence/version cannot inherit an old dismissal silently. Candidates are derived
 and reproducible, while explicit dismissals are user-curation data. Schema-14
 verified backups include both pair records and scan state, and rehearsal checks
-their preservation. Backup v1 and historical schemas 9–13 remain supported.
-Portable metadata export stays v5 and intentionally excludes this state; use
+their preservation. Backup v1 and historical schemas 9–15 remain supported.
+Portable metadata export v6 intentionally excludes duplicate curation state; use
 verified backups to preserve decisions during recovery.
 
 ### Ingestion detection
@@ -373,6 +373,45 @@ FaunaVault supports one local backend process and one classification worker. Do 
 
 The existing `POST /photos/{id}/classify` and `POST /photos/classify-pending` URLs are retained, but both now return asynchronous HTTP 202 job resources instead of synchronous Photo or batch-result bodies. There is no legacy synchronous Ollama classification route. The canonical resource API is `POST/GET /classification-jobs` plus `POST /classification-jobs/{id}/retry`.
 
+## Editable capture metadata (v0.2)
+
+Open an individual Photo and choose **Edit metadata** to add or correct its
+capture date/time, optional signed UTC offset, and latitude/longitude. Capture
+time is the camera-local wall time; neither browser timezone nor GPS changes it.
+An empty offset is valid. Latitude must be −90 to 90, longitude −180 to 180, and
+both finite coordinates must be supplied together. Camera/lens/dimensions remain
+read-only. There is no bulk capture editor, geocoding, or timezone lookup.
+
+The Taken and Location rows show **Manually edited** or **Manually cleared** when
+applicable. **Clear capture date** also removes the offset; **Remove location**
+removes both coordinates. These intentional clears remain protected from EXIF
+backfill. They move Photos into Timeline's missing-date behavior or remove their
+Map point. Changes immediately determine catalog date sorting/filtering and
+live Smart Collection membership through the shared catalog queries.
+
+**Restore original metadata** is staged in the same form. Save re-reads only
+capture time/offset and GPS from the trusted original, updates retained source
+values, and removes both manual overrides. Missing supported EXIF becomes empty
+metadata. A missing, corrupt, changed, or untrusted original prevents the entire
+save; the form retains its draft. Cancel discards staged edits and Restore.
+Stale saves are refused and require refreshing before saving again.
+
+Schema 15 keeps effective metadata, four retained extracted values, and separate
+capture/location override markers. Migration copies the previously persisted
+capture/GPS baseline; it does not scan image files. Capture-only correction and
+Restore do not accept pending AI classification review. Original files and EXIF
+bytes are never rewritten, nor are derivatives regenerated. Trash restoration
+preserves both corrections and provenance. Backup-v1 schemas 9–15 are supported;
+verification/rehearsal preserve all new fields. Portable JSON/CSV export v6
+includes effective values, retained extraction, and both markers.
+
+`backfill-photo-metadata` remains a stopped-archive, dry-run-by-default command.
+It fills missing retained extraction and eligible missing effective groups;
+manually overridden groups, including null clears, are never repopulated.
+Conditional writes prevent stale extraction from overwriting a newer edit.
+Applied metadata changes advance the Photo version while preserving AI review
+state. Active and Trash Photos receive the same protection.
+
 ## AI Review Inbox
 
 Open **Review** at `/review` to process active photos whose AI result has `status = needs_review`. The inbox shows one photo at a time in oldest-first order, with its metadata, confidence, linked animal/taxonomy, available classification provenance, and job state. The URL may include `?photo=<id>`; Previous/Next and Left/Right arrows navigate, while Skip moves on without changing metadata. Trash photos are never listed. A missing or already reviewed link opens the first remaining item.
@@ -417,7 +456,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v5](METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v6](METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -526,6 +565,7 @@ Backup container compatibility and database recovery compatibility are separate:
 | v1 | 12 | Supported | Verify and rehearse with exact review-timestamp checks |
 | v1 | 13 | Supported | Verify and rehearse with exact Smart Collection definition checks |
 | v1 | 14 | Supported | Verify and rehearse with duplicate-pair decisions and scan-state preservation |
+| v1 | 15 | Supported | Verify and rehearse with effective capture/GPS, retained extraction, and manual override state |
 | Other | Any | Unsupported | Reject before target writes |
 | v1 | Other | Not supported until explicitly tested | Reject before target writes |
 
@@ -561,9 +601,10 @@ offset without a capture timestamp; it does not compare stored values to EXIF.
 
 `backfill-photo-metadata` is also a stopped-archive operation and defaults to a
 dry run. It scans active and Trash Photos by ID, opens authoritative originals
-read-only, and fills only null capture metadata using the upload extractor.
+read-only, and fills missing retained extraction and eligible non-overridden
+effective capture metadata using the upload extractor.
 Capture time/offset, dimensions, and GPS are handled as atomic groups; populated
-values are never overwritten. `--apply` commits in bounded 25-photo batches and
+values and intentional manual clears are never overwritten. `--apply` commits in bounded 25-photo batches and
 continues after missing or corrupt originals while reporting their IDs.
 
 `repair-derived` performs the same inspection and defaults to a dry run. It

@@ -1,4 +1,4 @@
-# FaunaVault metadata export format v5
+# FaunaVault metadata export format v6
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, manual Collections and their
@@ -12,7 +12,7 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v5 is `5`. |
+| `format_version` | Metadata export representation version; v6 is `6`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
 | `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
@@ -27,7 +27,7 @@ lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
 adds the durable Photo capture-metadata contract. Version 4 adds human review
-timestamps. Version 5 adds Smart Collection definitions. FaunaVault emits only v5.
+timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. FaunaVault emits only v6.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -53,6 +53,12 @@ image_width
 image_height
 latitude
 longitude
+extracted_captured_at
+extracted_captured_at_offset_minutes
+extracted_latitude
+extracted_longitude
+capture_metadata_overridden
+location_metadata_overridden
 display_title
 common_name
 breed_guess
@@ -80,16 +86,26 @@ path, checksum, or content is included.
 Trash records have a timestamp. `status` is the durable Photo classification
 outcome, not classification-job execution state. `tags` is always a JSON string
 array and retains its stored order.
-`reviewed_at` records when a person accepted or changed Photo metadata; null
+`reviewed_at` records when a person accepted or changed classification metadata; null
 means no human review is recorded. A new AI result clears it.
+Capture/GPS-only edits and Restore do not change this review timestamp.
 
-`captured_at` is the image-stated, camera-local wall time, or null. It is never
+`captured_at` is the effective camera-local wall time, extracted or manually supplied, or null. It is never
 derived from upload time, filesystem metadata, a filename, or `created_at`.
-`captured_at_offset_minutes` independently records a valid paired EXIF offset;
-null means the camera timezone was not recorded. Dimensions describe the
+`captured_at_offset_minutes` independently records a valid paired extracted or manually supplied UTC offset;
+null means the UTC offset is unknown. Dimensions describe the
 EXIF-oriented logical original. GPS is emitted only as a complete latitude and
 longitude pair and remains local metadata; export performs no geocoding or
 network access.
+
+`extracted_captured_at`, `extracted_captured_at_offset_minutes`,
+`extracted_latitude`, and `extracted_longitude` retain the original extraction
+separately from the effective values, with the same timestamp/number/null rules.
+`capture_metadata_overridden` and `location_metadata_overridden` are JSON booleans.
+A true marker with null effective values means the user intentionally cleared
+that group; extraction must not repopulate it. False means there is no manual
+override. Schema-15 migration initializes the retained source from the prior
+persisted baseline. Restore re-reads the original and clears both markers.
 
 Each Animal contains:
 
@@ -196,6 +212,12 @@ image_width
 image_height
 latitude
 longitude
+extracted_captured_at
+extracted_captured_at_offset_minutes
+extracted_latitude
+extracted_longitude
+capture_metadata_overridden
+location_metadata_overridden
 display_title
 common_name
 breed_guess
@@ -231,7 +253,7 @@ with two backslashes.
 
 Capture offsets and dimensions use decimal integers. GPS uses locale-independent
 decimal-dot numbers. Capture timestamps use the same zone-free fixed text as
-JSON.
+JSON. Override flags use lowercase `true`/`false` in CSV.
 
 ## Version history
 
@@ -240,6 +262,7 @@ JSON.
 - v3: persisted Photo capture time/offset, camera, lens, dimensions, and GPS.
 - v4: nullable Photo human review timestamp.
 - v5: versioned Smart Collection query definitions.
+- v6: effective capture/GPS values with retained extraction and manual override state.
 
 ## Deliberate exclusions
 

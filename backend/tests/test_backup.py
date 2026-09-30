@@ -70,7 +70,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for migration in range(1, 15):
+        for migration in range(1, 16):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (migration,),
@@ -157,8 +157,8 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert backup_path.name.startswith("faunavault-backup-")
     manifest = read_manifest(backup_path / "manifest.json")
     assert manifest.backup_format_version == 1
-    assert manifest.database.schema_version == 14
-    assert manifest.database.applied_migrations == list(range(1, 15))
+    assert manifest.database.schema_version == 15
+    assert manifest.database.applied_migrations == list(range(1, 16))
     assert manifest.counts.photos == 2
     assert manifest.counts.active_photos == 1
     assert manifest.counts.trashed_photos == 1
@@ -273,14 +273,14 @@ def _add_duplicate_curation(settings):
     engine.dispose()
 
 
-def test_schema14_backup_rehearsal_preserves_duplicate_curation(archive):
+def test_current_backup_rehearsal_preserves_duplicate_curation(archive):
     settings, destination, _ = archive
     _add_duplicate_curation(settings)
     expected = read_duplicate_signature(settings.database_path)
     backup, verified = create_backup(destination, settings)
     assert verified.valid
     result = rehearse_backup(backup, destination.parent / "duplicate-rehearsal")
-    assert result.source_schema_version == 14 and result.doctor_status == "HEALTHY"
+    assert result.source_schema_version == 15 and result.doctor_status == "HEALTHY"
     assert (
         read_duplicate_signature(result.target / "data" / "faunavault.db") == expected
     )
@@ -307,7 +307,7 @@ def test_current_schema_backup_rehearsal_preserves_collections(archive):
 
     result = rehearse_backup(backup_path, target)
 
-    assert result.source_schema_version == 14
+    assert result.source_schema_version == 15
     assert result.collections == 1
     assert result.collection_memberships == 2
     recovered_settings = Settings(
@@ -331,7 +331,7 @@ def test_current_schema_backup_rehearsal_preserves_collections(archive):
     }
 
 
-def test_schema13_backup_verifies_and_rehearses_smart_definitions(archive):
+def test_current_backup_verifies_and_rehearses_smart_definitions(archive):
     settings, destination, _ = archive
     engine = create_database_engine(settings)
     with Session(engine) as session:
@@ -350,7 +350,7 @@ def test_schema13_backup_verifies_and_rehearses_smart_definitions(archive):
     assert verify_backup(backup_path).valid
     target = destination.parent / "smart-rehearsal"
     rehearsal = rehearse_backup(backup_path, target)
-    assert rehearsal.source_schema_version == 14
+    assert rehearsal.source_schema_version == 15
     restored = create_database_engine(
         Settings(
             _env_file=None,

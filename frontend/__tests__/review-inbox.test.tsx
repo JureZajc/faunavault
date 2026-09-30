@@ -61,6 +61,9 @@ function photo(id: number): Photo {
     content_sha256: null,
     original_size_bytes: null,
     media_type: "image/jpeg",
+    extracted_captured_at: null, extracted_captured_at_offset_minutes: null,
+    extracted_latitude: null, extracted_longitude: null,
+    capture_metadata_overridden: false, location_metadata_overridden: false,
     captured_at: null,
     captured_at_offset_minutes: null,
     camera_make: null,
@@ -172,5 +175,19 @@ test("arrow navigation moves between review items without changing metadata", as
   await screen.findByText("Preview 1");
   fireEvent.keyDown(window, { key: "ArrowRight" });
   expect(navigation.push).toHaveBeenCalledWith("/review?photo=2", { scroll: false });
+  expect(api.acceptReview).not.toHaveBeenCalled();
+});
+
+test("capture-only saves report success and leave classification review pending", async () => {
+  api.updatePhoto.mockResolvedValue({ ...photo(1), latitude: 46, longitude: 14, location_metadata_overridden: true, updated_at: "2026-01-02T00:00:00" });
+  render(<ReviewBrowser />);
+  await screen.findByText("Preview 1");
+  await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+  await userEvent.type(screen.getByLabelText("Latitude"), "46");
+  await userEvent.type(screen.getByLabelText("Longitude"), "14");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("Metadata saved. Use Accept to confirm the classification.")).toBeTruthy();
+  expect(api.updatePhoto).toHaveBeenCalledWith(1, { latitude: 46, longitude: 14 }, "2026-01-01T00:00:00");
+  expect(navigation.replace).not.toHaveBeenCalled();
   expect(api.acceptReview).not.toHaveBeenCalled();
 });

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.catalog_query import CatalogSavedQuery
 
-EXPORT_FORMAT_VERSION = 5
+EXPORT_FORMAT_VERSION = 6
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -90,6 +90,12 @@ class PhotoExport(StrictExportModel):
     image_height: int | None = Field(default=None, ge=1)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+    extracted_captured_at: str | None
+    extracted_captured_at_offset_minutes: int | None = Field(ge=-1439, le=1439)
+    extracted_latitude: float | None = Field(ge=-90, le=90)
+    extracted_longitude: float | None = Field(ge=-180, le=180)
+    capture_metadata_overridden: bool
+    location_metadata_overridden: bool
     display_title: str | None
     common_name: str | None
     breed_guess: str | None
@@ -122,7 +128,7 @@ class PhotoExport(StrictExportModel):
     def validate_optional_timestamp(cls, value: str | None) -> str | None:
         return validate_export_timestamp(value) if value is not None else None
 
-    @field_validator("captured_at")
+    @field_validator("captured_at", "extracted_captured_at")
     @classmethod
     def validate_optional_capture_timestamp(cls, value: str | None) -> str | None:
         return validate_capture_timestamp(value) if value is not None else None
@@ -144,6 +150,13 @@ class PhotoExport(StrictExportModel):
             raise ValueError("image dimensions must be a complete pair")
         if (self.latitude is None) != (self.longitude is None):
             raise ValueError("GPS coordinates must be a complete pair")
+        if (
+            self.extracted_captured_at is None
+            and self.extracted_captured_at_offset_minutes is not None
+        ):
+            raise ValueError("extracted capture offset requires a timestamp")
+        if (self.extracted_latitude is None) != (self.extracted_longitude is None):
+            raise ValueError("extracted GPS coordinates must be a complete pair")
         return self
 
 

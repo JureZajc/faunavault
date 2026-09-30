@@ -389,6 +389,10 @@ async def create_photo_from_source(
                 original_size_bytes=prepared.size,
                 media_type=prepared.media_type,
                 captured_at=prepared.metadata.captured_at,
+                extracted_captured_at=prepared.metadata.captured_at,
+                extracted_captured_at_offset_minutes=prepared.metadata.captured_at_offset_minutes,
+                extracted_latitude=prepared.metadata.latitude,
+                extracted_longitude=prepared.metadata.longitude,
                 captured_at_offset_minutes=(
                     prepared.metadata.captured_at_offset_minutes
                 ),

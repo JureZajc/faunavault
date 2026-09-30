@@ -28,6 +28,11 @@ from app.routers.review import create_review_router
 from app.routers.smart_collections import create_smart_collections_router
 from app.routers.taxonomy import create_taxonomy_router
 from app.schemas import PhotoUpdate
+from app.services.capture_metadata import (
+    CAPTURE_FIELDS,
+    PROVENANCE_FIELDS,
+    read_original_capture_metadata,
+)
 from app.services.classification import (
     apply_domestic_metadata_normalization,
     normalize_metadata_text,
@@ -219,10 +224,18 @@ def update_photo(
             },
         )
     updates = metadata.model_dump(exclude_unset=True)
+    restore_original = updates.pop("restore_original_metadata", False)
+    capture_change = restore_original or any(name in updates for name in CAPTURE_FIELDS)
+    if capture_change and expected_updated_at is None:
+        raise HTTPException(
+            status_code=422,
+            detail="expected_updated_at is required for capture/GPS changes",
+        )
     if not updates:
-        return photo
+        if not restore_original:
+            return photo
 
-    tracked = (
+    classification_fields = (
         "display_title",
         "common_name",
         "breed_guess",
@@ -233,9 +246,25 @@ def update_photo(
         "tags",
         "status",
     )
+    tracked = classification_fields + CAPTURE_FIELDS + PROVENANCE_FIELDS
     before = tuple(getattr(photo, name) for name in tracked)
     before_updated_at = photo.updated_at
     original_status = photo.status
+    original_reviewed_at = photo.reviewed_at
+
+    if restore_original:
+        extracted = read_original_capture_metadata(photo, settings)
+        for name in CAPTURE_FIELDS:
+            value = getattr(extracted, name)
+            updates[name] = value
+            updates[f"extracted_{name}"] = value
+        updates["capture_metadata_overridden"] = False
+        updates["location_metadata_overridden"] = False
+    else:
+        if "captured_at" in updates:
+            updates["capture_metadata_overridden"] = True
+        if "latitude" in updates:
+            updates["location_metadata_overridden"] = True
 
     for field_name, value in updates.items():
         if field_name == "tags":
@@ -252,15 +281,25 @@ def update_photo(
         else:
             setattr(photo, field_name, value)
 
-    apply_domestic_metadata_normalization(photo)
+    if any(name in updates for name in classification_fields):
+        apply_domestic_metadata_normalization(photo)
     after = tuple(getattr(photo, name) for name in tracked)
     if after == before:
         return photo
-    record_manual_photo_change(
-        photo,
-        utc_now(),
-        resolve_review=original_status == "needs_review" and after[:-1] != before[:-1],
+    classification_changed = (
+        after[: len(classification_fields)] != before[: len(classification_fields)]
     )
+    if classification_changed:
+        record_manual_photo_change(
+            photo,
+            utc_now(),
+            resolve_review=original_status == "needs_review"
+            and after[: len(classification_fields) - 1]
+            != before[: len(classification_fields) - 1],
+        )
+    else:
+        photo.updated_at = utc_now()
+        photo.reviewed_at = original_reviewed_at
     if expected_updated_at is not None:
         values = {name: getattr(photo, name) for name in tracked}
         values["reviewed_at"] = photo.reviewed_at

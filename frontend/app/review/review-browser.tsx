@@ -190,7 +190,9 @@ export default function ReviewBrowser() {
       setNotice("Metadata saved and review completed.");
     } else {
       setInbox((current) => current ? { ...current, photo: updated } : current);
-      setNotice("No metadata change was saved. Use Accept to confirm the result.");
+      setNotice(updated.updated_at !== photo?.updated_at
+        ? "Metadata saved. Use Accept to confirm the classification."
+        : "No metadata change was saved. Use Accept to confirm the result.");
     }
   }
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import math
+import re
 from datetime import datetime
 from typing import Annotated, Literal
 
+from fastapi import HTTPException
 from pydantic import (
     ConfigDict,
     field_validator,
@@ -39,6 +42,8 @@ class AnimalUpdate(SQLModel):
 
 
 class PhotoUpdate(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
     display_title: str | None = None
     common_name: str | None = None
     breed_guess: str | None = None
@@ -48,9 +53,80 @@ class PhotoUpdate(SQLModel):
     description: str | None = None
     tags: list[str] | None = None
     status: str | None = None
+    captured_at: datetime | None = None
+    captured_at_offset_minutes: int | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    restore_original_metadata: bool = False
+
+    @field_validator("captured_at", mode="before")
+    @classmethod
+    def validate_capture_timestamp(cls, value: object) -> object:
+        if value is None:
+            return None
+        if (
+            not isinstance(value, str)
+            or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?", value)
+            is None
+        ):
+            raise ValueError("capture timestamp must be a zone-free ISO date and time")
+        return value
+
+    @field_validator("captured_at_offset_minutes", mode="before")
+    @classmethod
+    def validate_capture_offset(cls, value: object) -> object:
+        if value is not None and (type(value) is not int or not -1439 <= value <= 1439):
+            raise ValueError("capture offset must be an integer from -1439 to 1439")
+        return value
+
+    @field_validator("latitude", "longitude", mode="before")
+    @classmethod
+    def validate_coordinate(cls, value: object) -> object:
+        # FastAPI's default validation response cannot JSON-encode NaN/Infinity.
+        # Reject these directly without echoing the invalid numeric input.
+        if type(value) in (int, float):
+            try:
+                finite = math.isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise HTTPException(
+                    status_code=422, detail="GPS coordinates must be finite numbers"
+                )
+        if value is not None and (
+            type(value) not in (int, float) or not math.isfinite(value)
+        ):
+            raise ValueError("GPS coordinates must be finite numbers")
+        return value
+
+    @field_validator("restore_original_metadata", mode="before")
+    @classmethod
+    def validate_restore_flag(cls, value: object) -> object:
+        if type(value) is not bool:
+            raise ValueError("restore_original_metadata must be a boolean")
+        return value
 
     @model_validator(mode="after")
     def validate_metadata(self) -> PhotoUpdate:
+        capture_fields = {"captured_at", "captured_at_offset_minutes"}
+        gps_fields = {"latitude", "longitude"}
+        for group in (capture_fields, gps_fields):
+            if self.model_fields_set & group and not group <= self.model_fields_set:
+                raise ValueError(
+                    "capture time/offset and GPS must each be complete groups"
+                )
+        if self.captured_at is None and self.captured_at_offset_minutes is not None:
+            raise ValueError("capture offset requires captured_at")
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("GPS coordinates must both be present or both null")
+        if self.latitude is not None and not -90 <= self.latitude <= 90:
+            raise ValueError("latitude must be between -90 and 90")
+        if self.longitude is not None and not -180 <= self.longitude <= 180:
+            raise ValueError("longitude must be between -180 and 180")
+        if self.restore_original_metadata and self.model_fields_set & (
+            capture_fields | gps_fields
+        ):
+            raise ValueError("Restore cannot be combined with capture/GPS values")
         if self.confidence is not None and not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be null or between 0 and 1")
         if (

@@ -125,23 +125,39 @@ metadata. Recoverable Trash preserves membership, while permanent Photo deletion
 cascades only the join rows.
 
 Backup format v1 explicitly verifies and rehearses database schemas 9 through
-13. Schema-9 archives migrate to empty Collection tables; schema-10
+15. Schema-9 archives migrate to empty Collection tables; schema-10
 rehearsals compare Collection metadata and membership exactly; schema-11 also
 compares durable capture metadata; schema 12 preserves review timestamps and
-schema 13 preserves Smart Collection definitions. Current metadata export v5
+schema 13 preserves Smart Collection definitions; schema 14 preserves duplicate
+curation; schema 15 retains extracted capture/GPS and manual override state.
+Current metadata export v6
 includes capture fields, review timestamps, deterministic Collection records,
-Trash memberships, and versioned Smart Collection definitions.
+Trash memberships, versioned Smart Collection definitions, and capture/GPS
+correction provenance.
+
+## Current product feature: Editable capture metadata
+
+Individual Photo metadata editing supports camera-local capture time, optional
+UTC offset, and an atomic GPS pair. Existing persisted capture/GPS fields remain
+the effective values consumed by List, Timeline, Map, and Smart Collections.
+Schema 15 retains original extracted values separately and marks manual edits or
+intentional clears per group. Backfill preserves those overrides, including
+nulls. Restore original metadata reuses trusted original decoding and extraction
+without changing image bytes. Capture-only edits preserve AI review state.
+Backup verification/rehearsal and portable export v6 retain correction provenance.
+Bulk capture correction remains a later product evaluation.
 
 ## Current product feature: Photo capture metadata / EXIF
 
 Schema 11 extracts supported EXIF data during the existing loaded-image upload
 pass: camera-local capture time and paired offset, camera/lens strings, oriented
 dimensions, and complete validated GPS coordinates. Originals remain byte
-identical. Capture data is read-only, survives Trash/restore, appears in every
+identical. Extracted camera/lens/dimensions remain read-only. Effective capture
+and GPS can now be corrected through schema 15; metadata survives Trash/restore, appears in every
 Photo response, supports null-last capture sorting and inclusive local-date
 catalog filters, and can be safely filled for existing active/Trash rows with
 the dry-run-by-default stopped-archive maintenance command. Geocoding, arbitrary
-EXIF blobs, inference, GPS editing, and cloud integrations remain deferred.
+EXIF blobs, inference, and cloud integrations remain deferred.
 
 ## Current product feature: Photo location maps
 
