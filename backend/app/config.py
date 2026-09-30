@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -17,9 +16,7 @@ OLLAMA_KEEP_ALIVE_PATTERN = re.compile(
 
 
 def _default_image_root() -> Path:
-    if os.name == "nt":
-        return Path("E:/FaunaVault/data/images")
-    return Path("/mnt/e/FaunaVault/data/images")
+    return BACKEND_DIR / "data" / "images"
 
 
 class Settings(BaseSettings):

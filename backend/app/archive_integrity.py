@@ -323,10 +323,23 @@ def _inspect_schema_11(
     )
 
 
-def _inspect_schema_13(
+def _inspect_schema_12(
     connection: sqlite3.Connection, migrations: list[int]
 ) -> DatabaseInventory:
     base = _inspect_schema_11(connection, migrations)
+    # Check structure even when there are no Photos. Rehearsal checks preservation.
+    connection.execute("SELECT reviewed_at FROM photo LIMIT 0")
+    return base
+
+
+def _inspect_schema_13(
+    connection: sqlite3.Connection, migrations: list[int]
+) -> DatabaseInventory:
+    base = _inspect_schema_12(connection, migrations)
+    connection.execute(
+        "SELECT id, name, name_key, query_version, query_json, created_at, updated_at "
+        "FROM smart_collection LIMIT 0"
+    )
     return replace(
         base,
         smart_collections=int(
@@ -339,7 +352,7 @@ SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
     11: _inspect_schema_11,
-    12: _inspect_schema_11,
+    12: _inspect_schema_12,
     13: _inspect_schema_13,
 }
 

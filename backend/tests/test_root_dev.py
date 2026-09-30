@@ -46,6 +46,7 @@ def test_help_exposes_only_the_supported_commands(dev):
         "backend",
         "frontend",
         "benchmark-catalog",
+        "doctor",
     )
     help_text = parser.format_help()
     assert "Install/synchronize development dependencies." in help_text
@@ -57,7 +58,7 @@ def test_help_exposes_only_the_supported_commands(dev):
 
 def test_command_steps_match_the_documented_workflows(dev):
     assert step_values(dev.SETUP_STEPS) == [
-        ("[backend] sync", "uv", ("sync",), dev.BACKEND_DIR),
+        ("[backend] sync", "uv", ("sync", "--frozen"), dev.BACKEND_DIR),
         ("[frontend] install", "npm", ("ci",), dev.FRONTEND_DIR),
     ]
     assert step_values(dev.CHECK_STEPS) == [
@@ -116,11 +117,12 @@ def test_command_steps_match_the_documented_workflows(dev):
             "uv",
             (
                 "run",
+                "--no-sync",
                 "uvicorn",
                 "app.main:app",
                 "--reload",
                 "--host",
-                "0.0.0.0",
+                "127.0.0.1",
                 "--port",
                 "8000",
             ),
@@ -425,3 +427,87 @@ def test_benchmark_rejects_invalid_options(dev, options):
     with pytest.raises(SystemExit) as error:
         dev.build_parser().parse_args(["benchmark-catalog", *options])
     assert error.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "version,ready", [("v24.12.0", True), ("v22.0.0", False), ("invalid", False)]
+)
+def test_node_readiness_is_actionable(dev, version, ready):
+    result = dev.node_readiness(
+        lambda _tool: "node",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout=version),
+    )
+    assert result[0] is ready
+    assert "24+" in result[1]
+    assert dev.node_readiness(lambda _tool: None)[0] is False
+
+
+@pytest.mark.parametrize(
+    "options", [[], ["--ollama"], ["--archive"], ["--archive", "--ollama"]]
+)
+def test_root_doctor_composes_existing_maintenance(dev, tmp_path, monkeypatch, options):
+    monkeypatch.setattr(dev, "backend_python", lambda: Path(sys.executable))
+    monkeypatch.setattr(dev, "FRONTEND_DEPENDENCIES_DIR", tmp_path)
+    for entry in (
+        "next/dist/bin/next",
+        "eslint/bin/eslint.js",
+        "typescript/bin/tsc",
+        "vitest/vitest.mjs",
+    ):
+        marker = tmp_path / entry
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout="v24.12.0")
+
+    args = dev.build_parser().parse_args(["doctor", *options])
+    assert dev.run_doctor(args, which=lambda name: name, runner=runner) == 0
+    maintenance = [command for command, _ in calls if "app.cli.maintenance" in command]
+    assert maintenance[0][-1] == (
+        "--ollama" if "--ollama" in options else "--environment-only"
+    )
+    assert "--environment-only" in maintenance[0]
+    assert len(maintenance) == (2 if "--archive" in options else 1)
+    if "--archive" in options:
+        assert maintenance[1][-1] == "doctor"
+    assert all(not kwargs["shell"] for _, kwargs in calls)
+
+
+def test_root_doctor_missing_install_and_environment_failure(
+    dev, tmp_path, monkeypatch, capsys
+):
+    args = dev.build_parser().parse_args(["doctor"])
+    monkeypatch.setattr(dev, "backend_python", lambda: tmp_path / "missing")
+    monkeypatch.setattr(dev, "FRONTEND_DEPENDENCIES_DIR", tmp_path / "missing")
+    assert dev.run_doctor(args, which=lambda _name: None) == 1
+    assert "FAIL backend_dependencies" in capsys.readouterr().out
+    monkeypatch.setattr(dev, "backend_python", lambda: Path(sys.executable))
+
+    def runner(command, **_kwargs):
+        return SimpleNamespace(
+            returncode=2 if "app.cli.maintenance" in command else 0, stdout="v24.12.0"
+        )
+
+    assert dev.run_doctor(args, which=lambda name: name, runner=runner) == 2
+
+
+def test_root_doctor_incomplete_backend_imports(dev, monkeypatch, capsys):
+    monkeypatch.setattr(dev, "backend_python", lambda: Path(sys.executable))
+
+    def runner(command, **_kwargs):
+        return SimpleNamespace(
+            returncode=1 if "-c" in command else 0, stdout="v24.12.0"
+        )
+
+    assert (
+        dev.run_doctor(
+            dev.build_parser().parse_args(["doctor"]),
+            which=lambda name: name,
+            runner=runner,
+        )
+        == 1
+    )
+    assert "Required imports failed" in capsys.readouterr().out

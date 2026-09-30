@@ -3,7 +3,6 @@ from __future__ import annotations
 import shutil
 import tempfile
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from uuid import uuid4
 
@@ -34,13 +33,7 @@ from app.backup.manifest import (
 from app.backup.verify import VerificationResult, verify_backup
 from app.config import Settings
 from app.migrations import LATEST_SCHEMA_VERSION
-
-
-def _application_version() -> str:
-    try:
-        return version("backend")
-    except PackageNotFoundError:
-        return "0.1.0"
+from app.version import APP_VERSION
 
 
 def _is_within(path: Path, parent: Path) -> bool:
@@ -261,8 +254,8 @@ def create_backup(
             created_at_utc=now.isoformat(timespec="microseconds").replace(
                 "+00:00", "Z"
             ),
-            application=ApplicationInfo(version=_application_version()),
-            backup_tool_version=_application_version(),
+            application=ApplicationInfo(version=APP_VERSION),
+            backup_tool_version=APP_VERSION,
             database=DatabaseInfo(
                 schema_version=LATEST_SCHEMA_VERSION,
                 applied_migrations=inventory.migrations,

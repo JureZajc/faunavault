@@ -3,6 +3,7 @@ name = "backend"
 version = "0.1.0"
 description = "Local-first backend for the FaunaVault animal photo archive"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.137.1",

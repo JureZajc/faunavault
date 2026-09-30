@@ -4,8 +4,15 @@ backend/data/*.db
 backend/data/*.db-*
 backend/data/*.bak
 .pytest_cache/
-backend/data/*.bak
-.pytest_cache/
+
+# Generated local archives and conventional backup/rehearsal destinations.
+/backend/data/
+/backups/
+/backend/backups/
+/rehearsals/
+/backend/rehearsals/
+faunavault-backup-*/
+.venv/
 
 # Local environment files
 .env

@@ -12,6 +12,7 @@ from app.services.archive_maintenance import (
     doctor,
     repair_derived,
 )
+from app.services.environment_diagnostics import environment_diagnostics
 from app.services.photo_metadata_backfill import (
     MetadataBackfillResult,
     MetadataBackfillSetupError,
@@ -119,7 +120,19 @@ def build_parser() -> argparse.ArgumentParser:
         description="Inspect and safely repair a stopped FaunaVault live archive.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("doctor", help="inspect the configured live archive read-only")
+    inspect = commands.add_parser(
+        "doctor", help="inspect the configured live archive read-only"
+    )
+    inspect.add_argument(
+        "--environment-only",
+        action="store_true",
+        help="check setup without scanning or changing the archive",
+    )
+    inspect.add_argument(
+        "--ollama",
+        action="store_true",
+        help="explicitly probe optional Ollama and models (environment-only)",
+    )
     repair = commands.add_parser(
         "repair-derived",
         help="inspect or rebuild invalid resized and thumbnail derivatives",
@@ -143,9 +156,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "doctor" and args.ollama and not args.environment_only:
+        print("--ollama requires --environment-only.", file=sys.stderr)
+        return 2
     try:
         settings = get_settings()
         if args.command == "doctor":
+            if args.environment_only:
+                findings = environment_diagnostics(settings, ollama=args.ollama)
+                for finding in findings:
+                    print(f"{finding.status} {finding.code}: {finding.message}")
+                return 1 if any(item.status == "FAIL" for item in findings) else 0
             result = doctor(settings, progress=_progress)
             _print_health(result)
             return 0 if result.status == "HEALTHY" else 1
@@ -162,7 +183,12 @@ def main(argv: list[str] | None = None) -> int:
         ValueError,
         OSError,
     ) as exc:
-        print(f"Maintenance could not start: {exc}", file=sys.stderr)
+        label = (
+            "FAIL configuration"
+            if args.command == "doctor" and args.environment_only
+            else "Maintenance could not start"
+        )
+        print(f"{label}: {exc}", file=sys.stderr)
         return 2
 
 

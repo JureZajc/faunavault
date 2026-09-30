@@ -44,6 +44,7 @@ from app.services.perceptual_duplicates import run_perceptual_hash_backfill
 from app.services.photo_lifecycle import active_photo_or_404
 from app.services.review import record_manual_photo_change
 from app.storage_startup import initialize_archive_storage
+from app.version import APP_VERSION
 
 __all__ = ["Animal", "Photo", "Taxon", "app", "migrate_animals_and_taxonomy"]
 
@@ -146,7 +147,7 @@ async def lifespan(application: FastAPI):
                             del application.state.gbif_client
 
 
-app = FastAPI(title="FaunaVault API", lifespan=lifespan)
+app = FastAPI(title="FaunaVault API", version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -188,7 +189,7 @@ def normalize_existing_domestic_metadata() -> None:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.get("/photos/{photo_id}", response_model=Photo)

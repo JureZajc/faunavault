@@ -3,8 +3,10 @@
 The Next.js 16 App Router frontend provides the photo catalog, capture-date
 Timeline, clustered archive Map, species Albums, manual and Smart Collections,
 metadata review, persistent local-AI job controls, and Trash workflows.
-Project-wide setup, storage, backup, and backend behavior are documented in the
-[root README](../README.md).
+Start with the [root README](../README.md). Detailed storage, backup, and backend
+behavior are in the [operations guide](../docs/OPERATIONS.md). The frontend is a
+private package with no independent release version; the backend project
+manifest owns the application version.
 
 ## Architecture
 
@@ -30,7 +32,7 @@ The `/review` route uses the backend's filtered one-item inbox projection and
 linked-animal taxonomy, and classification job components. Accept and metadata
 saves advance to the next item; missing or trashed items redirect to the first
 remaining item. Arrow shortcuts apply only outside editable controls and the
-lightbox. See the root README for review persistence and API semantics.
+lightbox. See the operations guide for review persistence and API semantics.
 
 The dedicated `/map` route loads one typed `GET /catalog/map` projection after
 mount and renders loading, error, empty, and loaded states. Leaflet and

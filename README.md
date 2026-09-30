@@ -1,653 +1,202 @@
 # FaunaVault
 
-FaunaVault is a local-first animal photo archive. Originals and derived images stay on your computer, metadata lives in SQLite, and optional AI classification runs through local Ollama vision models. GBIF taxonomy lookup and remote OpenStreetMap basemap tiles are the only network-backed product integrations; taxonomy degrades to locally cached data and map markers remain available if tiles cannot load.
+FaunaVault is a local-first animal photo archive for one person on one machine.
+Original photos and previews stay on your filesystem, metadata lives in SQLite,
+and optional AI classification runs through local Ollama vision models.
+
+**v0.1.0** is a source-based release. [Release notes](CHANGELOG.md) ·
+[MIT license](LICENSE)
 
 ![FaunaVault album view](faunavault-album-desktop.png)
 
-## Features
+## Key features
 
-- Interactive single- and multi-file upload with JPEG, PNG, WebP, HEIC, and HEIF content validation and a frontend-controlled sequential queue
-- Recursive local folder import with dry-run preview and source files left untouched
-- Exact duplicate detection using SHA-256, including duplicates currently in Trash
-- Conservative perceptual near-duplicate review with an explicit Keep both choice
-- Original, resized, and thumbnail variants with EXIF orientation handling
-- Read-only EXIF capture time, camera/lens, oriented dimensions, and local-only GPS metadata
-- Compact Photo Timeline grouped by camera-local capture year and month
-- Interactive Photo detail maps and a clustered archive Map for active geotagged photos
-- Searchable/filterable photo catalog, derived species Albums, manual and Smart Collections, animals, and GBIF taxonomy linking
-- Explicit cross-page catalog selection with atomic bulk tag, category, Add to Collection, and Move to Trash actions
-- Durable SQLite-backed Ollama classification jobs with confidence-based review, provenance, retry, and manual metadata editing
-- Recoverable Trash with restore and explicitly confirmed permanent deletion
-- Versioned, backed-up SQLite migrations and local-only storage
+- JPEG, PNG, WebP, HEIC, and HEIF uploads; recursive local folder import.
+- Untouched originals, local previews, capture/camera metadata, and GPS extraction.
+- Search, filters, sorting, Timeline, clustered Map, species Albums, manual
+  Collections, and live Smart Collections.
+- Explicit cross-page selection for bulk tags, category, Collections, and Trash.
+- SHA-256 exact duplicate protection and conservative visual duplicate review.
+- Optional durable AI classification jobs, confidence-based Review Inbox,
+  manual editing, and local taxonomy with GBIF lookup.
+- Recoverable Trash, confirmed permanent deletion, archive diagnostics,
+  verified cold backups, isolated recovery rehearsal, and portable metadata export.
 
-## Interactive uploads
+## Requirements
 
-The catalog uploads a multi-file selection one file at a time and shows each
-file's real state: `Waiting`, `Uploading`, `Uploaded`, `Exact duplicate`,
-`Possible duplicate`, or `Failed` (`Cancelled` is shown after the user cancels
-a possible-duplicate review). The display reports the active file's ordinal,
-such as `Uploading 2 of 5`; it does not invent byte-level percentages because
-the current request layer does not receive byte progress.
+Install [Python](https://www.python.org/downloads/) **3.12+**,
+[uv](https://docs.astral.sh/uv/getting-started/installation/), and
+[Node.js](https://nodejs.org/) **24+** with npm. Git is used to obtain/update the
+source; it is not required by the running application. Dependencies include the
+local HEIC/HEIF codec; no system codec is required.
 
-One file's validation, duplicate, network, or server outcome does not roll back
-completed siblings or stop later queued files. A failed item can be retried in
-place when the failure is transient (a network error or HTTP 5xx response),
-without re-uploading completed files. Possible visual duplicates remain pending
-for independent review after the initial queue has finished, so each can be
-kept or cancelled without changing the other file outcomes.
+[Ollama](https://ollama.com/) and a vision model are needed only for AI
+classification. Browser tests additionally require Playwright Chromium.
 
-Catalog refreshes are batched around those phases instead of running after every
-successful file: once after the initial pass when it saved photos, and once
-after the duplicate-review queue drains when `Keep both` saved additional
-photos. A refresh failure is reported separately and does not relabel an
-already accepted upload as failed. The backend's compatibility batch-upload API
-remains available, but the interactive catalog uses the single-photo endpoint
-to provide these per-file states and retries.
+## Quick Start
 
-## Import a local photo folder
-
-Start the backend once to initialize or migrate the archive, then stop it before
-an actual import. From `backend`, run:
-
-```powershell
-uv run faunavault-import "E:\Photos\Wildlife" --recursive --dry-run
-uv run faunavault-import "E:\Photos\Wildlife" --recursive
-uv run faunavault-import "E:\Photos\Wildlife" --recursive --classify
-```
-
-On macOS or Linux:
+From PowerShell or a Unix-like shell:
 
 ```sh
-cd backend
-uv run faunavault-import ~/Pictures/Wildlife --recursive --dry-run
-uv run faunavault-import ~/Pictures/Wildlife --recursive
-```
-
-Without `--recursive`, only files directly inside the source directory are
-processed. FaunaVault reads source files without moving, renaming, deleting, or
-changing them, and keeps its own byte-for-byte copies in managed storage.
-JPEG, PNG, WebP, HEIC, and HEIF use the same validation and size limits as
-browser uploads. Unsupported files are skipped. Exact SHA-256 duplicates,
-including photos in Trash and files imported earlier in the run, are skipped;
-repeating an import does not create another Photo for the same bytes.
-
-Possible visual duplicates are reported separately and skipped by default. Use
-`--allow-visual-duplicates` to keep both; exact duplicates still cannot be
-imported twice. `--verbose` prints each file's outcome. Without it, progress
-appears every 100 files plus duplicate and failure details and a final summary.
-Corrupt or unreadable photos are reported and later files continue. A run with
-file failures exits with status 1; setup errors exit with status 2.
-
-`--dry-run` may run while the backend is online. It validates and hashes files,
-checks exact and possible visual duplicates, and predicts how earlier files in
-that scan affect later ones. It creates no photos, archive files, derivatives,
-or classification jobs. It requires an initialized, current-schema archive.
-
-New photos remain pending, as with browser uploads. `--classify` queues durable
-classification jobs for newly imported photos only, without running the model
-in the CLI. Those jobs are processed after the backend restarts. A dry run with
-`--classify` reports planned jobs but creates none. The source folder should
-stay stable during the scan, and actual imports should run with the backend
-stopped.
-
-## Catalog API and navigation
-
-The main List view uses `GET /catalog/photos`, a backend-paginated and
-backend-filtered API with 48 items by default and a maximum page size of 100. It
-supports `page`, `page_size`, `search`, `status`, `category`, `uncategorized`, `taxon_id`,
-`taken_from`, `taken_to`, `sort`, and `order`. Capture-date bounds are inclusive
-camera-local dates, and `sort=captured_at` keeps unknown capture dates last.
-Responses include the filtered `total`, `total_pages`, and
-small global status/category facets. Search is a case-insensitive SQLite
-substring search across photo metadata, tags, animal names, and locally stored
-taxonomy; whitespace-separated terms must all match somewhere in the record.
-
-Verified taxon choices are loaded separately and in bounded pages from
-`GET /catalog/taxa`. Each option uses the stable local `Taxon.id` and includes
-its display label, scientific name, and active-photo count. The legacy
-`GET /photos` endpoint remains unchanged and still returns the complete active
-Photo array for compatible consumers.
-
-The six peer archive destinations are List, Timeline, Map, Albums, Collections,
-and Trash. Timeline has its own `/timeline` route and reads a compact,
-deterministic `GET /catalog/timeline` projection of active Photos grouped by the
-camera-local year and month stored in `captured_at`. Each month shows four
-newest-captured thumbnail previews and links to the existing List using its
-inclusive `catalog_taken_from` / `catalog_taken_to` URL filters with capture-date
-sorting. Photos without capture metadata are reported separately and are never
-assigned an import date or fabricated month; JPEG, PNG, WebP, HEIC, and HEIF
-participate identically when capture metadata exists.
-
-Map has its own `/map` route and reads a lightweight, deterministic
-`GET /catalog/map` projection containing only active geotagged Photos and the
-metadata needed for markers and previews. Nearby points cluster, exact-coordinate
-points remain distinct through spiderfying, and `/map?photo=<id>` focuses a
-specific active point. Map does not duplicate List filters or bulk selection.
-
-List page, search, filters, sorting, verified taxon, and flat/grouped layout are
-stored in URL search parameters. Refresh, copied URLs, browser Back/Forward,
-and photo detail return navigation restore the same catalog context. Grouping
-is intentionally page-local once pagination is active.
-
-The List view also offers an explicit Select mode. Selection contains only photo
-IDs the user checks and can span visited pages within the same search/filter/sort
-context. Search, filter, sort, Map, Albums, Collections, or Trash changes clear it; flat/grouped and
-page changes do not. Select page means the currently loaded page only, requests
-are capped at 250 photos, and there is no select-all-results behavior. Bulk actions
-can add/remove tags, set or explicitly clear category, add photos to one persisted
-Collection, or move active photos to recoverable Trash. Permanent deletion is
-never available as a bulk action.
-
-Collections are manually named groups with stable numeric IDs and explicit
-many-to-many Photo membership. Create, rename, and delete them under
-`/collections`; deleting a Collection never deletes Photos or files. Collection
-pages show active Photos in catalog order and support single or selected removal.
-Membership survives recoverable Trash and becomes visible again on restore;
-permanent Photo deletion removes the corresponding membership rows.
-
-Smart Collections are named saved List queries with live membership. In List,
-set search, status, category or Unknown, verified taxon, capture dates, and sort,
-then choose **Save as Smart Collection**. An unfiltered “All photos” query is
-valid. Page, page size, flat/grouped layout, and selection are never saved.
-Find Smart Collections in a separate section under `/collections`; open one at
-`/collections/smart/<id>` to see its current count and paginated results. **Edit
-criteria** restores the query in List and **Save changes** updates the same
-Smart Collection. Metadata edits, new Photos, Trash, and restore immediately
-change results because no membership rows are stored. Deleting a Smart
-Collection deletes only its saved query. Bulk **Add to Collection** still
-targets manual Collections. Saved query version 1 has explicit validated
-fields; an unsupported or damaged definition is shown as invalid and can be
-replaced from List without affecting other collections.
-
-`POST /photos/bulk` accepts a discriminated operation body with explicit
-`photo_ids`. The backend validates the complete active set before mutation and
-commits metadata changes or Trash/job-state transitions atomically.
-
-## Exact and possible visual duplicates
-
-Byte-identical uploads are detected by SHA-256 and rejected with HTTP 409. This
-authoritative rule also applies when the existing photo is in Trash and cannot
-be bypassed.
-
-After the SHA check, the backend calculates a local `phash64-v1` perceptual
-fingerprint from EXIF-oriented, metadata-independent pixels and compares it with
-active and Trash photos. A Hamming distance of four or less is treated only as
-evidence of a possible visual duplicate. The upload is not finalized until the
-user chooses `Keep both`; confirmation re-uploads and fully re-analyzes the file,
-including a fresh exact check and candidate scan. Cancel leaves no server-side
-staged file. Burst frames, crops, recoloring, and structurally similar photos can
-produce warnings, while stronger edits may not be detected.
-
-Schema migration 9 adds the nullable fingerprint field. Existing originals are
-hashed by a resumable background task, one image at a time in batches of 25 with
-a short pause between batches so API, upload, and classification work can
-interleave. Missing or unreadable originals remain nullable and are reported by
-photo ID; exact duplicate protection stays active throughout. Candidate previews
-use an ID-based photo endpoint and do not expose perceptual hashes or storage
-filenames.
-
-## Architecture and storage
-
-- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
-- Backend: FastAPI, Python 3.12+, SQLModel, SQLite, Pillow
-- AI: local Ollama (`qwen3-vl:8b` for primary and fallback by default)
-
-The default Windows configuration stores image files under `E:/FaunaVault/data/images` and SQLite metadata under `backend/data/faunavault.db`. Existing `.env` values take precedence; upgrades do not relocate data. Originals are preserved byte-for-byte. Resized and thumbnail files are reproducible derivatives. JPEG, PNG, and WebP retain their existing derivative formats; HEIC and HEIF originals use JPEG previews so every existing catalog, detail, Map, lightbox, and classifier path remains browser-compatible.
-
-HEIC/HEIF decoding and preview conversion happen locally through the locked
-Pillow codec dependency; no photo is sent to a conversion service and no system
-codec installation is required. For a multi-image container, FaunaVault uses
-the HEIF-designated primary image and ignores embedded thumbnails, auxiliary or
-depth images, and other frames while retaining the complete source container.
-Preview decoding is 8-bit RGB/RGBA and does not promise HDR, gain-map, or ICC
-color fidelity; that source information remains only in the untouched original.
-HEIC/HEIF editing, re-encoding, AVIF, sequence formats, and client-side HEIC
-rendering are not supported.
-
-On upload, schema 11 stores supported image-stated metadata without rewriting
-the original: EXIF capture time and its separately recorded offset, camera make
-and model, lens model, oriented dimensions, and a complete valid GPS pair. A
-missing or malformed optional tag remains null and does not reject a valid
-image. `created_at` continues to mean when FaunaVault added the record; capture
-time never falls back to it. GPS stays in the local SQLite database and appears
-as plain coordinates plus an interactive map. Photos without complete GPS do not
-show a detail map or appear on the archive Map. Moving a Photo to Trash removes
-it from Map; restore returns it without changing its coordinates.
-
-EXIF/GPS extraction is local and uses the metadata exposed by the decoded
-primary image. Not every camera or exported HEIC/HEIF file contains these tags,
-so capture, camera, lens, and location fields may legitimately remain blank.
-
-The basemap defaults to standard OpenStreetMap raster tiles with visible
-attribution. The browser requests only tiles for the visible viewport; FaunaVault
-does not send photo records, filenames, species, tags, or thumbnails to the tile
-provider. Remote tiles mean basemap rendering is not offline, and there is no
-reverse geocoding, place search, coordinate editing, tile downloader, analytics,
-or external map metadata API.
-
-Normal deletion only sets a deleted timestamp. Trash continues to reference the same local files. A photo must be moved to Trash before it can be permanently deleted. Permanent deletion stages variants in a private journal, commits the row deletion, and cleans the staged files; interrupted work is reconciled on the next backend startup.
-
-## Local AI classification jobs
-
-Classification requests are persisted in SQLite and processed serially by a lightweight worker inside the single FastAPI process. The browser does not need to stay open: queued and running state survives navigation and refresh, while completed and failed jobs remain visible with their model, duration, attempt count, and prompt version.
-
-Jobs use `queued`, `running`, `succeeded`, and `failed` execution states. A succeeded result may still set the photo to `needs_review` when confidence is low or the model requests review; that is not an execution failure. Failed jobs require an explicit retry. Retry reuses the job, increments its durable attempt count, refreshes `queued_at`, and snapshots the current model and prompt configuration. A short internal Ollama retry does not increment this user-visible count.
-
-Classification uses Ollama JSON-schema structured output with prompt contract `animal-photo-v2`, `think: false`, temperature zero, and a request-level keep-alive. For Qwen3-VL/Ollama combinations that return schema-valid metadata in `thinking` while leaving `response` empty, FaunaVault accepts that alternate channel only after the same strict validation and does not log its contents. The primary model receives one automatic retry after a two-second pause only for timeouts, connection interruptions, rate limiting, selected server failures, or malformed structured output. A distinct fallback runs after the primary retry is exhausted, immediately when the primary model is missing, or when a valid primary result has low confidence. The fallback has the same bounded retry policy. Identical primary and fallback models never create a fake fallback stage.
-
-Connections time out after 5 seconds and classification response reads after 180 seconds by default. With identical models, one pathological Photo can hold the worker for about 6 minutes; a distinct primary and fallback can take about 12 minutes in the worst case. Exhaustion marks only that job failed and the serial worker continues with the next queued Photo. Malformed output and Ollama failures remain safe failed jobs without overwriting Photo metadata.
-
-FaunaVault's HTTP read timeout is separate from an Ollama HTTP 500 reporting that its model or runner failed to load in time. FaunaVault logs Ollama's sanitized server detail and successful load/prompt/evaluation timing breakdown, but it does not modify Ollama, GPU, runner, or model-storage configuration. Detailed diagnostics remain console logs; only end-to-end job `duration_ms` is persisted.
-
-An unexpected backend stop marks any interrupted running job failed on restart with an explicit retry action; work is never silently repeated. Moving a photo to Trash fails queued/running work, and a delayed Ollama response cannot write metadata after Trash or a manual edit. Restoring the photo permits explicit retry but does not restart work automatically.
-
-FaunaVault supports one local backend process and one classification worker. Do not run multiple Uvicorn workers; distributed worker coordination is deliberately out of scope.
-
-The existing `POST /photos/{id}/classify` and `POST /photos/classify-pending` URLs are retained, but both now return asynchronous HTTP 202 job resources instead of synchronous Photo or batch-result bodies. There is no legacy synchronous Ollama classification route. The canonical resource API is `POST/GET /classification-jobs` plus `POST /classification-jobs/{id}/retry`.
-
-## AI Review Inbox
-
-Open **Review** at `/review` to process active photos whose AI result has `status = needs_review`. The inbox shows one photo at a time in oldest-first order, with its metadata, confidence, linked animal/taxonomy, available classification provenance, and job state. The URL may include `?photo=<id>`; Previous/Next and Left/Right arrows navigate, while Skip moves on without changing metadata. Trash photos are never listed. A missing or already reviewed link opens the first remaining item.
-
-**Accept** confirms the current result, changes the photo to `classified`, and records `reviewed_at` without removing its classification jobs. **Edit** uses the existing photo metadata editor; an actual manual metadata change anywhere in the app, including bulk tag/category edits, resolves `needs_review` and records `reviewed_at`. A no-op save leaves the item in review. Taxonomy selection alone does not confirm the photo; use Accept afterward. **Reclassify** uses the durable job API, and failed jobs retain the existing Retry action. If Ollama is unavailable, the photo stays in review with the failed job visible. Active jobs block Accept; edits still invalidate delayed results through `updated_at`.
-
-Schema migration 12 adds nullable `photo.reviewed_at`. A new AI result clears it. Existing classified photos retain `null` because their past review history cannot be determined. `GET /review?photo=<id>` returns the count, current photo, ordinal position, neighboring IDs, and a low-confidence flag using the configured threshold. `POST /review/photos/{id}/accept` takes `expected_updated_at` and returns the remaining count and next ID; stale, trashed, changed, or active-job photos return HTTP 409. `PATCH /photos/{id}` accepts optional `expected_updated_at` for guarded edits. The original model review flag and exact reason are not stored, so the UI gives a specific low-confidence reason only when supported by the saved score.
-
-## Developer commands
-
-Install Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 24+, and npm.
-[Ollama](https://ollama.com/) is needed only for local AI classification. From
-the repository root, the optional convenience commands are:
-
-```powershell
+git clone https://github.com/JureZajc/faunavault.git
+cd faunavault
 python scripts/dev.py setup
-python scripts/dev.py check
-python scripts/dev.py check-clean
+python scripts/dev.py doctor
+```
+
+Use `python3` instead of `python` on systems where it exposes Python 3.12+.
+`setup` installs locked backend/frontend dependencies. It does not start services,
+create environment files, initialize your archive, or download AI models.
+
+No configuration is required for local defaults: SQLite at
+`backend/data/faunavault.db`, images at `backend/data/images`, and the backend API
+at `http://localhost:8000`. Missing storage before first startup is expected.
+For custom paths, copy/edit `backend/.env.example` and
+`frontend/.env.local.example` to their non-example names. Backend settings read
+`backend/.env`; a root `.env` is not consumed. See
+[configuration and upgrade safety](docs/OPERATIONS.md#configuration-and-initialization).
+
+## Starting FaunaVault
+
+Run these in two separate terminals from the repository root:
+
+```sh
 python scripts/dev.py backend
+```
+
+```sh
 python scripts/dev.py frontend
-python scripts/dev.py benchmark-catalog --sizes 1000 10000 50000 100000 --runs 20 --output catalog-benchmark-results.json
 ```
 
-`setup` runs `uv sync` for the backend and `npm ci` for the frontend. It does
-not create environment files, install or start Ollama, or pull models. `check`
-runs the backend and frontend validation stages against the installed
-environment without synchronizing or reinstalling dependencies. Run `setup`
-first if the backend virtual environment or frontend `node_modules` is missing.
-`check-clean` performs the frozen backend sync and clean frontend install before
-running the same validation stages, making it the CI-equivalent path. Both
-checks are sequential and fail fast.
+Open [FaunaVault](http://localhost:3000). The backend listens on localhost and
+initializes the database/directories and applies migrations on startup. Existing
+archives are upgraded without a reset. [Health](http://localhost:8000/health)
+reports status and application version. Stop each server with Ctrl+C.
 
-`benchmark-catalog` requires only the installed backend environment. It profiles
-the production catalog, saved Smart Collection queries/counts, Timeline, Map,
-and taxonomy selector against deterministic metadata in disposable SQLite/storage
-state. It never opens the configured archive and needs no images or network
-services. Reports are warm-cache measurements; JSON output requires a new file
-outside managed archive storage. Use `--verbose` for SQL and plans. See the
-[benchmark guide and measured results](docs/CATALOG_BENCHMARK.md).
+For an existing archive using old implicit E-drive image storage, explicitly set
+`IMAGE_DIR` to its existing root before upgrading. Startup refuses a populated
+database paired with empty implicit portable originals; it never moves your data.
 
-`setup` and `check-clean` run `npm ci`, which replaces `node_modules`. On
-Windows, stop the Next.js development server before running either command so
-loaded native `.node` modules are not locked. If an interrupted install leaves
-the frontend dependencies incomplete, stop the server and rerun `python
-scripts/dev.py setup`. If `node_modules` remains locked or corrupt, manual
-cleanup of `frontend/node_modules` may be required before retrying setup.
+After stopping the backend, run `python scripts/dev.py doctor --archive` for a
+full integrity scan. Plain `doctor` checks setup without scanning images or
+contacting Ollama. [Diagnostics details](docs/OPERATIONS.md#setup-diagnostics).
 
-Run `backend` and `frontend` in separate terminals; combined process
-orchestration is deliberately omitted so Ctrl+C behavior stays predictable on
-Windows and POSIX systems.
+## Importing an existing photo archive
 
-The commands resolve paths from the script location, so they can also be
-invoked by absolute or relative script path from another working directory.
-On macOS or Linux, use `python3` instead of `python` if that is how Python 3.12+
-is exposed on `PATH`.
-
-## Manual setup and development
-
-The underlying uv and npm commands remain authoritative and can be run
-directly. For the backend:
+Start the backend once to initialize/migrate storage, then stop it. From `backend`:
 
 ```powershell
-cd backend
-uv sync
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv run --no-sync faunavault-import "E:\Photos\Wildlife" --recursive --dry-run
+uv run --no-sync faunavault-import "E:\Photos\Wildlife" --recursive
 ```
 
-In a second terminal:
+Unix example:
 
-```powershell
-cd frontend
-npm ci
-npm run dev
+```sh
+uv run --no-sync faunavault-import ~/Pictures/Wildlife --recursive --dry-run
+uv run --no-sync faunavault-import ~/Pictures/Wildlife --recursive
 ```
 
-For local AI classification, install Ollama separately and pull the primary
-model when needed:
+Source files are never moved, renamed, or changed. Exact duplicates, including
+Trash, are skipped; possible visual duplicates are skipped unless explicitly
+allowed. Restart the backend after import. See
+[all importer flags and queue behavior](docs/OPERATIONS.md#import-a-local-photo-folder).
 
-```powershell
+## AI classification
+
+Normal archive functionality works without AI. Ollama analyzes a local resized
+preview to suggest animal metadata; its results can be edited or accepted in
+Review. Primary and fallback both default to `qwen3-vl:8b`.
+
+Install/start Ollama separately and explicitly install the model when wanted:
+
+```sh
 ollama pull qwen3-vl:8b
+python scripts/dev.py doctor --ollama
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Backend health is available at [http://localhost:8000/health](http://localhost:8000/health).
-
-## Configuration
-
-Copy `backend/.env.example` and `frontend/.env.local.example` to their non-example names as needed. Important backend values:
-
-```env
-DATA_DIR=E:/FaunaVault/data
-IMAGE_DIR=E:/FaunaVault/data/images
-DATABASE_URL=sqlite:///./data/faunavault.db
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_CONNECT_TIMEOUT_SECONDS=5
-OLLAMA_REQUEST_TIMEOUT_SECONDS=180
-OLLAMA_KEEP_ALIVE=15m
-AI_PRIMARY_MODEL=qwen3-vl:8b
-AI_FALLBACK_MODEL=qwen3-vl:8b
-AI_CONFIDENCE_THRESHOLD=0.65
-MAX_UPLOAD_BYTES=52428800
-MAX_IMAGE_PIXELS=80000000
-```
-
-Frontend:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-## Validation
-
-From the repository root, `python scripts/dev.py check` runs routine validation
-against the currently installed dependencies:
-
-```powershell
-cd backend
-uv run --no-sync ruff check .
-uv run --no-sync ruff format --check .
-uv run --no-sync pytest
-
-cd ../frontend
-npm run lint
-npm run typecheck
-npm test
-npm run build
-```
-
-`python scripts/dev.py check-clean` is the clean, reproducible validation path.
-It runs `uv sync --frozen`, performs the backend commands above, runs `npm ci`,
-and then performs the frontend commands above. This is semantically equivalent
-to the dependency installation and validation sequence in GitHub Actions; the
-subsequent backend commands use `--no-sync` so only the explicit frozen sync can
-mutate dependencies. Stop the frontend development server first on Windows.
-The manual subsystem commands remain useful for troubleshooting.
-
-### Browser smoke coverage
-
-The focused Playwright smoke suite is separate from routine pytest and
-Vitest/JSDOM validation. It builds the production frontend with the test API URL,
-starts that build with `next start`, launches the real FastAPI application, and
-uses Chromium to exercise upload and duplicate refusal, catalog/detail metadata
-editing, the real map endpoint and marker-to-detail path, real backend image
-loading, and Trash restore/permanent deletion. External tile URLs are fulfilled
-inside Playwright, so CI never depends on OpenStreetMap availability.
-
-Install the Chromium runtime once after installing frontend dependencies:
-
-```powershell
-cd frontend
-npx playwright install chromium
-```
-
-Then run the complete isolated workflow from `frontend`:
-
-```powershell
-npm run test:e2e
-```
-
-Each run creates a uniquely named `faunavault-e2e-*` directory under the OS
-temporary directory and explicitly points SQLite and every image directory at
-that location. It never copies or opens the configured archive, refuses to reuse
-processes already listening on its dedicated ports (`3001` and `8001`), and
-removes the temporary archive after success or failure. The selected workflow
-does not classify photos or search taxonomy, so Ollama, GBIF, and network access
-are not required. Browser installation and smoke coverage are deliberately not
-part of `setup`, `check`, `check-clean`, or ordinary `npm test`.
-
-## Portable metadata export
-
-FaunaVault can export a deterministic, schema-versioned inventory of all Photo,
-Animal, locally stored Taxon, Collection, and Collection-membership metadata
-without copying media. JSON is the
-authoritative representation; an optional flat Photo CSV is available for
-spreadsheets and ordinary data-analysis tools. Both active and Trash Photos are
-included, with portable original paths, actual streamed sizes, and SHA-256
-values.
-
-From `backend`, choose a new destination directory whose parent already exists:
-
-```powershell
-uv run faunavault-export E:\FaunaVaultExports\metadata-2026-08-20
-uv run faunavault-export E:\FaunaVaultExports\metadata-2026-08-20-with-csv --csv
-```
-
-The command may run while the backend is online. It reads a coherent SQLite
-snapshot and fails safely if a referenced original disappears or changes while
-being inventoried. It never writes to the application database, calls Ollama or
-GBIF, runs archive repair, or includes absolute source paths and credentials.
-The destination must not already exist and is published only after every
-artifact passes internal validation.
-
-The directory contains `archive-metadata.json` and, with `--csv`, `photos.csv`.
-JSON is UTF-8 with visible Unicode, explicit nulls, deterministic ID ordering,
-canonical UTC archive timestamps, zone-free camera-local capture timestamps, LF
-newlines, and no volatile generation timestamp.
-For example:
-
-```powershell
-python -m json.tool E:\FaunaVaultExports\metadata-2026-08-20\archive-metadata.json
-jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metadata.json
-```
-
-The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v5](docs/METADATA_EXPORT_FORMAT.md) for the complete
-field, encoding, relationship, and compatibility contract.
-
-This export is an inspectable metadata and audit artifact only. It contains no
-image bytes, has no import/restore guarantee, and does **not** replace a verified
-backup containing the SQLite database and complete image payload.
+An empty archive starts without contacting Ollama or downloading/warming models.
+Previously queued classification jobs resume normal processing after restart.
+Jobs persist in SQLite; execution failures have explicit Retry, and low-confidence
+results enter Review. Folder import `--classify` queues newly imported photos
+for processing after backend restart. See
+[classification/retry details](docs/OPERATIONS.md#local-ai-classification-jobs)
+and [Review Inbox](docs/OPERATIONS.md#ai-review-inbox).
 
 ## Backup and recovery
 
-FaunaVault creates self-contained, verified local backup directories. Backups are
-deliberately **cold**: stop the backend and keep it stopped for the complete
-`create` command. SQLite can provide an online database snapshot, but a separate
-image upload or permanent-delete operation could otherwise produce a mixed-time
-database and filesystem set.
-
-From `backend`, pass an existing local destination directory:
+Stop the backend for backup creation and archive maintenance. From `backend`:
 
 ```powershell
-uv run faunavault-backup create E:\FaunaVaultBackups
-uv run faunavault-backup verify E:\FaunaVaultBackups\faunavault-backup-20260812T151500.123456Z-1a2b3c4d
-uv run faunavault-backup rehearse E:\FaunaVaultBackups\faunavault-backup-20260812T151500.123456Z-1a2b3c4d E:\FaunaVaultRehearsals\recent-backup
+uv run --no-sync faunavault-backup create "E:\FaunaVaultBackups"
+uv run --no-sync faunavault-backup verify "E:\FaunaVaultBackups\<backup-name>"
+uv run --no-sync faunavault-backup rehearse "E:\FaunaVaultBackups\<backup-name>" "E:\FaunaVaultRehearsals\new-target"
 ```
 
-Creation validates the source archive, snapshots SQLite with its supported
-backup API, copies files with streaming SHA-256 checksums, verifies the complete
-temporary set, rechecks lifecycle state, and only then publishes it under a
-unique name. It never overwrites an existing backup. Warnings such as excluded
-orphan files do not make an otherwise recoverable backup invalid; missing or
-changed owned files do.
+On Unix, substitute existing local directories such as `~/FaunaVaultBackups`.
+Creation requires an existing destination; rehearsal requires a nonexistent
+target with an existing parent. Backups include active photos, Trash, previews,
+and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
+archive doctor; it never replaces your live archive. Backup format v1 supports
+schemas 9–13. Production restore remains manual.
 
-Backup format version 1 is an uncompressed directory:
+Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
+before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)
+is separately useful for inspection and portability; it is not a recovery backup.
 
-```text
-faunavault-backup-<UTC timestamp>-<id>/
-  manifest.json
-  database/
-    faunavault.db
-  images/
-    original/
-    resized/
-    thumbs/
+## Development and release validation
+
+```sh
+python scripts/dev.py check
 ```
 
-The SQLite snapshot contains photos, animals, taxonomy, manual Collections and their
-memberships, Smart Collection definitions, schema migrations, and classification jobs. All referenced original, resized, and thumbnail files are
-included for both active photos and Trash. Derived variants remain included so
-each backup is complete and immediately usable, even though they can now be
-regenerated from verified originals. Upload staging, purge journals, SQLite
-sidecars, pre-migration database copies, environment files, credentials, caches,
-dependencies, and build artifacts are excluded.
-Non-empty `.staging` or `.purge` state blocks creation; let normal backend
-startup reconcile an interrupted purge, stop the backend again, and retry.
+This runs backend lint/format checks and pytest, frontend lint/typecheck/Vitest,
+and a production build. It includes isolated first-run/schema and backup/recovery
+coverage. `check-clean` performs frozen backend sync and `npm ci` first. Stop the
+frontend before `setup`/`check-clean` on Windows because native modules may be locked.
 
-`manifest.json` records only backup-relative payload paths, counts, schema and
-format versions, and SHA-256 checksums. Normal backups omit absolute source
-paths, and verification never needs the original machine or live FaunaVault
-configuration. Checksums detect accidental corruption, not malicious rewriting
-of both the payload and manifest. Unexpected regular files are warnings;
-symlinks and junctions are rejected and never followed.
+For the release browser gate, from `frontend`:
 
-### Backup verification and restore rehearsal
-
-`verify` is the fast, read-only integrity check. It proves that the backup
-format is supported, the SQLite database matches the schema claimed by the
-manifest, and every required payload is present and checksum-valid. It does not
-copy files, run migrations, or access configured live storage.
-
-`rehearse` proves that the same backup can be recovered by the current
-FaunaVault version. The target must not exist and its parent must already be a
-regular local directory. The command verifies the complete source first, copies
-only into a uniquely named isolated staging directory beside the target, runs
-the real storage initialization and migrations, recovers interrupted running
-classification jobs without starting the worker, checks preserved metadata and
-albums, and requires a healthy archive-doctor result before publishing the
-target. There is no `--force` option.
-
-The successful target is retained for inspection with this logical layout:
-
-```text
-<target>/
-  data/
-    faunavault.db
-    faunavault.pre-taxonomy.bak
-    faunavault.pre-migrate-*.db  # present when migrations were required
-  images/
-    original/
-    resized/
-    thumbs/
-    .staging/
-    .purge/
+```sh
+npx playwright install chromium
+npm run test:e2e
 ```
 
-The pre-migration copies are an intentional consequence of exercising the real
-startup path, so allow extra free space for large databases. Rehearsal never
-changes `.env`, switches the application to the target, starts Ollama/GBIF, or
-processes queued classification jobs. Delete the complete target manually when
-it is no longer useful. Periodically rehearse a recent backup as part of the
-manual disaster-recovery routine.
+The suite uses a production build and real backend with disposable storage and
+dedicated ports 3001/8001. It never uses your archive or requires Ollama, GBIF,
+or OpenStreetMap. Dependencies/Chromium need installation access; the test
+workflows themselves do not require external services. The smoke build uses its
+own API URL, so restart/rebuild normal frontend development afterward.
 
-Backup container compatibility and database recovery compatibility are separate:
+## Documentation
 
-| Backup format | Database schema | Current support | Action |
-| --- | ---: | --- | --- |
-| v1 | 9 | Supported | Verify, then rehearse/migrate in isolated storage |
-| v1 | 10 | Supported | Verify and rehearse with exact Collection metadata and membership checks |
-| v1 | 11 | Supported | Verify and rehearse with exact capture-metadata checks |
-| v1 | 12 | Supported | Verify and rehearse with exact review-timestamp checks |
-| v1 | 13 | Supported | Verify and rehearse with exact Smart Collection definition checks |
-| Other | Any | Unsupported | Reject before target writes |
-| v1 | Other | Not supported until explicitly tested | Reject before target writes |
+- [Operations, configuration, import, AI, maintenance, and recovery](docs/OPERATIONS.md)
+- [Backend architecture and commands](backend/README.md)
+- [Frontend architecture and browser testing](frontend/README.md)
+- [Metadata export format](docs/METADATA_EXPORT_FORMAT.md)
+- [Measured catalog scale and R5 results](docs/CATALOG_BENCHMARK.md)
+- [Engineering baseline and deferred work](docs/IMPROVEMENT_PLAN.md)
+- [Maintainer release procedure](docs/RELEASE.md)
+- [Release-readiness implementation and validation report](docs/RELEASE_READINESS.md)
 
-Schema support is intentionally explicit rather than automatically following
-the latest application schema. Before adding schema `N`, existing historical
-fixtures must continue to verify and rehearse, migration from every retained
-supported schema must pass, and support for `N` must be added with dedicated
-tests. Removing recovery support requires an explicit documented decision;
-FaunaVault does not promise indefinite support for every historical schema.
+## Current limitations
 
-### Live archive health and derived-image repair
+- One user, one machine, one backend process and classification worker; local
+  SQLite/filesystem storage, no authentication or cloud sync. Keep access local.
+- GBIF taxonomy lookup uses the network; local taxonomy remains useful when it
+  fails. OpenStreetMap basemap tiles are remote; photo records stay local and
+  markers remain available without tiles. The basemap is not offline.
+- No desktop installer, automatic update, automated production restore, or
+  backup scheduling/retention/encryption.
+- HEIC/HEIF uses the primary still image and 8-bit previews; no HDR/gain-map/color
+  fidelity guarantee, container-frame browser, editing/re-encoding, or AVIF support.
+- Metadata depends on valid source tags; capture time never substitutes import
+  time. Possible visual duplicates are hints, not proof.
+- Benchmarks tested synthetic metadata at 1k, 10k, 50k, and 100k photos. R5 improved
+  browsing/count access, but substring search still scans candidates: rare search
+  measured about 534 ms and the slowest text case about 758 ms at 100k. These are
+  warm-cache service timings on one machine, excluding browser rendering, image
+  loading, and HTTP transport—not universal scale guarantees. See the benchmark guide.
 
-Archive-wide maintenance is also deliberately cold. Stop the backend and keep
-it stopped for the entire command. From `backend`, inspect the configured live
-SQLite database and image root with:
-
-```powershell
-uv run faunavault-maintenance doctor
-uv run faunavault-maintenance repair-derived
-uv run faunavault-maintenance repair-derived --apply
-uv run faunavault-maintenance backfill-photo-metadata
-uv run faunavault-maintenance backfill-photo-metadata --apply
-```
-
-`doctor` is read-only. It checks SQLite integrity, foreign keys and migrations;
-active and Trash inventory; safe filenames and lifecycle state; original
-SHA-256, size, format, decodability and pixel limits; resized/thumbnail format
-and dimensions; perceptual-hash format; and unowned files. It uses a temporary
-SQLite snapshot and verifies that the live inventory did not change during the
-scan. Ordinary orphan files and directories are warnings and are never deleted.
-For schema 11 it also reports partial/invalid dimensions or GPS and a capture
-offset without a capture timestamp; it does not compare stored values to EXIF.
-
-`backfill-photo-metadata` is also a stopped-archive operation and defaults to a
-dry run. It scans active and Trash Photos by ID, opens authoritative originals
-read-only, and fills only null capture metadata using the upload extractor.
-Capture time/offset, dimensions, and GPS are handled as atomic groups; populated
-values are never overwritten. `--apply` commits in bounded 25-photo batches and
-continues after missing or corrupt originals while reporting their IDs.
-
-`repair-derived` performs the same inspection and defaults to a dry run. It
-lists only missing or invalid resized/thumbnail files whose originals pass the
-complete trust check. `--apply` is required to write anything. Each new variant
-is generated with the upload pipeline's current EXIF, sizing, format and quality
-semantics, validated beside its target, and atomically promoted on the same
-filesystem. On Windows, a sharing or permission failure leaves the prior target
-in place and is reported for retry. Healthy variants and their mtimes remain
-untouched; active and Trash photos receive identical protection.
-
-Doctor and derived-image repair never change originals, SQLite rows, original checksums,
-perceptual hashes, metadata, taxonomy, classification jobs, or Trash state. A
-missing, corrupt, or checksum-mismatched original is not repairable by this tool;
-recover it from a separately verified backup. Non-empty `.staging` or `.purge`
-state blocks maintenance. Let normal startup reconcile purge state, stop the
-backend again, and retry. Recognizable interrupted-maintenance temp files are
-reported as warnings and ignored as repair sources.
-
-Exit codes are stable for automation: `0` means the completed archive check is
-healthy (warnings are allowed), `1` means errors or repairable defects remain,
-and `2` means usage, configuration, or startup I/O prevented a reliable check.
-An applied repair finishes with a complete doctor pass and reports success only
-when no integrity or repairable findings remain.
-
-### Safe manual production restore
-
-Production replacement remains intentionally manual. `rehearse` never writes to
-configured live storage, renames production directories, or selects a backup.
-To recover manually:
-
-1. Stop FaunaVault, verify the selected backup, and preferably complete a restore rehearsal with the current version. Do not continue if either check fails.
-2. Preserve the current database and complete image root as a separately named fallback. Never overwrite the only current copy.
-3. Prefer fresh, empty restore locations. Copy `database/faunavault.db` to the path selected by `DATABASE_URL` and copy the three directories under `images` to the root selected by `IMAGE_DIR`.
-4. Update `backend/.env` for those locations. Restore paths do not need to match the machine on which the backup was created.
-5. Do not copy staging, purge, sidecars, migration backups, or manifest warnings into runtime storage.
-6. Start the backend so normal migrations and startup recovery run. A restored `running` classification job becomes failed for explicit retry; queued jobs retain normal queue behavior.
-7. Inspect catalog and Trash counts, Albums, Collections and membership counts, and representative original/resized/thumbnail files.
-8. For an end-to-end post-restore integrity check, stop the backend and create a new verified backup of the restored archive in another safe destination.
-9. Retain the pre-restore fallback until recovery has been fully validated.
-
-Backup creation does not provide scheduling, retention, compression, encryption,
-incremental storage, cloud upload, or remote destinations.
-
-Before schema upgrades, FaunaVault creates timestamped SQLite backups next to the active database. Domestic metadata normalization is schema migration 5, so it is recorded only after successful normalization and safely retried if startup is interrupted. These backups supplement but do not replace full archive backups.
-
-## Troubleshooting
-
-- Ollama unavailable: verify `ollama list` and `curl http://localhost:11434/api/tags`, then retry the failed job. Qwen3-VL requires Ollama 0.12.7 or newer.
-- Ollama timeout: the 180-second FaunaVault request timeout is configurable for slower hardware, but first inspect the timing log to distinguish model loading, prompt evaluation, and generation. Avoid extreme timeout values that let one Photo occupy the queue for many minutes.
-- Ollama runner/model failure: an HTTP 500 is an Ollama-side failure even when its message mentions a load timeout. Inspect the Ollama server log, hardware resources, and model installation; changing FaunaVault's HTTP timeout does not repair the runner.
-- Duplicate response: open the referenced catalog photo or use “View Trash” and restore the deleted copy.
-- Image rejected: confirm extension, MIME type, actual format, file size, and pixel dimensions agree with configured limits.
-- Possible visual duplicate: compare the previews and choose Keep both or Cancel upload; similarity is evidence, not proof of identity.
-- Migration failure: keep the backend stopped and inspect the newest `*.pre-migrate-*.db` backup before retrying.
-
-See [docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md) for the audit and prioritized remaining work.
+The project uses the MIT license. The committed HEIC compatibility fixture
+retains its [BSD-3-Clause notice](backend/tests/fixtures/heic/LICENSE.txt).
