@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 15
+LATEST_SCHEMA_VERSION = 16
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -470,6 +470,19 @@ def _migration_15(connection) -> None:
     )
 
 
+def _migration_16(connection) -> None:
+    columns = _columns(connection, "photo")
+    additions = {
+        "is_favorite": "BOOLEAN NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1))",
+        "rating": "INTEGER CHECK (rating IS NULL OR (typeof(rating) = 'integer' AND rating BETWEEN 1 AND 5))",
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            connection.execute(
+                text(f"ALTER TABLE photo ADD COLUMN {name} {definition}")
+            )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -535,6 +548,8 @@ def run_migrations(
                 _migration_14(connection)
             elif version == 15:
                 _migration_15(connection)
+            elif version == 16:
+                _migration_16(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

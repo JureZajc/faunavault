@@ -1,5 +1,6 @@
 "use client";
 
+import PhotoCurationSummary from "../photo-curation-summary";
 import Link from "next/link";
 import { ReactNode, useState } from "react";
 import { imageUrl, Photo, PhotoStatus } from "../../lib/api";
@@ -157,6 +158,7 @@ export default function PhotoCard({
             </div>
             <StatusBadge status={photo.status} />
           </div>
+          <div className="mt-3"><PhotoCurationSummary photo={photo} /></div>
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="inline-flex max-w-full items-center rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium capitalize text-stone-700">
               <span title={photo.category ?? "Unknown"} className="truncate">

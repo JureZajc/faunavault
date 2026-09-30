@@ -20,6 +20,7 @@ function photo(overrides: Partial<Photo> = {}): Photo {
   return {
     id: 7,
     original_filename: "fox.jpg",
+    is_favorite: false, rating: null,
     stored_filename: "fox.jpg",
     resized_filename: "fox-resized.jpg",
     thumbnail_filename: "fox-thumb.jpg",
@@ -197,6 +198,7 @@ test("restoring multiple photos keeps one catalog entry for each photo", async (
     photo({
       id: 8,
       original_filename: "sparrow.jpg",
+      is_favorite: false, rating: null,
       stored_filename: "sparrow.jpg",
       resized_filename: "sparrow-resized.jpg",
       thumbnail_filename: "sparrow-thumb.jpg",
@@ -230,6 +232,7 @@ test("an active filter may keep a nonmatching restored photo hidden", async () =
     photo({
       id: 8,
       original_filename: "sparrow.jpg",
+      is_favorite: false, rating: null,
       stored_filename: "sparrow.jpg",
       resized_filename: "sparrow-resized.jpg",
       thumbnail_filename: "sparrow-thumb.jpg",

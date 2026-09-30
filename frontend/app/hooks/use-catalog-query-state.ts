@@ -13,7 +13,7 @@ import {
   writeHomeView,
   writeMapCatalogState,
 } from "../lib/catalog-query";
-import { PhotoStatus } from "../lib/api";
+import { PhotoStatus, PhotoRating } from "../lib/api";
 
 export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
   const router = useRouter();
@@ -87,6 +87,15 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     searchTimer.current = null;
   }
 
+  function setFavoritesOnly(favorites_only: boolean) {
+    updateCatalog({ ...catalogState, favorites_only: favorites_only || undefined, page: 1 });
+  }
+
+  function setRatingFilter(value: string) {
+    const [kind, number] = value.split(":");
+    updateCatalog({ ...catalogState, rating: kind === "exact" ? Number(number) as PhotoRating : undefined, rating_min: kind === "min" ? Number(number) as PhotoRating : undefined, unrated: kind === "unrated" || undefined, page: 1 });
+  }
+
   function setStatus(status?: PhotoStatus) {
     updateCatalog({ ...catalogState, status, page: 1 });
   }
@@ -137,6 +146,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
       {
         ...catalogState,
         page: 1,
+        favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
         search: undefined,
         status: undefined,
         category: undefined,
@@ -164,6 +174,8 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     returnTo: paramsString ? `${pathname}?${paramsString}` : pathname,
     setSearchInput,
     cancelPendingSearch,
+    setFavoritesOnly,
+    setRatingFilter,
     setStatus,
     setCategory,
     setSort,

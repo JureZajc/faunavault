@@ -166,7 +166,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–15. Production restore remains manual.
+schemas 9–16. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)
@@ -228,3 +228,18 @@ own API URL, so restart/rebuild normal frontend development afterward.
 
 The project uses the MIT license. The committed HEIC compatibility fixture
 retains its [BSD-3-Clause notice](backend/tests/fixtures/heic/LICENSE.txt).
+
+## Photo Favorites and Ratings
+
+Use the Favorite toggle and five-star Rating control on Photo detail without
+entering metadata edit mode. Clear rating returns the Photo to unrated; ratings
+are optional integers 1–5. Favorite and Rating are independent personal choices
+and never affect AI review status. Cards show compact indicators.
+
+List offers Favorites only, exact/minimum rating, and Unrated filters. Rating
+sorting puts unrated Photos last in either direction. Filters survive copied
+URLs, refresh, and browser history, and can be saved as Smart Collections.
+Select explicit Photos to Favorite/Unfavorite or set/clear ratings in bulk.
+Trash and restore preserve curation. Portable export v7 and schema-16 verified
+backups/recovery preserve both fields. Map and Timeline do not offer these
+filters; View on Map explains when List criteria are unsupported.

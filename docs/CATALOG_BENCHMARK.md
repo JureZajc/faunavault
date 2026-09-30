@@ -608,3 +608,10 @@ including filtered Map reload, metadata correction and return, equivalent List
 results with missing GPS, reciprocal navigation, and mobile marker visibility
 without horizontal overflow. The existing Starlette, Vite-plugin, and Album
 navigation-lint warnings remain outside this feature.
+
+## Photo Favorites and Ratings
+
+The focused [schema-16 curation profile](PHOTO_CURATION_PROFILE.md) measures
+Favorites, exact/minimum/Unrated ratings, both rating sort directions, and
+equivalent Smart queries at 10k/100k. It preserves all production indexes and
+does not rerun the full historical benchmark suite.

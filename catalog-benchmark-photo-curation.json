@@ -1,0 +1,510 @@
+[
+  {
+    "size": 10000,
+    "scenario": "default",
+    "total": 9500,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 2.9646,
+      "p95_ms": 3.8275,
+      "min_ms": 2.6813,
+      "max_ms": 3.8329
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 3.21725,
+      "p95_ms": 4.0281,
+      "min_ms": 2.9159,
+      "max_ms": 4.1262
+    },
+    "plans": [
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 10000,
+    "scenario": "favorites",
+    "total": 2000,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 19.201900000000002,
+      "p95_ms": 21.543,
+      "min_ms": 18.4278,
+      "max_ms": 21.9561
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 19.82475,
+      "p95_ms": 21.1756,
+      "min_ms": 18.5061,
+      "max_ms": 21.8538
+    },
+    "plans": [
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 10000,
+    "scenario": "exact_5",
+    "total": 1333,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 19.7331,
+      "p95_ms": 20.8628,
+      "min_ms": 18.9538,
+      "max_ms": 21.1433
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 19.2665,
+      "p95_ms": 20.4509,
+      "min_ms": 18.5438,
+      "max_ms": 20.526
+    },
+    "plans": [
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 10000,
+    "scenario": "minimum_4",
+    "total": 2666,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 20.52415,
+      "p95_ms": 23.2175,
+      "min_ms": 19.2612,
+      "max_ms": 24.0296
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 20.046950000000002,
+      "p95_ms": 22.2546,
+      "min_ms": 18.7888,
+      "max_ms": 24.1631
+    },
+    "plans": [
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 10000,
+    "scenario": "unrated",
+    "total": 3167,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 19.48185,
+      "p95_ms": 20.497,
+      "min_ms": 18.7366,
+      "max_ms": 20.9088
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 19.4369,
+      "p95_ms": 20.1748,
+      "min_ms": 18.7777,
+      "max_ms": 20.2488
+    },
+    "plans": [
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 10000,
+    "scenario": "rating_desc",
+    "total": 9500,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 7.5543,
+      "p95_ms": 8.4622,
+      "min_ms": 7.0504,
+      "max_ms": 9.0519
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 8.0754,
+      "p95_ms": 8.8956,
+      "min_ms": 7.4075,
+      "max_ms": 9.0066
+    },
+    "plans": [
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_deleted_at (deleted_at=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 10000,
+    "scenario": "rating_asc",
+    "total": 9500,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 7.6957,
+      "p95_ms": 8.0711,
+      "min_ms": 6.9047,
+      "max_ms": 8.1558
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 7.90845,
+      "p95_ms": 9.0681,
+      "min_ms": 7.2173,
+      "max_ms": 9.6878
+    },
+    "plans": [
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_deleted_at (deleted_at=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 100000,
+    "scenario": "default",
+    "total": 95000,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 20.60285,
+      "p95_ms": 21.3588,
+      "min_ms": 19.8906,
+      "max_ms": 21.7879
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 20.7204,
+      "p95_ms": 23.4365,
+      "min_ms": 20.1677,
+      "max_ms": 27.3831
+    },
+    "plans": [
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 100000,
+    "scenario": "favorites",
+    "total": 20000,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 270.27375,
+      "p95_ms": 314.8188,
+      "min_ms": 256.38,
+      "max_ms": 320.454
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 269.87275,
+      "p95_ms": 298.2931,
+      "min_ms": 256.9313,
+      "max_ms": 518.8617
+    },
+    "plans": [
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 100000,
+    "scenario": "exact_5",
+    "total": 13333,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 265.54125,
+      "p95_ms": 284.1971,
+      "min_ms": 254.9693,
+      "max_ms": 288.1134
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 270.7657,
+      "p95_ms": 309.0632,
+      "min_ms": 261.7062,
+      "max_ms": 378.97
+    },
+    "plans": [
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 100000,
+    "scenario": "minimum_4",
+    "total": 26666,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 282.5344,
+      "p95_ms": 326.6599,
+      "min_ms": 259.5135,
+      "max_ms": 342.5063
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 275.8348,
+      "p95_ms": 288.436,
+      "min_ms": 263.7217,
+      "max_ms": 315.594
+    },
+    "plans": [
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 100000,
+    "scenario": "unrated",
+    "total": 31667,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 266.1155,
+      "p95_ms": 279.5322,
+      "min_ms": 258.9751,
+      "max_ms": 291.8687
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 271.29595,
+      "p95_ms": 287.2601,
+      "min_ms": 262.0957,
+      "max_ms": 292.3906
+    },
+    "plans": [
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_captured (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_catalog_active_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 100000,
+    "scenario": "rating_desc",
+    "total": 95000,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 58.66175,
+      "p95_ms": 63.7651,
+      "min_ms": 56.9841,
+      "max_ms": 64.2368
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 60.261300000000006,
+      "p95_ms": 65.0413,
+      "min_ms": 57.9114,
+      "max_ms": 66.1264
+    },
+    "plans": [
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_deleted_at (deleted_at=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  },
+  {
+    "size": 100000,
+    "scenario": "rating_asc",
+    "total": 95000,
+    "catalog": {
+      "iterations": 20,
+      "median_ms": 58.906949999999995,
+      "p95_ms": 61.9299,
+      "min_ms": 57.5106,
+      "max_ms": 66.2355
+    },
+    "smart": {
+      "iterations": 20,
+      "median_ms": 59.43545,
+      "p95_ms": 62.0126,
+      "min_ms": 58.0969,
+      "max_ms": 65.9982
+    },
+    "plans": [
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING INDEX ix_photo_deleted_at (deleted_at=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_status_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_catalog_active_category_created (deleted_at=?)"
+      ],
+      [
+        "SEARCH photo USING COVERING INDEX ix_photo_deleted_at (deleted_at=?)"
+      ]
+    ]
+  }
+]

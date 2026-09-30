@@ -60,6 +60,7 @@ function makePhoto(overrides: Partial<Photo> = {}): Photo {
   return {
     id: 44,
     original_filename: "lion.jpg",
+    is_favorite: false, rating: null,
     stored_filename: "lion.jpg",
     resized_filename: "lion-resized.jpg",
     thumbnail_filename: "lion-thumb.jpg",

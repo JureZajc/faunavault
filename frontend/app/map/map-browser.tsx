@@ -12,13 +12,15 @@ import { useCatalogFacets } from "../hooks/use-catalog-facets";
 import { useCatalogQueryState } from "../hooks/use-catalog-query-state";
 import { useCatalogTaxa } from "../hooks/use-catalog-taxa";
 import { usePhotoMapPoints } from "../hooks/use-photo-map-points";
-import { mapCatalogHref, mapListHref } from "../lib/catalog-query";
+import { hasCurationFilters, mapCatalogHref, mapListHref } from "../lib/catalog-query";
 
 export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | null }) {
   const query = useCatalogQueryState("map");
   const state = query.catalogState;
   const unsupportedSearch = Boolean(state.search);
-  const locations = usePhotoMapPoints(state, unsupportedSearch);
+  const unsupportedCuration = hasCurationFilters(state);
+  const unsupported = unsupportedSearch || unsupportedCuration;
+  const locations = usePhotoMapPoints(state, unsupported);
   const options = useCatalogFacets();
   const taxa = useCatalogTaxa(state.taxon_id);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -32,9 +34,10 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
     state.status ? `Status: ${state.status.replaceAll("_", " ")}` : null,
     state.taken_from ? `Taken from ${state.taken_from}` : null,
     state.taken_to ? `Taken to ${state.taken_to}` : null,
+    unsupportedCuration ? "Unsupported Favorite/Rating filters" : null,
     unsupportedSearch ? `Unsupported search: ${state.search}` : null,
   ].filter(Boolean);
-  const ready = !locations.isLoading && !locations.error && !unsupportedSearch;
+  const ready = !locations.isLoading && !locations.error && !unsupported;
   const count = locations.points?.length ?? 0;
   const buttonClass = "min-h-11 rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50";
 
@@ -63,7 +66,7 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
             <Link href={mapListHref(state)} className={buttonClass}>View in List</Link>
           </div>
           <p aria-label="Active map filters" className="mt-3 text-sm text-stone-600">{summary.length ? summary.join(" · ") : "All active photos"}</p>
-          <div id="map-filters" hidden={!filtersOpen} className="mt-4 border-t border-stone-100 pt-4">
+          <div id="map-filters" hidden={!filtersOpen || unsupported} className="mt-4 border-t border-stone-100 pt-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <CatalogCategoryFilter categoryFilter={state.uncategorized ? UNKNOWN_CATEGORY_VALUE : state.category ?? "all"}
                 categoryOptions={options.facets?.categories.map((item) => item.value) ?? []}
@@ -81,10 +84,10 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
         </header>
         <section aria-labelledby="archive-map-heading" className="mt-5 min-w-0" aria-busy={locations.isLoading}>
           <h2 id="archive-map-heading" className="sr-only">Interactive archive map</h2>
-          {unsupportedSearch ? (
+          {unsupported ? (
             <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-              <p>Text search is not supported on Map. Remove it to view locations, or use View in List.</p>
-              <button type="button" onClick={() => query.setStatus(state.status)} className={`${buttonClass} mt-3`}>Remove text search</button>
+              <p>{unsupportedCuration ? "Favorite/Rating filters are not supported on Map. Remove unsupported filters to view locations, or use View in List." : "Text search is not supported on Map. Remove it to view locations, or use View in List."}</p>
+              <button type="button" onClick={() => query.setStatus(state.status)} className={`${buttonClass} mt-3`}>{unsupportedCuration ? "Remove unsupported filters" : "Remove text search"}</button>
             </div>
           ) : locations.isLoading ? (
             <div role="status" className="grid h-[clamp(24rem,calc(100dvh-13rem),56rem)] place-items-center rounded-lg border border-stone-200 bg-stone-200 text-sm text-stone-600">Loading photo locations…</div>

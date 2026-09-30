@@ -54,6 +54,8 @@ class PhotoRecord:
     extracted_longitude: float | None = None
     capture_metadata_overridden: bool = False
     location_metadata_overridden: bool = False
+    is_favorite: bool = False
+    rating: int | None = None
 
     def signature(self) -> tuple[object, ...]:
         return (
@@ -81,6 +83,8 @@ class PhotoRecord:
             self.extracted_longitude,
             self.capture_metadata_overridden,
             self.location_metadata_overridden,
+            self.is_favorite,
+            self.rating,
         )
 
 
@@ -515,6 +519,50 @@ def _inspect_schema_15(connection, migrations: list[int]) -> DatabaseInventory:
     return replace(base, photos=photos)
 
 
+def _photo_from_schema_16_row(row) -> PhotoRecord:
+    if type(row[24]) is not int or row[24] not in (0, 1):
+        raise ArchiveIntegrityError("Invalid Photo Favorite state")
+    if row[25] is not None and (type(row[25]) is not int or not 1 <= row[25] <= 5):
+        raise ArchiveIntegrityError("Invalid Photo rating")
+    return replace(
+        _photo_from_schema_15_row(row), is_favorite=bool(row[24]), rating=row[25]
+    )
+
+
+def _inspect_schema_16(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_15(connection, migrations)
+    columns = {row[1]: row for row in connection.execute("PRAGMA table_info(photo)")}
+    favorite = columns.get("is_favorite")
+    rating = columns.get("rating")
+    missing = {"is_favorite", "rating"} - columns.keys()
+    if missing:
+        raise ArchiveIntegrityError(
+            f"Missing Photo curation columns: {', '.join(sorted(missing))}"
+        )
+    if (
+        favorite is None
+        or favorite[2].upper() != "BOOLEAN"
+        or favorite[3] != 1
+        or str(favorite[4]).strip("()'\"") != "0"
+        or rating is None
+        or rating[2].upper() != "INTEGER"
+        or rating[3] != 0
+        or rating[4] is not None
+    ):
+        raise ArchiveIntegrityError("Invalid Photo curation column structure")
+    values = connection.execute(
+        "SELECT id, is_favorite, rating FROM photo ORDER BY id"
+    ).fetchall()
+    photos = []
+    for photo, row in zip(base.photos, values, strict=True):
+        if type(row[1]) is not int or row[1] not in (0, 1):
+            raise ArchiveIntegrityError("Invalid Photo Favorite state")
+        if row[2] is not None and (type(row[2]) is not int or not 1 <= row[2] <= 5):
+            raise ArchiveIntegrityError("Invalid Photo rating")
+        photos.append(replace(photo, is_favorite=bool(row[1]), rating=row[2]))
+    return replace(base, photos=photos)
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
@@ -523,6 +571,7 @@ SCHEMA_INVENTORY_READERS = {
     13: _inspect_schema_13,
     14: _inspect_schema_14,
     15: _inspect_schema_15,
+    16: _inspect_schema_16,
 }
 
 
@@ -585,9 +634,9 @@ def read_photo_signature(path: Path) -> tuple[tuple[object, ...], ...]:
             "camera_model, lens_model, image_width, image_height, latitude, "
             "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden FROM photo ORDER BY id"
+            "location_metadata_overridden, is_favorite, rating FROM photo ORDER BY id"
         ).fetchall()
-        return tuple(_photo_from_schema_15_row(row).signature() for row in rows)
+        return tuple(_photo_from_schema_16_row(row).signature() for row in rows)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check live archive state: {exc}"
@@ -607,10 +656,10 @@ def read_photo_record(path: Path, photo_id: int) -> PhotoRecord | None:
             "camera_model, lens_model, image_width, image_height, latitude, "
             "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden FROM photo WHERE id = ?",
+            "location_metadata_overridden, is_favorite, rating FROM photo WHERE id = ?",
             (photo_id,),
         ).fetchone()
-        return None if row is None else _photo_from_schema_15_row(row)
+        return None if row is None else _photo_from_schema_16_row(row)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check photo {photo_id}: {exc}"

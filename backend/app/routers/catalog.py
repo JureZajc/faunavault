@@ -23,6 +23,8 @@ from app.services.catalog import (
     list_photo_map_points,
 )
 
+RatingParameter = Literal["1", "2", "3", "4", "5"]
+
 
 def _validated_query(**values) -> CatalogSavedQuery:
     try:
@@ -52,7 +54,18 @@ def create_catalog_router() -> APIRouter:
         taken_from: date | None = None,
         taken_to: date | None = None,
         search: str | None = Query(default=None, include_in_schema=False),
+        favorites_only: bool = Query(default=False, include_in_schema=False),
+        rating: RatingParameter | None = Query(default=None, include_in_schema=False),
+        rating_min: RatingParameter | None = Query(
+            default=None, include_in_schema=False
+        ),
+        unrated: bool = Query(default=False, include_in_schema=False),
     ) -> list[PhotoMapPoint]:
+        if favorites_only or rating is not None or rating_min is not None or unrated:
+            raise HTTPException(
+                status_code=422,
+                detail="Favorite and rating filters are not supported on Map.",
+            )
         if search and search.strip():
             raise HTTPException(
                 status_code=422, detail="Text search is not supported on Map."
@@ -79,12 +92,17 @@ def create_catalog_router() -> APIRouter:
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
+        favorites_only: bool = False,
+        rating: RatingParameter | None = None,
+        rating_min: RatingParameter | None = None,
+        unrated: bool = False,
         sort: Literal[
             "created_at",
             "captured_at",
             "name",
             "species",
             "confidence",
+            "rating",
             "needs_review",
             "pending",
         ] = "created_at",
@@ -100,6 +118,10 @@ def create_catalog_router() -> APIRouter:
             taken_to=taken_to,
             sort=sort,
             order=order,
+            favorites_only=favorites_only,
+            rating=int(rating) if rating is not None else None,
+            rating_min=int(rating_min) if rating_min is not None else None,
+            unrated=unrated,
         )
         return list_catalog_photos(
             session,

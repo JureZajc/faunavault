@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Photo, PhotoStatus } from "../../lib/api";
 import { PhotoClassificationController } from "../../hooks/use-photo-classification";
+import PhotoCuration from "./photo-curation";
 import PhotoAnimalSection from "./photo-animal-section";
 import PhotoClassificationPanel from "./photo-classification-panel";
 import PhotoLocationSection from "./photo-location-section";
@@ -55,8 +56,9 @@ export default function PhotoSidebar({
   const [editingVersion, setEditingVersion] = useState<string | null>(null);
   const [isMetadataBusy, setIsMetadataBusy] = useState(false);
   const [isTrashBusy, setIsTrashBusy] = useState(false);
+  const [isCurationBusy, setIsCurationBusy] = useState(false);
   const isBusy =
-    isMetadataBusy || isTrashBusy || classification.isMockClassifying;
+    isCurationBusy || isMetadataBusy || isTrashBusy || classification.isMockClassifying;
 
   return (
     <aside className="min-w-0 self-start rounded-lg border border-stone-200 bg-white p-4 shadow-sm sm:p-5">
@@ -88,6 +90,8 @@ export default function PhotoSidebar({
           {confidenceLabel(photo.confidence)}
         </span>
       </div>
+
+      <PhotoCuration photo={photo} disabled={isBusy || isEditingMetadata} onPhotoUpdated={onPhotoUpdated} onBusyChange={setIsCurationBusy} onError={onError} />
 
       <div className="mt-5 grid gap-3">
         <button

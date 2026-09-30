@@ -6,6 +6,13 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Personal Photo Favorites and optional 1–5-star Ratings, with direct accessible
+  detail controls and subtle card/duplicate-comparison indicators. List supports
+  Favorites, exact/minimum/Unrated rating filters, URL-restorable criteria, and
+  deterministic null-last rating sorting. Smart Collections share these criteria;
+  explicit atomic bulk actions set/unset Favorite and set/clear Rating. Schema 16,
+  portable export v7, and backup-v1 verification/rehearsal preserve curation,
+  including through Trash/restore, independently of AI Review.
 - URL-restorable Map catalog filters for category/Unknown, verified Taxon,
   classification status, and inclusive capture dates. Map and List share query
   semantics and effective capture/GPS metadata; View in List and View on Map

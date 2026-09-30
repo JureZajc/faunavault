@@ -19,6 +19,7 @@ function photo(id: number, title: string): Photo {
   return {
     id,
     original_filename: `${title.toLowerCase().replaceAll(" ", "-")}.jpg`,
+    is_favorite: false, rating: null,
     stored_filename: `${id}.jpg`,
     resized_filename: `${id}-resized.jpg`,
     thumbnail_filename: `${id}-thumb.jpg`,

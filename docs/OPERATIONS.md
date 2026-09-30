@@ -287,8 +287,8 @@ Canonical pair records contain evidence snapshots and `phash64-v1:d4`. New
 evidence/version cannot inherit an old dismissal silently. Candidates are derived
 and reproducible, while explicit dismissals are user-curation data. Schema-14
 verified backups include both pair records and scan state, and rehearsal checks
-their preservation. Backup v1 and historical schemas 9–15 remain supported.
-Portable metadata export v6 intentionally excludes duplicate curation state; use
+their preservation. Backup v1 and historical schemas 9–16 remain supported.
+Portable metadata export v7 intentionally excludes duplicate curation state; use
 verified backups to preserve decisions during recovery.
 
 ### Ingestion detection
@@ -401,8 +401,8 @@ capture/location override markers. Migration copies the previously persisted
 capture/GPS baseline; it does not scan image files. Capture-only correction and
 Restore do not accept pending AI classification review. Original files and EXIF
 bytes are never rewritten, nor are derivatives regenerated. Trash restoration
-preserves both corrections and provenance. Backup-v1 schemas 9–15 are supported;
-verification/rehearsal preserve all new fields. Portable JSON/CSV export v6
+preserves both corrections and provenance. Backup-v1 schemas 9–16 are supported;
+verification/rehearsal preserve all new fields. Portable JSON/CSV export v7
 includes effective values, retained extraction, and both markers.
 
 `backfill-photo-metadata` remains a stopped-archive, dry-run-by-default command.
@@ -456,7 +456,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v6](METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v7](METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -662,3 +662,24 @@ Before schema upgrades, FaunaVault creates timestamped SQLite backups next to th
 - Migration failure: keep the backend stopped and inspect the newest `*.pre-migrate-*.db` backup before retrying.
 
 See [docs/IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) for the audit and prioritized remaining work.
+
+## Photo Favorites and Ratings
+
+Favorite is a personal yes/no choice; Rating is an optional integer 1–5. Null
+means unrated. Neither value implies the other or changes AI review state.
+Use detail controls, List Favorites/exact/minimum/Unrated filters, rating sorting
+(unrated last), or explicit selection bulk actions. Smart Collections save the
+same criteria. Map and Timeline retain their limited projection contracts.
+
+Migration 16 adds only the two Photo columns with false/null defaults and
+constraints. Existing metadata and historical migrations are preserved. Trash,
+restore, capture correction/backfill, and duplicate decisions preserve curation.
+Permanent deletion removes it with the Photo. Curation advances `updated_at`,
+so an already queued/running AI job can become stale under the existing guard.
+
+Backup format v1 supports schemas 9–16. Schema-16 verification checks curation
+column structure and values, including empty databases. Recovery rehearsal
+compares Favorite and Rating on active and Trash Photos; older backups migrate
+to false/null without rewriting frozen fixtures. Production restore remains
+manual and uses the same complete SQLite backup. Portable export v7 includes
+JSON boolean/null/integer values and CSV `true`/`false`, 1–5, or `\N`.

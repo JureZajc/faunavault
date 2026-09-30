@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 
 export type BulkDialogAction =
+  | "favorite"
+  | "rating"
   | "add_tags"
   | "remove_tags"
   | "category"
@@ -89,6 +91,8 @@ export default function BulkSelectionToolbar({
         <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
           {[
             ["add_to_collection", "Add to Collection"],
+            ["favorite", "Favorite / Unfavorite"],
+            ["rating", "Set rating"],
             ["add_tags", "Add tags"],
             ["remove_tags", "Remove tags"],
             ["category", "Set category"],

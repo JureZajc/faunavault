@@ -65,6 +65,24 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/map");
 });
 
+test.each(["", "&catalog_rating=5&catalog_unrated=1"])("unsupported curation URLs block map results and preserve criteria when returning to List %s", async (extra) => {
+  window.history.replaceState(null, "", `/map?catalog_favorites_only=1&catalog_rating_min=4&catalog_category=bird${extra}`);
+  render(<MapBrowser focusPhotoId={null} />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("Favorite/Rating filters are not supported"));
+  expect(api.getPhotoMapPoints).not.toHaveBeenCalled();
+  const href = screen.getByRole("link", { name: "View in List" }).getAttribute("href");
+  expect(href).toContain("catalog_favorites_only=1");
+  expect(href).toContain("catalog_rating_min=4");
+  if (extra) {
+    expect(href).toContain("catalog_rating=5");
+    expect(href).toContain("catalog_unrated=1");
+  }
+  api.getPhotoMapPoints.mockResolvedValue([point()]);
+  await userEvent.click(screen.getByRole("button", { name: "Remove unsupported filters" }));
+  await waitFor(() => expect(api.getPhotoMapPoints).toHaveBeenCalled());
+  expect(window.location.search).toBe("?catalog_category=bird");
+});
+
 test("parses only one positive safe focus ID", () => {
   expect(parsePhotoFocusId("17")).toBe(17);
   expect(parsePhotoFocusId("0")).toBeNull();

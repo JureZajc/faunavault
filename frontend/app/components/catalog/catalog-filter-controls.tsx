@@ -4,6 +4,24 @@ import { CatalogTaxonOption, PhotoStatus } from "../../lib/api";
 
 export type StatusFilter = "all" | PhotoStatus;
 
+export function CatalogCurationFilters({ favoritesOnly, ratingFilter, onFavoritesOnlyChange, onRatingFilterChange }: {
+  favoritesOnly?: boolean; ratingFilter?: string;
+  onFavoritesOnlyChange: (value: boolean) => void; onRatingFilterChange: (value: string) => void;
+}) {
+  return <div className="mt-4 flex flex-wrap items-end gap-4 border-t border-stone-100 pt-4">
+    <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-stone-700">
+      <input type="checkbox" checked={favoritesOnly ?? false} onChange={(event) => onFavoritesOnlyChange(event.target.checked)} className="h-5 w-5 accent-emerald-800" />Favorites only
+    </label>
+    <label className="block text-sm font-medium text-stone-700">Rating filter
+      <select value={ratingFilter ?? ""} onChange={(event) => onRatingFilterChange(event.target.value)} className="ml-3 min-h-11 rounded-md border border-stone-200 bg-stone-50 px-3 text-sm focus:ring-2 focus:ring-emerald-100">
+        <option value="">Any rating</option><option value="unrated">Unrated</option>
+        {[1, 2, 3, 4, 5].map((rating) => <option key={`exact:${rating}`} value={`exact:${rating}`}>Exactly {rating} {rating === 1 ? "star" : "stars"}</option>)}
+        {[1, 2, 3, 4, 5].map((rating) => <option key={`min:${rating}`} value={`min:${rating}`}>At least {rating} {rating === 1 ? "star" : "stars"}</option>)}
+      </select>
+    </label>
+  </div>;
+}
+
 export const UNKNOWN_CATEGORY_VALUE = "__unknown__";
 
 const statusFilters: StatusFilter[] = [
