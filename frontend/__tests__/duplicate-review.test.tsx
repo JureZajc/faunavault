@@ -42,6 +42,15 @@ test("shows pair evidence, metadata and restorable Photo links", async () => {
   expect(screen.getByText(/A full archive scan has not been run/)).toBeTruthy();
 });
 
+test("Compare opens the candidate and returns to the same review URL without resolving it", async () => {
+  render(<DuplicateBrowser />);
+  const compare = await screen.findByRole("link", { name: "Compare" });
+  const url = new URL(compare.getAttribute("href")!, "http://localhost");
+  expect(url.pathname).toBe("/compare");
+  expect(Object.fromEntries(url.searchParams)).toEqual({ left: "1", right: "2", returnTo: "/duplicates?left=1&right=2" });
+  expect(api.dismissDuplicate).not.toHaveBeenCalled(); expect(api.deletePhoto).not.toHaveBeenCalled();
+});
+
 test("comparison shows culling alongside Favorite and Rating without deciding duplicates", async () => {
   api.getDuplicateReview.mockResolvedValue(review({ pair: { ...pair,
     left_photo: { ...pair.left_photo, culling_state: "pick", is_favorite: true, rating: 3 },

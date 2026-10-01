@@ -72,6 +72,21 @@ test("default queue auto-advances without losing previous saved decisions; clear
   expect(photos[0].is_favorite && photos[0].rating === 5 && photos[0].status === "needs_review").toBe(true);
 });
 
+test("Compare uses the existing next neighbor, falls back to previous and disables for a single photo", async () => {
+  const view = render(<CullingBrowser />);
+  const next = await screen.findByRole("link", { name: "Compare with next" });
+  expect(Object.fromEntries(new URL(next.getAttribute("href")!, "http://localhost").searchParams)).toEqual({ left: "3", right: "2", returnTo: "/cull?photo=3" });
+  await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+  await screen.findByRole("heading", { name: "Photo 2" });
+  await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+  const previous = await screen.findByRole("link", { name: "Compare with previous" });
+  expect(Object.fromEntries(new URL(previous.getAttribute("href")!, "http://localhost").searchParams)).toEqual({ left: "1", right: "2", returnTo: "/cull?photo=1" });
+  expect(api.updatePhoto).not.toHaveBeenCalled();
+  view.unmount(); photos = [makePhoto(3)]; window.history.replaceState(null, "", "/cull?photo=3");
+  render(<CullingBrowser />);
+  expect((await screen.findByRole<HTMLButtonElement>("button", { name: "Compare · no neighbor" })).disabled).toBe(true);
+});
+
 test("skipping leaves state alone and last save keeps image with end-of-pass and restart", async () => {
   render(<CullingBrowser />);
   await screen.findByRole("heading", { name: "Photo 3" });

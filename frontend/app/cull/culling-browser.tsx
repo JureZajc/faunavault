@@ -10,6 +10,7 @@ import { PhotoMetadataDetails } from "../components/photo-detail/photo-metadata"
 import PhotoCurationSummary from "../components/photo-curation-summary";
 import { ApiError, CullingWorkspace, getCullingWorkspace, PhotoCullingState, updatePhoto } from "../lib/api";
 import { parseCatalogState } from "../lib/catalog-query";
+import { compareHref } from "../lib/photo-compare";
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Please try again.";
@@ -208,6 +209,7 @@ export default function CullingBrowser() {
           <p className="mt-2 text-xs text-stone-600">P = Pick · X = Reject · U = Clear · arrows = navigation</p>
           {nextId === null ? <p role="status" className="mt-3 text-sm font-medium">End of pass · {workspace?.total ?? 0} still match this source.</p> : null}
           <div className="mt-4 flex flex-wrap gap-2">
+            {nextId !== null || previousId !== null ? <Link href={compareHref(photo.id, (nextId ?? previousId)!, currentHref)} aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Compare with {nextId !== null ? "next" : "previous"}</Link> : <button type="button" disabled className={buttonClass}>Compare · no neighbor</button>}
             <button type="button" disabled={busy} onClick={restart} className={buttonClass}>Restart</button>
             <Link href={`/photos/${photo.id}?returnTo=${encodeURIComponent(currentHref)}`} aria-disabled={busy} onClick={(event) => { if (busy) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Open Photo detail</Link>
           </div>

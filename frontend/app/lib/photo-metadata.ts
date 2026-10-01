@@ -30,14 +30,14 @@ function cameraLocalDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export function formatCameraLocalDate(value: string, includeTime = false) {
+export function formatCameraLocalDate(value: string, includeTime = false, includeSeconds = false) {
   const parsed = cameraLocalDate(value);
   if (!parsed) return value;
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
     year: "numeric",
-    ...(includeTime ? { hour: "numeric", minute: "2-digit" } : {}),
+    ...(includeTime ? { hour: "numeric", minute: "2-digit", ...(includeSeconds ? { second: "2-digit" } : {}) } : {}),
     timeZone: "UTC",
   }).format(parsed);
 }

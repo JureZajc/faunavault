@@ -529,6 +529,74 @@ test("Timeline groups capture months and opens the filtered List", async ({ page
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 });
 
+test("two-photo Compare saves curation, restores URLs, zooms independently and switches on mobile", async ({ page, request }, testInfo) => {
+  const filenames = ["faunavault-e2e-compare-left.jpg", "faunavault-e2e-compare-right.jpg"];
+  const ids: number[] = [];
+  try {
+    for (let index = 0; index < 2; index++) {
+      const uploaded = await request.post("http://127.0.0.1:8001/photos/upload", {
+        multipart: { file: { name: filenames[index], mimeType: "image/jpeg", buffer: await readFile(fixturePath(index === 0 ? "faunavault-e2e-culling-reject.jpg" : "faunavault-e2e-culling-pick.jpg")) }, allow_visual_duplicate: "true" },
+      });
+      expect(uploaded.ok()).toBe(true); ids.push((await uploaded.json()).id);
+    }
+    await page.goto("/?catalog_search=faunavault-e2e-compare");
+    await page.getByRole("button", { name: "Select photos", exact: true }).click();
+    const compare = page.getByRole("button", { name: "Compare", exact: true });
+    await expect(compare).toBeDisabled();
+    await page.getByRole("checkbox", { name: new RegExp(`Select photo ${ids[1]}:`) }).check();
+    await expect(compare).toBeDisabled();
+    await page.getByRole("checkbox", { name: new RegExp(`Select photo ${ids[0]}:`) }).check();
+    await expect(compare).toBeEnabled(); await compare.click();
+    await expect(page).toHaveURL(/\/compare\?left=/);
+    const pairUrl = page.url();
+    const originals: string[] = [];
+    page.on("request", (request) => { if (request.url().includes("/images/original/")) originals.push(request.url()); });
+    await page.reload();
+    const left = page.getByRole("region", { name: "Left photo", exact: true });
+    const right = page.getByRole("region", { name: "Right photo", exact: true });
+    await expectDecodedImage(left.getByRole("img")); await expectDecodedImage(right.getByRole("img"));
+    expect(originals).toHaveLength(0);
+    await page.getByRole("button", { name: "Zoom in left photo" }).click();
+    await expect(page.getByLabel("left photo zoom", { exact: true })).toHaveText("1.5× fit");
+    await expect(page.getByLabel("right photo zoom", { exact: true })).toHaveText("Fit");
+    await page.getByRole("button", { name: "Pan left photo right" }).click();
+    await expect.poll(() => page.getByRole("region", { name: "left photo image viewport" }).evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Fit / reset left photo" }).click();
+    await page.getByRole("button", { name: "Load left photo original resolution" }).click();
+    await expect(left.getByRole("img")).toHaveAttribute("src", /\/images\/original\//);
+    await expectDecodedImage(left.getByRole("img"));
+    expect(originals.length).toBeGreaterThan(0);
+    await page.screenshot({ path: testInfo.outputPath("compare-desktop.png"), fullPage: true });
+    await page.getByRole("button", { name: "Pick left photo", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Pick left photo", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Favorite right photo" }).click();
+    await expect(page.getByRole("button", { name: "Favorite right photo" })).toHaveAttribute("aria-pressed", "true");
+    await page.locator("label").filter({ has: page.getByRole("radio", { name: "Rate right photo 4 stars" }) }).click();
+    await expect(page.getByRole("radio", { name: "Rate right photo 4 stars" })).toBeChecked();
+    await page.setViewportSize({ width: 360, height: 760 });
+    await page.getByRole("button", { name: "Focus left photo" }).click();
+    await expect(left).toBeVisible(); await expect(right).toBeHidden();
+    await page.getByRole("button", { name: "Focus right photo" }).click();
+    await expect(right).toBeVisible(); await expect(left).toBeHidden();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("compare-mobile.png"), fullPage: true });
+    await page.getByRole("link", { name: "Back to List" }).click();
+    await expect(page).toHaveURL(/catalog_search=faunavault-e2e-compare/);
+    await expect(page.getByRole("button", { name: "Select photos", exact: true })).toBeVisible();
+    await expect(catalogCard(page, filenames[0]).getByLabel("Picked")).toBeVisible();
+    await expect(catalogCard(page, filenames[1]).getByLabel("Favorite", { exact: true })).toBeVisible();
+    await expect(catalogCard(page, filenames[1]).getByLabel("Rated 4 out of 5 stars")).toBeVisible();
+    await page.goBack(); await expect(page).toHaveURL(pairUrl);
+    await page.goForward(); await expect(page).toHaveURL(/catalog_search=faunavault-e2e-compare/);
+    const savedLeft = await request.get(`http://127.0.0.1:8001/photos/${ids[0]}`);
+    const savedRight = await request.get(`http://127.0.0.1:8001/photos/${ids[1]}`);
+    expect(await savedLeft.json()).toMatchObject({ culling_state: "pick", is_favorite: false, rating: null });
+    expect(await savedRight.json()).toMatchObject({ culling_state: null, is_favorite: true, rating: 4 });
+  } finally {
+    for (const id of ids) { await request.delete(`http://127.0.0.1:8001/photos/${id}`); await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`); }
+  }
+});
+
 test("persistent visual duplicate review", async ({ page, request }) => {
   const ids: number[] = [];
   try {

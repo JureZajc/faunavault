@@ -456,3 +456,23 @@ index, automatic decision, or automatic deletion is added. See the
 [Culling guide](OPERATIONS.md#photo-culling-v03). The recommended next v0.3
 workflow is an explicit review of rejected Photos before moving selected ones
 to recoverable Trash.
+
+## Current v0.3 feature: Two-photo Compare
+
+Compare uses URL-restorable Left/Right Photo IDs and two bounded detail requests.
+List exposes it for exactly two explicit selections; Duplicate Review passes its
+candidate and return URL; Culling uses its existing next/previous neighbor.
+Returning to List preserves its applied query and page and clears selection.
+Culling session history follows its existing reset-on-leaving behavior.
+
+Independent fitted zoom/pan uses 1600 px derivatives by default. JPEG/PNG/WebP
+originals load only on request; HEIC/HEIF uses its JPEG preview. Desktop shows
+both panes; narrow screens switch panes while preserving viewing state.
+Shared guarded curation saves retain Pick/Reject, Favorite, and Rating semantics.
+Visibility/focus refresh, bounded visible polling, stale-state protection, and
+conflict reloads keep lifecycle changes usable without a new cache or backend API.
+
+Compare adds no winner scoring, duplicate resolution, Trash, image processing,
+or synchronized viewing. See the [Compare guide](OPERATIONS.md#photo-compare-v03).
+The recommended next v0.3 feature remains explicit review of rejected Photos
+before recoverable Trash.

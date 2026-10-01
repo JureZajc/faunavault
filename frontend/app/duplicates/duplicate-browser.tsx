@@ -9,6 +9,7 @@ import PhotoCurationSummary from "../components/photo-curation-summary";
 import PhotoMedia from "../components/photo-detail/photo-media";
 import { PhotoMetadataDetails } from "../components/photo-detail/photo-metadata";
 import { dismissDuplicate, DuplicateIdentity, DuplicateReview, DuplicateSummary, getDuplicateReview, getDuplicateSummary, Photo } from "../lib/api";
+import { compareHref } from "../lib/photo-compare";
 
 function href(pair: DuplicateIdentity | null) {
   return pair ? `/duplicates?left=${pair.left}&right=${pair.right}` : "/duplicates";
@@ -132,6 +133,7 @@ export default function DuplicateBrowser() {
       {loading ? <p role="status" className="mt-8 text-stone-600">Loading comparison…</p> : pair ? <>
         <section aria-label="Pair review actions" className="mt-6 flex flex-wrap items-center gap-3">
           <p className="mr-auto text-sm font-medium">Fingerprint distance {pair.distance}; review threshold {summary?.threshold ?? 4}</p>
+          <Link href={compareHref(pair.left_photo.id, pair.right_photo.id, href(pair.identity))} aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={(event) => { if (guard.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Compare</Link>
           <button type="button" className={buttonClass} disabled={busy || !review.previous} onClick={() => moveTo(review.previous)}>← Previous</button>
           <button type="button" className={buttonClass} disabled={busy || !review.next} onClick={() => moveTo(review.next)}>Next →</button>
           <button type="button" className={buttonClass} disabled={busy} onClick={skip}>Skip</button>
