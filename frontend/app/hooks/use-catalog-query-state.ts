@@ -151,6 +151,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
         ...catalogState,
         page: 1,
         favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
+        import_session_id: undefined,
         culling_state: undefined,
         search: undefined,
         status: undefined,

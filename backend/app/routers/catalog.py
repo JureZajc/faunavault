@@ -63,10 +63,15 @@ def create_catalog_router() -> APIRouter:
             default=None, include_in_schema=False
         ),
         unrated: bool = Query(default=False, include_in_schema=False),
+        import_session_id: str | None = Query(default=None, include_in_schema=False),
         culling_state: CullingFilter | None = Query(
             default=None, include_in_schema=False
         ),
     ) -> list[PhotoMapPoint]:
+        if import_session_id is not None:
+            raise HTTPException(
+                422, detail="Import Session filters are not supported on Map."
+            )
         if culling_state is not None:
             raise HTTPException(
                 status_code=422, detail="Culling filters are not supported on Map."
@@ -107,6 +112,7 @@ def create_catalog_router() -> APIRouter:
         rating_min: RatingParameter | None = None,
         unrated: bool = False,
         culling_state: CullingFilter | None = None,
+        import_session_id: str | None = None,
         sort: Literal[
             "created_at",
             "captured_at",
@@ -134,6 +140,7 @@ def create_catalog_router() -> APIRouter:
             rating_min=int(rating_min) if rating_min is not None else None,
             unrated=unrated,
             culling_state=culling_state,
+            import_session_id=import_session_id,
         )
         return list_catalog_photos(
             session,
@@ -158,6 +165,7 @@ def create_catalog_router() -> APIRouter:
         rating_min: RatingParameter | None = None,
         unrated: bool = False,
         culling_state: CullingFilter | None = None,
+        import_session_id: str | None = None,
         sort: Literal[
             "created_at",
             "captured_at",
@@ -183,6 +191,7 @@ def create_catalog_router() -> APIRouter:
             rating_min=int(rating_min) if rating_min else None,
             unrated=unrated,
             culling_state=culling_state,
+            import_session_id=import_session_id,
             sort=sort,
             order=order,
         )

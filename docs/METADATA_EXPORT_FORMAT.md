@@ -1,8 +1,8 @@
-# FaunaVault metadata export format v8
+# FaunaVault metadata export format v9
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, manual Collections and their
-memberships, Smart Collection definitions, Trash state, and authoritative original-file inventory.
+memberships, Smart Collection definitions, Import Sessions, Trash state, and authoritative original-file inventory.
 It contains no media bytes and is not a backup, restore format, or supported
 import format.
 
@@ -12,22 +12,23 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v8 is `8`. |
+| `format_version` | Metadata export representation version; v9 is `9`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
-| `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, and original-byte totals. |
+| `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, Import Session, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
 | `animals` | All Animals, including those without Photos, ordered by local ID. |
 | `taxa` | All locally stored Taxa, including unreferenced rows, ordered by local ID. |
 | `collections` | All user-defined Collections, ordered by local ID. |
 | `collection_photos` | All Collection membership pairs, including memberships to Trash Photos, ordered by Collection ID then Photo ID. |
 | `smart_collections` | Saved versioned catalog queries, ordered by local ID. |
+| `import_sessions` | All historical sessions, including empty and unfinished ones, ordered by canonical UUID string. |
 
 Export format and database schema versions have separate compatibility
 lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
 adds the durable Photo capture-metadata contract. Version 4 adds human review
-timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. FaunaVault emits only v8.
+timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. Version 9 adds Import Sessions and Photo provenance. FaunaVault emits only v9.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -39,6 +40,7 @@ Each Photo contains these fields:
 
 ```text
 id
+import_session_id
 is_favorite
 rating
 culling_state
@@ -107,7 +109,23 @@ CSV adds a `culling_state` column using `pick`, `reject`, or the existing `\N`
 null sentinel. Smart Collection query version 1 can additionally store
 `culling_state: "pick" | "reject" | "undecided"`; omission/null means no culling
 filter. Existing saved queries remain valid. Historical v1–v7 exports stay
-unchanged; consumers must explicitly support v8.
+unchanged; consumers must explicitly support v9.
+
+`import_session_id` is a required nullable canonical UUID string referencing an
+`import_sessions` record in this artifact. Legacy Photos remain null; provenance
+is never inferred from timestamps. Trash retains membership. The session remains
+after permanent deletion, so `imported_count` can exceed surviving membership.
+
+Each Import Session contains `id`, stable `source_kind` (`browser_upload` or
+`folder_import` today), nullable safe `label`, UTC `started_at`, nullable UTC
+`completed_at`, `imported_count`, and nullable aggregate `duplicate_count`,
+`visual_duplicate_skipped_count`, `unsupported_count`, and `failed_count`.
+Completed sessions have nonnegative outcomes; unfinished summaries may be null.
+Browser retries replace final reported queue outcomes within the original
+session. The server's original imported total remains authoritative even when an
+upload response was lost. Labels contain at most 200 printable characters and
+no path separators. No source path, failed filename, attempt log, or derived
+culling aggregate is exported. `counts.import_sessions` includes all sessions.
 
 `captured_at` is the effective camera-local wall time, extracted or manually supplied, or null. It is never
 derived from upload time, filesystem metadata, a filename, or `created_at`.
@@ -185,7 +203,8 @@ Photo is in Trash.
 Each Smart Collection exports `id`, `name`, `query_version`, structured `query`,
 `created_at`, and `updated_at`. Query version 1 contains the supported catalog
 search, status, category or uncategorized, verified taxon ID, capture date range,
-sort, order, Favorites, and exact/minimum/Unrated rating criteria. Smart
+sort, order, Favorites, exact/minimum/Unrated rating, culling, and optional
+`import_session_id` criteria. Smart
 Collections have no Photo membership pairs.
 
 Photo `animal_id` and Animal `taxon_id` are either JSON `null` or references to
@@ -217,8 +236,14 @@ fixed columns are:
 
 ```text
 photo_id
+import_session_id
+import_source_kind
+import_label
+import_started_at
+import_completed_at
 is_favorite
 rating
+culling_state
 lifecycle_state
 original_filename
 archive_relative_original_path
@@ -288,6 +313,10 @@ JSON. Override flags use lowercase `true`/`false` in CSV.
 - v7: required Photo Favorite boolean and nullable integer Rating from 1–5.
 - v8: required nullable Photo culling state (`pick`, `reject`, or null), plus
   optional shared Smart Collection culling criteria.
+- v9: ordered Import Sessions and their total, historical aggregate outcomes,
+  required nullable Photo session membership, optional version-1 Smart Collection
+  session criteria, and five CSV provenance columns. Session-only history is
+  available in JSON; legacy Photo provenance columns are `\N` in CSV.
 
 ## Deliberate exclusions
 

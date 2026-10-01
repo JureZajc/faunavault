@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
+import { ImportSessionCard } from "../import-session-summary";
 import PossibleDuplicateReview from "../possible-duplicate-review";
 import { usePhotoUpload } from "../../hooks/use-photo-upload";
 import UploadProgressList from "./upload-progress-list";
@@ -108,6 +110,9 @@ export default function UploadWorkflow({
           onViewTrash={onViewTrash}
           onRetry={(itemId) => void upload.actions.retryItem(itemId)}
         />
+        <Link href="/imports" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-emerald-900 underline">Recent Imports</Link>
+        {upload.state.sessionError ? <p role="alert" className="mt-3 text-sm text-red-700">{upload.state.sessionError} <button type="button" disabled={upload.state.isQueueActive} onClick={() => void upload.actions.retrySession()} className="underline">Retry import session</button></p> : null}
+        {!upload.state.isQueueActive && upload.state.importSession ? <div className="mt-3"><ImportSessionCard item={upload.state.importSession} /></div> : null}
       </form>
       {upload.state.currentReview ? (
         <PossibleDuplicateReview

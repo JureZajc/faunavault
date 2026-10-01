@@ -371,8 +371,8 @@ Canonical pair records contain evidence snapshots and `phash64-v1:d4`. New
 evidence/version cannot inherit an old dismissal silently. Candidates are derived
 and reproducible, while explicit dismissals are user-curation data. Schema-14
 verified backups include both pair records and scan state, and rehearsal checks
-their preservation. Backup v1 and historical schemas 9–17 remain supported.
-Portable metadata export v8 intentionally excludes duplicate curation state; use
+their preservation. Backup v1 and historical schemas 9–18 remain supported.
+Portable metadata export v9 intentionally excludes duplicate curation state; use
 verified backups to preserve decisions during recovery.
 
 ### Ingestion detection
@@ -485,8 +485,8 @@ capture/location override markers. Migration copies the previously persisted
 capture/GPS baseline; it does not scan image files. Capture-only correction and
 Restore do not accept pending AI classification review. Original files and EXIF
 bytes are never rewritten, nor are derivatives regenerated. Trash restoration
-preserves both corrections and provenance. Backup-v1 schemas 9–17 are supported;
-verification/rehearsal preserve all new fields. Portable JSON/CSV export v8
+preserves both corrections and provenance. Backup-v1 schemas 9–18 are supported;
+verification/rehearsal preserve all new fields. Portable JSON/CSV export v9
 includes effective values, retained extraction, and both markers.
 
 `backfill-photo-metadata` remains a stopped-archive, dry-run-by-default command.
@@ -540,7 +540,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v8](METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v9](METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -651,6 +651,8 @@ Backup container compatibility and database recovery compatibility are separate:
 | v1 | 14 | Supported | Verify and rehearse with duplicate-pair decisions and scan-state preservation |
 | v1 | 15 | Supported | Verify and rehearse with effective capture/GPS, retained extraction, and manual override state |
 | v1 | 16 | Supported | Verify curation structure and values; rehearse with Favorite/Rating preservation and safe older-schema defaults |
+| v1 | 17 | Supported | Verify and rehearse independent Photo culling state |
+| v1 | 18 | Supported | Verify session structure, membership, and historical totals; compare sessions and Photo provenance exactly during rehearsal |
 | Other | Any | Unsupported | Reject before target writes |
 | v1 | Other | Not supported until explicitly tested | Reject before target writes |
 
@@ -749,13 +751,97 @@ Before schema upgrades, FaunaVault creates timestamped SQLite backups next to th
 
 See [docs/IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) for the audit and prioritized remaining work.
 
+## Import Sessions and Recent Imports (v0.3)
+
+An Import Session records one intentional ingestion operation: one submitted
+browser file selection or one real offline folder-import invocation. It records
+origin and aggregate history. Curation, duplicate decisions, and classification
+jobs continue to use ordinary Photo metadata and their existing workflows.
+
+Open **Recent Imports** from the upload panel, List toolbar, or Culling context.
+The existing nine archive navigation items remain unchanged. `/imports` shows
+24 sessions per page, newest first with a stable UUID tie-break. Each card shows
+source/date, optional folder label, original imported total, reported outcomes,
+current active/Trash totals, and active-only undecided/Pick/Reject counts.
+
+**View imported photos** opens the existing List at
+`/?catalog_import_session_id=<uuid>`. Sorting, search, taxon/category/date and
+curation filters compose with membership; reload and copied URLs preserve it.
+Selection resets when the source changes. Detail, Compare, Favorites/Ratings,
+bulk actions, and rejected cleanup use their ordinary controls. Clearing filters
+also clears session membership. Smart Collection query version 1 can save/edit
+the optional `import_session_id` without changing historical saved queries.
+Map currently rejects session criteria and List explains its disabled Map action.
+
+**Cull this import** opens the existing `source=list` Culling workspace using
+only session membership and default newest-first ordering, including every active
+Photo from that import. Ordinary **Open in Culling** preserves additional List
+criteria. Contextual **Review rejected** combines the session with Reject;
+**Review all rejected photos** explicitly opens archive-wide review. Live counts
+refresh after relevant changes and when returning to the session List.
+
+The browser starts a client-generated UUID before sending its existing sequential
+per-file requests. Keep both and retry retain the same UUID. A separate selection
+or tab starts a different session. Only saved Photos become members. The queue
+finalizes after requests and visual reviews drain, even if some files failed.
+Retry reopens the same session and replaces final outcome counts while preserving
+its start and original imported total. Session-start and completion failures have
+separate **Retry import session** controls; completion retry never uploads files
+again. Completion shows View/Cull actions without automatic navigation.
+
+`completed_at: null` displays **Not finalized**, covering active, abandoned, or
+interrupted operations without implying a background job. Unavailable outcome
+counts stay null. A lost upload response can produce a reported queue failure
+although the server already saved that Photo: the transactional original imported
+total and membership are authoritative. Empty sessions remain in history and
+offer no Photo actions. Partial successful files remain saved after interruption.
+
+The folder importer creates one session after successful preflight, commits
+successful files independently, finalizes from its existing summary, and prints
+`Session: <uuid>`. It still runs with the backend stopped; the session appears in
+Recent Imports after startup. `--classify` queues jobs independently of session
+completion. `--dry-run` creates no session, Photo, job, migration, or archive file.
+
+Folder labels retain only the validated directory basename, stripped of controls
+and path separators and bounded to 200 characters. Browser display labels derive
+from source kind and date. No absolute path, parent directory, failed source
+filename, or attempt log is persisted or exported. Source files remain untouched.
+
+Schema 18 adds `import_session` and nullable indexed `Photo.import_session_id`
+with a real foreign key; existing Photos stay null without inferred history.
+Ordinary Photo edits cannot change provenance. Original imported totals increment
+in the Photo transaction. Trash/restore retains membership, active culling counts
+exclude Trash, and permanent deletion retains the session and historical total.
+
+Metadata APIs are `POST /import-sessions` with `{id: <uuid>}`, idempotent
+`POST /import-sessions/{id}/complete` with four nonnegative aggregate outcome
+counts, `GET /import-sessions` (default 24, maximum 100), and
+`GET /import-sessions/{id}`. Upload endpoints accept optional multipart
+`import_session_id` and reject unknown or wrong-source identities before file
+promotion. Standalone requests create one session each; compatibility batches
+create one and return it. Pending visual review leaves it unfinalized, and
+resolution requests can reuse that reference. Identical repeated completion
+preserves its original timestamp. A different summary requires reopening first.
+
+History performs one grouped Photo query restricted to the requested page of
+session IDs; detail groups one ID. Metadata browsing reads no Photo IDs, images,
+or files. The membership index also narrows List and Culling queries. Backup v1
+keeps its manifest shape and supports schemas 9–18, including session signatures
+for change detection and exact recovery comparisons. Portable export v9 includes
+ordered sessions, historical aggregates, nullable membership, and CSV provenance;
+derived culling counts are omitted. See [the export contract](METADATA_EXPORT_FORMAT.md).
+
+There is no session-management UI, expiry, source synchronization, watching,
+scheduling, background ingestion, or automatic Collection creation.
+
 ## Photo Culling (v0.3)
 
 Open **Culling** to review active Photos with no culling decision, newest added
 first. **Open in Culling** on List uses the complete current query and sort,
 including any Favorite, Rating, or culling filters; page, grouping, and explicit
 selection do not restrict this read-only queue source. Back to List restores the
-original List URL. Manual Collection and recent-import sources are not yet offered.
+original List URL. Recent Imports uses this same List-source mechanism; direct
+manual Collection sources are not yet offered.
 
 Use **Pick**, **Reject**, or **Clear decision**. Pick and Reject advance only
 after a successful save; Clear stays on the current Photo. Next can skip without
@@ -795,9 +881,9 @@ Map rejects unsupported culling filters and provides an explanation and List lin
 Schema 17 stores `culling_state` as null, `pick`, or `reject` with a database
 constraint. Existing Photos start null. Trash and restore preserve the field;
 permanent deletion removes it with the Photo. No automatic Trash/expiry is added.
-Portable export v8 includes decisions on active and trashed Photos: JSON uses
+Portable export v9 includes decisions on active and trashed Photos: JSON uses
 null/`pick`/`reject`; CSV uses `\N`/`pick`/`reject`. Backup format v1 supports schemas
-9–17, verifies column structure and values, checks live metadata changes before
+9–18, verifies column structure and values, checks live metadata changes before
 publication, and compares decisions during isolated recovery rehearsal. Historical
 backups upgrade to undecided. Production restore remains manual.
 
@@ -858,7 +944,7 @@ No individual Trash buttons are offered on rejected-review cards; inspection
 continues through existing Photo detail. Permanent deletion stays inside Trash
 with its existing confirmation. There is no automatic selection, Trash,
 permanent deletion, retention, scan, background job, or scheduling. Schema 17,
-export v8, and backup v1 remain unchanged.
+export v9, and backup v1 remain unchanged.
 
 ## Photo Favorites and Ratings
 
@@ -880,9 +966,9 @@ restore, capture correction/backfill, and duplicate decisions preserve curation.
 Permanent deletion removes it with the Photo. Curation advances `updated_at`,
 so an already queued/running AI job can become stale under the existing guard.
 
-Backup format v1 supports schemas 9–17. Schema-16 verification checks curation
+Backup format v1 supports schemas 9–18. Schema-16 verification checks curation
 column structure and values, including empty databases. Recovery rehearsal
 compares Favorite and Rating on active and Trash Photos; older backups migrate
 to false/null without rewriting frozen fixtures. Production restore remains
-manual and uses the same complete SQLite backup. Portable export v8 includes
+manual and uses the same complete SQLite backup. Portable export v9 includes
 JSON boolean/null/integer values and CSV `true`/`false`, 1–5, or `\N`.

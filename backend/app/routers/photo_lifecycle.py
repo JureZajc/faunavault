@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -19,6 +20,12 @@ from app.schemas import (
     TrashPage,
 )
 from app.services.image_variants import encoding_for_filename
+from app.services.import_sessions import (
+    ImportSessionOutcomes,
+    complete_import_session,
+    get_import_session,
+    start_import_session,
+)
 from app.services.photo_lifecycle import (
     create_photo_from_upload,
     list_trash,
@@ -60,6 +67,28 @@ def _possible_visual_duplicate(
     )
 
 
+def _outcomes(errors: list[HTTPException]) -> ImportSessionOutcomes:
+    counts = dict(
+        duplicate_count=0,
+        visual_duplicate_skipped_count=0,
+        unsupported_count=0,
+        failed_count=0,
+    )
+    for error in errors:
+        detail = error.detail if isinstance(error.detail, dict) else {}
+        key = (
+            "duplicate_count"
+            if detail.get("code") == "duplicate_photo"
+            else "visual_duplicate_skipped_count"
+            if detail.get("code") == "possible_visual_duplicate"
+            else "unsupported_count"
+            if error.status_code == 415
+            else "failed_count"
+        )
+        counts[key] += 1
+    return ImportSessionOutcomes(**counts)
+
+
 def create_photo_lifecycle_router(
     settings_provider: Callable[[], Settings],
 ) -> APIRouter:
@@ -71,20 +100,52 @@ def create_photo_lifecycle_router(
         file: UploadFile = File(...),
         allow_visual_duplicate: bool = Form(default=False),
         reviewed_candidate_ids: list[int] = Form(default=[]),
+        import_session_id: UUID | None = Form(default=None),
     ) -> Photo:
-        return await create_photo_from_upload(
-            session,
-            file,
-            settings_provider(),
-            allow_visual_duplicate=allow_visual_duplicate,
-            reviewed_candidate_ids=reviewed_candidate_ids,
+        managed = import_session_id is None
+        identity = (
+            start_import_session(session, "browser_upload").id
+            if managed
+            else str(import_session_id)
         )
+        get_import_session(session, identity, "browser_upload")
+        try:
+            photo = await create_photo_from_upload(
+                session,
+                file,
+                settings_provider(),
+                allow_visual_duplicate=allow_visual_duplicate,
+                reviewed_candidate_ids=reviewed_candidate_ids,
+                import_session_id=identity,
+            )
+        except HTTPException as error:
+            if managed and not (
+                isinstance(error.detail, dict)
+                and error.detail.get("code") == "possible_visual_duplicate"
+            ):
+                complete_import_session(session, identity, _outcomes([error]))
+            if isinstance(error.detail, dict):
+                error.detail = {**error.detail, "import_session_id": identity}
+            raise
+        if managed:
+            complete_import_session(session, identity, _outcomes([]))
+            session.refresh(photo)
+        return photo
 
     @router.post("/photos/upload-batch", response_model=BatchUploadResponse)
     async def upload_photo_batch(
         session: SessionDep,
         files: list[UploadFile] = File(...),
+        import_session_id: UUID | None = Form(default=None),
     ) -> BatchUploadResponse:
+        managed = import_session_id is None
+        identity = (
+            start_import_session(session, "browser_upload").id
+            if managed
+            else str(import_session_id)
+        )
+        get_import_session(session, identity, "browser_upload")
+        errors: list[HTTPException] = []
         uploaded: list[Photo] = []
         possible_duplicates: list[PossibleVisualDuplicate] = []
         failed: list[BatchUploadFailure] = []
@@ -95,10 +156,12 @@ def create_photo_lifecycle_router(
                     session,
                     file,
                     settings_provider(),
+                    import_session_id=identity,
                 )
                 uploaded.append(Photo(**photo.model_dump()))
             except HTTPException as exc:
                 session.rollback()
+                errors.append(exc)
                 possible = _possible_visual_duplicate(file_index, filename, exc)
                 if possible is not None:
                     possible_duplicates.append(possible)
@@ -106,6 +169,7 @@ def create_photo_lifecycle_router(
                     failed.append(_batch_failure(file_index, filename, exc))
             except Exception:
                 session.rollback()
+                errors.append(HTTPException(500, detail="Upload failed"))
                 logger.exception("Unexpected batch upload failure for %s", filename)
                 failed.append(
                     BatchUploadFailure(
@@ -114,7 +178,10 @@ def create_photo_lifecycle_router(
                         error="Upload failed",
                     )
                 )
+        if managed and not possible_duplicates:
+            complete_import_session(session, identity, _outcomes(errors))
         return BatchUploadResponse(
+            import_session_id=identity,
             uploaded=uploaded,
             possible_duplicates=possible_duplicates,
             failed=failed,

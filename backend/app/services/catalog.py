@@ -242,6 +242,8 @@ def _catalog_joins(query, criteria: CatalogSavedQuery):
 
 def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
     conditions = [Photo.deleted_at.is_(None)]
+    if criteria.import_session_id is not None:
+        conditions.append(Photo.import_session_id == criteria.import_session_id)
     if criteria.culling_state == "undecided":
         conditions.append(Photo.culling_state.is_(None))
     elif criteria.culling_state is not None:
@@ -299,6 +301,7 @@ def list_catalog_photos(
     rating_min: int | None = None,
     unrated: bool = False,
     culling_state: CullingFilter | None = None,
+    import_session_id: str | None = None,
 ) -> CatalogPhotoPage:
     criteria = CatalogSavedQuery(
         search=search,
@@ -315,6 +318,7 @@ def list_catalog_photos(
         rating_min=rating_min,
         unrated=unrated,
         culling_state=culling_state,
+        import_session_id=import_session_id,
     )
     search = criteria.search
     has_search = bool(search)
@@ -325,7 +329,8 @@ def list_catalog_photos(
     conditions = _catalog_conditions(criteria)
 
     selective_photo_filters = bool(
-        culling_state is not None
+        import_session_id is not None
+        or culling_state is not None
         or favorites_only
         or rating is not None
         or rating_min is not None

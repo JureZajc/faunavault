@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.catalog_query import CatalogSavedQuery
 from app.metadata_types import PhotoCullingState, PhotoRating
 
-EXPORT_FORMAT_VERSION = 8
+EXPORT_FORMAT_VERSION = 9
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -66,6 +66,7 @@ class ExportCounts(StrictExportModel):
     collections: int = Field(ge=0)
     collection_memberships: int = Field(ge=0)
     smart_collections: int = Field(ge=0)
+    import_sessions: int = Field(ge=0)
     original_bytes: int = Field(ge=0)
 
     @model_validator(mode="after")
@@ -109,6 +110,7 @@ class PhotoExport(StrictExportModel):
     description: str | None
     tags: list[str]
     status: str = Field(min_length=1)
+    import_session_id: str | None
     animal_id: int | None = Field(default=None, ge=1)
     lifecycle_state: Literal["active", "trash"]
     deleted_at: str | None
@@ -236,6 +238,62 @@ class SmartCollectionExport(StrictExportModel):
         return validate_export_timestamp(value)
 
 
+class ImportSessionExport(StrictExportModel):
+    id: str
+    source_kind: str = Field(min_length=1, max_length=100)
+    label: str | None = Field(max_length=200)
+    started_at: str
+    completed_at: str | None
+    imported_count: int = Field(ge=0)
+    duplicate_count: int | None = Field(ge=0)
+    visual_duplicate_skipped_count: int | None = Field(ge=0)
+    unsupported_count: int | None = Field(ge=0)
+    failed_count: int | None = Field(ge=0)
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, value: str) -> str:
+        from app.services.import_sessions import canonical_session_id
+
+        if canonical_session_id(value) != value:
+            raise ValueError("Import Session ID must be canonical")
+        return value
+
+    @field_validator("started_at", "completed_at")
+    @classmethod
+    def validate_session_timestamp(cls, value: str | None) -> str | None:
+        return validate_export_timestamp(value) if value is not None else None
+
+    @field_validator("label")
+    @classmethod
+    def validate_label(cls, value: str | None) -> str | None:
+        if value is not None and (
+            not value
+            or any(
+                not character.isprintable() or character in "/\\" for character in value
+            )
+        ):
+            raise ValueError("Import Session label must be a safe basename")
+        return value
+
+    @model_validator(mode="after")
+    def validate_completion(self):
+        if self.completed_at is not None and (
+            self.completed_at < self.started_at
+            or any(
+                getattr(self, field) is None
+                for field in (
+                    "duplicate_count",
+                    "visual_duplicate_skipped_count",
+                    "unsupported_count",
+                    "failed_count",
+                )
+            )
+        ):
+            raise ValueError("Invalid Import Session completion")
+        return self
+
+
 class ArchiveMetadataExport(StrictExportModel):
     format_version: Literal[EXPORT_FORMAT_VERSION]
     source_database_schema_version: int = Field(ge=1)
@@ -246,6 +304,7 @@ class ArchiveMetadataExport(StrictExportModel):
     collections: list[CollectionExport]
     collection_photos: list[CollectionPhotoExport]
     smart_collections: list[SmartCollectionExport]
+    import_sessions: list[ImportSessionExport]
 
     @staticmethod
     def _validate_order(records: list[object], label: str) -> None:
@@ -257,6 +316,7 @@ class ArchiveMetadataExport(StrictExportModel):
 
     @model_validator(mode="after")
     def validate_archive(self) -> ArchiveMetadataExport:
+        self._validate_order(self.import_sessions, "Import Session")
         self._validate_order(self.photos, "photo")
         self._validate_order(self.animals, "animal")
         self._validate_order(self.taxa, "taxon")
@@ -284,11 +344,21 @@ class ArchiveMetadataExport(StrictExportModel):
             "collections": len(self.collections),
             "collection_memberships": len(self.collection_photos),
             "smart_collections": len(self.smart_collections),
+            "import_sessions": len(self.import_sessions),
             "original_bytes": sum(photo.original_size_bytes for photo in self.photos),
         }
         if self.counts.model_dump() != actual_counts:
             raise ValueError("export counts do not match exported records")
 
+        session_ids = {item.id for item in self.import_sessions}
+        if any(
+            photo.import_session_id is not None
+            and photo.import_session_id not in session_ids
+            for photo in self.photos
+        ):
+            raise ValueError(
+                "Photo references an Import Session absent from the export"
+            )
         animal_ids = {animal.id for animal in self.animals}
         taxon_ids = {taxon.id for taxon in self.taxa}
         collection_ids = {collection.id for collection in self.collections}

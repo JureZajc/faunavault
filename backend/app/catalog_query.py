@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.metadata_types import CullingFilter, PhotoRating
+from app.services.import_sessions import canonical_session_id
 
 CatalogStatus = Literal["pending", "classified", "needs_review"]
 CatalogSort = Literal[
@@ -28,6 +29,7 @@ class CatalogSavedQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     search: str | None = Field(default=None, max_length=200)
+    import_session_id: str | None = None
     status: CatalogStatus | None = None
     category: str | None = Field(default=None, max_length=200)
     uncategorized: bool = False
@@ -46,6 +48,11 @@ class CatalogSavedQuery(BaseModel):
     @classmethod
     def normalize_text(cls, value: str | None) -> str | None:
         return value.strip() or None if value is not None else None
+
+    @field_validator("import_session_id")
+    @classmethod
+    def validate_import_id(cls, value: str | None) -> str | None:
+        return canonical_session_id(value) if value is not None else None
 
     @field_validator("taken_from", "taken_to", mode="before")
     @classmethod

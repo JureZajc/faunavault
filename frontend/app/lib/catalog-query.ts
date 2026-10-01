@@ -53,6 +53,7 @@ export function mapListHref(state: CatalogState) {
     ...DEFAULT_CATALOG_STATE, ...mapCatalogQuery(state), search: state.search,
     favorites_only: state.favorites_only, rating: state.rating, rating_min: state.rating_min, unrated: state.unrated,
     culling_state: state.culling_state,
+    import_session_id: state.import_session_id,
   }).toString();
   return query ? `/?${query}` : "/";
 }
@@ -69,7 +70,7 @@ export const REJECTED_PHOTOS_HREF = "/?catalog_culling_state=reject";
 
 export function hasAdditionalRejectedFilters(state: CatalogQuery) {
   return Boolean(
-    state.search || state.status || state.category || state.uncategorized ||
+    state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
     state.taxon_id || state.taken_from || state.taken_to || state.favorites_only ||
     state.rating || state.rating_min || state.unrated,
   );
@@ -148,6 +149,7 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   const unrated = params.get("catalog_unrated") === "1";
   const culling = params.get("catalog_culling_state");
   return {
+    import_session_id: params.get("catalog_import_session_id") || undefined,
     culling_state: culling && ["pick", "reject", "undecided"].includes(culling) ? culling as CullingFilter : undefined,
     favorites_only: params.get("catalog_favorites_only") === "1" || undefined,
     rating,
@@ -177,6 +179,7 @@ export function writeCatalogState(
     if (value) params.set(key, value);
     else params.delete(key);
   };
+  setOrDelete("catalog_import_session_id", state.import_session_id);
   setOrDelete("catalog_favorites_only", state.favorites_only ? "1" : undefined);
   setOrDelete("catalog_rating", state.rating ? String(state.rating) : undefined);
   setOrDelete("catalog_rating_min", state.rating_min ? String(state.rating_min) : undefined);

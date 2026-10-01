@@ -394,6 +394,56 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
   });
 });
 
+test("Recent Imports preserves one batch through reload and scoped Culling", async ({ page, request }) => {
+  const filenames = ["faunavault-e2e-import-81182.jpg", "faunavault-e2e-import-81183.jpg"];
+  let sessionId: string | null = null;
+  try {
+    await page.goto("/");
+    await page.getByLabel("Add to collection", { exact: false }).setInputFiles(filenames.map(fixturePath));
+    await page.getByRole("button", { name: "Upload photos", exact: true }).click();
+    for (const filename of filenames) await expect(uploadRow(page, filename)).toContainText("Uploaded");
+    const summary = page.getByRole("region", { name: "Import Session" });
+    await expect(summary).toContainText("Completed");
+    await expect(summary).toContainText("2 imported originally · 2 active / 0 in Trash");
+    const href = await summary.getByRole("link", { name: "View imported photos" }).getAttribute("href");
+    sessionId = new URL(href!, "http://localhost").searchParams.get("catalog_import_session_id");
+    expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
+    await summary.getByRole("link", { name: "View imported photos" }).click();
+    await expect(page).toHaveURL(new RegExp(`catalog_import_session_id=${sessionId}`));
+    await expect(page.getByRole("article")).toHaveCount(2);
+    await page.reload();
+    for (const filename of filenames) await expect(catalogCard(page, filename)).toHaveCount(1);
+    await expect(page.getByRole("article")).toHaveCount(2);
+    await page.getByRole("region", { name: "Import Session" }).getByRole("link", { name: "Cull this import" }).click();
+    await expect(page).toHaveURL(/source=list/);
+    await expect(page.getByRole("heading", { name: filenames[1] })).toBeVisible();
+    await page.getByRole("button", { name: "Pick (P)" }).click();
+    await expect(page.getByRole("heading", { name: filenames[0] })).toBeVisible();
+    await page.getByRole("button", { name: "Reject (X)" }).click();
+    await expect(page.getByRole("region", { name: "Import Session" })).toContainText("0 undecided · 1 Pick · 1 Reject");
+    await expect(page.getByRole("link", { name: "Review rejected", exact: true })).toHaveAttribute("href", new RegExp(`catalog_import_session_id=${sessionId}.*catalog_culling_state=reject|catalog_culling_state=reject.*catalog_import_session_id=${sessionId}`));
+    await page.getByRole("link", { name: "Back to List", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`catalog_import_session_id=${sessionId}`));
+    await expect(page.getByRole("region", { name: "Import Session" })).toContainText("0 undecided · 1 Pick · 1 Reject");
+    await page.getByRole("link", { name: "Recent Imports", exact: true }).first().click();
+    const history = page.getByRole("region", { name: "Import Session" }).filter({ has: page.locator(`a[href*="catalog_import_session_id=${sessionId}"]`) });
+    await expect(history).toHaveCount(1);
+    await expect(history).toContainText("0 undecided · 1 Pick · 1 Reject");
+    await page.screenshot({ path: test.info().outputPath("imports-desktop.png"), fullPage: true });
+    await page.setViewportSize({ width: 360, height: 760 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath("imports-mobile.png"), fullPage: true });
+  } finally {
+    if (sessionId) {
+      const result = await request.get(`http://127.0.0.1:8001/catalog/photos?import_session_id=${sessionId}`);
+      for (const photo of (await result.json()).items) {
+        await request.delete(`http://127.0.0.1:8001/photos/${photo.id}`);
+        await request.delete(`http://127.0.0.1:8001/trash/photos/${photo.id}`);
+      }
+    }
+  }
+});
+
 test("Photo Culling saves independent decisions and filters Picks", async ({ page, request }) => {
   const filenames = ["faunavault-e2e-culling-reject.jpg", "faunavault-e2e-culling-pick.jpg"];
   const ids: number[] = [];

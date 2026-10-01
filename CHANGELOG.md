@@ -6,6 +6,14 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Import Sessions group successful Photos from one browser selection or offline
+  folder invocation. Contextual Recent Imports shows historical outcomes and live
+  active/Trash/Pick/Reject counts, with View imported photos and Cull this import
+  actions using the existing List and Culling workspaces. File retries retain
+  the original identity; unfinished operations show Not finalized.
+- Session membership composes with List criteria, URL restoration, version-1
+  Smart Collections, Compare, and scoped rejected cleanup. Folder labels retain
+  only a bounded safe basename; no source paths or failed-file logs are stored.
 - Rejected Photo Review and Cleanup through the existing filtered List, with
   contextual Review rejected entry from List/Culling, live counts, shared
   inspection/Compare, and explicit bounded selection for recoverable Trash.
@@ -33,10 +41,18 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Reliability and data safety
 
+- Schema 18 adds Import Sessions and nullable indexed Photo provenance. Existing
+  Photos remain unassigned; Trash/restore retains membership and permanent
+  deletion retains the session's original imported total. Folder dry runs stay
+  read-only, and classification jobs do not control import completion.
+- Portable export v9 includes ordered sessions, aggregate history, nullable
+  Photo membership, and CSV provenance. Backup format v1 retains its manifest
+  shape and supports schemas 9–18, validating relationships and detecting session
+  changes during creation, with exact recovery comparisons.
 - Schema 17 adds a constrained nullable Photo culling state; historical upgrades
   initialize it to undecided and Trash/restore preserve it.
-- Portable metadata export v8 includes machine-readable culling decisions in
-  JSON/CSV. Backup format v1 verifies and rehearses schemas 9–17, including
+- Portable metadata export includes machine-readable culling decisions in
+  JSON/CSV. Backup format v1 verifies and rehearses schemas 9–18, including
   culling metadata and detection of changes during backup creation.
 
 ## [0.2.0] - 2026-09-30

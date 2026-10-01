@@ -6,7 +6,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from app.archive_integrity import read_duplicate_signature
+from app.archive_integrity import (
+    read_duplicate_signature,
+    read_import_session_signature,
+)
 from app.backup.integrity import (
     BackupError,
     copy_and_hash_stable,
@@ -168,6 +171,7 @@ def create_backup(
         inventory = inspect_database(snapshot, LATEST_SCHEMA_VERSION)
         expected_signature = inventory.photo_signature()
         expected_duplicates = read_duplicate_signature(snapshot)
+        expected_imports = read_import_session_signature(snapshot)
         source_paths = _source_paths(inventory, variants)
 
         warnings: list[SourceWarning] = []
@@ -180,6 +184,10 @@ def create_backup(
             warnings.extend(scan_orphans(directory, expected, role))
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed after the SQLite snapshot")
+        if read_import_session_signature(database) != expected_imports:
+            raise BackupError(
+                "Live Import Session metadata changed during backup creation"
+            )
         if read_duplicate_signature(database) != expected_duplicates:
             raise BackupError(
                 "Live duplicate review state changed after the SQLite snapshot"
@@ -252,6 +260,10 @@ def create_backup(
             )
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed while files were copied")
+        if read_import_session_signature(database) != expected_imports:
+            raise BackupError(
+                "Live Import Session metadata changed during backup creation"
+            )
         if read_duplicate_signature(database) != expected_duplicates:
             raise BackupError(
                 "Live duplicate review state changed while files were copied"
@@ -303,6 +315,10 @@ def create_backup(
         _ensure_lifecycle_quiet(settings)
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed before publication")
+        if read_import_session_signature(database) != expected_imports:
+            raise BackupError(
+                "Live Import Session metadata changed during backup creation"
+            )
         if read_duplicate_signature(database) != expected_duplicates:
             raise BackupError("Live duplicate review state changed before publication")
         temporary.rename(final_path)

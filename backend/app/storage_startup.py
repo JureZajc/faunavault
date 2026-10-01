@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, inspect
 from sqlmodel import Session, SQLModel
 
 from app.archive_integrity import open_read_only_database
@@ -12,7 +12,7 @@ from app.migrations import (
     migrate_animals_and_taxonomy,
     run_migrations,
 )
-from app.models import Animal, Photo, Taxon
+from app.models import Animal, ImportSession, Photo, Taxon
 from app.services.classification import normalize_existing_domestic_metadata
 from app.services.photo_lifecycle import ensure_storage, reconcile_purge_journal
 
@@ -57,9 +57,10 @@ def initialize_archive_storage(
     validate_storage_selection(settings)
     ensure_storage(settings)
     backup_database_before_taxonomy_migration(engine)
-    SQLModel.metadata.create_all(
-        engine, tables=[Taxon.__table__, Animal.__table__, Photo.__table__]
-    )
+    tables = [Taxon.__table__, Animal.__table__, Photo.__table__]
+    if not inspect(engine).has_table("photo"):
+        tables.insert(0, ImportSession.__table__)
+    SQLModel.metadata.create_all(engine, tables=tables)
     migrate_animals_and_taxonomy(engine)
     applied = run_migrations(
         engine,

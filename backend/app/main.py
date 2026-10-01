@@ -23,6 +23,7 @@ from app.routers.catalog import create_catalog_router
 from app.routers.classification import create_classification_router
 from app.routers.collections import create_collections_router
 from app.routers.duplicates import create_duplicates_router
+from app.routers.import_sessions import create_import_sessions_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
 from app.routers.review import create_review_router
 from app.routers.smart_collections import create_smart_collections_router
@@ -184,6 +185,7 @@ app.include_router(create_taxonomy_router())
 app.include_router(create_animals_router())
 app.include_router(create_review_router(lambda: settings))
 app.include_router(create_duplicates_router())
+app.include_router(create_import_sessions_router())
 
 
 def photo_or_404(photo_id: int, session: Session) -> Photo:

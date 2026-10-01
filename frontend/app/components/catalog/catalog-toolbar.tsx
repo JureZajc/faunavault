@@ -29,6 +29,7 @@ const sortLabels: Record<CatalogSortOption, string> = {
 };
 
 type CatalogToolbarProps = {
+  rejectedHref?: string;
   cullingState?: CullingFilter;
   onCullingStateChange?: (value?: CullingFilter) => void;
   cullingHref?: string;
@@ -73,6 +74,7 @@ type CatalogToolbarProps = {
 };
 
 export default function CatalogToolbar({
+  rejectedHref,
   cullingState, onCullingStateChange, cullingHref, onReviewRejected,
   favoritesOnly, ratingFilter, onFavoritesOnlyChange, onRatingFilterChange,
   searchQuery,
@@ -172,12 +174,13 @@ export default function CatalogToolbar({
           {totalCount === 1 ? "record" : "records"}
         </p>
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:justify-end">
+          <Link href="/imports" className="inline-flex min-h-11 items-center rounded-md border border-stone-300 px-4 text-sm font-semibold text-emerald-900">Recent Imports</Link>
           {cullingHref ? <Link href={cullingHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Open in Culling</Link> : null}
-          <Link href={REJECTED_PHOTOS_HREF} onClick={onReviewRejected} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Review rejected</Link>
+          <Link href={rejectedHref ?? REJECTED_PHOTOS_HREF} onClick={onReviewRejected} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Review rejected</Link>
           {mapHref ? <div>
             {mapDisabled ? <button type="button" disabled aria-describedby="map-search-explanation" className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold opacity-50">View on Map</button>
               : <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">View on Map</Link>}
-            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear text search and Favorite/Rating filters and Culling filters to view these filters on Map.</p> : null}
+            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.</p> : null}
           </div> : null}
           {onSaveSmartCollection ? <button type="button" onClick={onSaveSmartCollection} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Save as Smart Collection</button> : null}
           {hasActiveFilters ? (

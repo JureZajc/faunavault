@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 17
+LATEST_SCHEMA_VERSION = 18
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -493,6 +493,23 @@ def _migration_17(connection) -> None:
         )
 
 
+def _migration_18(connection) -> None:
+    from app.models import ImportSession
+
+    ImportSession.__table__.create(connection, checkfirst=True)
+    if "import_session_id" not in _columns(connection, "photo"):
+        connection.execute(
+            text(
+                "ALTER TABLE photo ADD COLUMN import_session_id VARCHAR REFERENCES import_session(id)"
+            )
+        )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_photo_import_session_id ON photo(import_session_id)"
+        )
+    )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -562,6 +579,8 @@ def run_migrations(
                 _migration_16(connection)
             elif version == 17:
                 _migration_17(connection)
+            elif version == 18:
+                _migration_18(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

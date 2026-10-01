@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
+import { importSessionFixture } from "./fixtures/import-sessions";
 import Home from "../app/page";
 import {
   ApiError,
@@ -14,6 +15,8 @@ const api = vi.hoisted(() => ({
   getCatalogTaxa: vi.fn(),
   getClassificationJobs: vi.fn(),
   uploadPhoto: vi.fn(),
+  startImportSession: vi.fn(),
+  completeImportSession: vi.fn(),
   uploadPhotoBatch: vi.fn(),
 }));
 
@@ -86,6 +89,8 @@ function catalogPage(query: CatalogQuery) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.startImportSession.mockImplementation(async (id: string) => importSessionFixture(id));
+  api.completeImportSession.mockImplementation(async (id: string, outcomes) => importSessionFixture(id, { ...outcomes, completed_at: "2026-10-01T10:01:00Z" }));
   window.history.replaceState(null, "", "/");
   api.getCatalogPhotos.mockImplementation(async (query: CatalogQuery) =>
     catalogPage(query),
@@ -152,7 +157,7 @@ test("reviews a possible duplicate and keeps both with explicit override", async
   ).toBe(true);
 
   await userEvent.click(keep);
-  await waitFor(() => expect(api.uploadPhoto).toHaveBeenLastCalledWith(file, true, [1]));
+  await waitFor(() => expect(api.uploadPhoto).toHaveBeenLastCalledWith(file, true, [1], expect.any(String)));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(screen.getByText("Uploaded")).toBeTruthy();
   expect(screen.getByRole("status").textContent).toMatch(/1 file: 1 uploaded/i);

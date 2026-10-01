@@ -166,6 +166,17 @@ test("changing culling criteria clears explicit selection", async () => {
   expect(window.location.search).toContain("catalog_culling_state=pick");
 });
 
+test("changing import membership through browser history clears explicit selection", async () => {
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  window.history.pushState(null, "", "/?catalog_import_session_id=b0ed3764-5211-4b54-9952-e3f29027dc21");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Bulk photo actions" })).toBeNull());
+  expect(screen.getByRole("button", { name: "Select photos" })).toBeTruthy();
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
+});
+
 test("selection uses photo IDs so duplicate filenames remain independent", async () => {
   render(<Home />);
   await screen.findByRole("heading", { name: "First fox" });

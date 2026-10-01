@@ -10,6 +10,14 @@ manifest owns the application version.
 
 ## Architecture
 
+`/imports` is contextual Recent Imports, linked from upload, List, and Culling.
+The upload hook retains one UUID across sequential uploads, duplicate resolution,
+and retries, with separate session lifecycle errors. Session cards fetch bounded
+metadata and live counts; `catalog_import_session_id` restores membership through
+the ordinary List/Culling and version-1 Smart Collection query paths. No new
+permanent archive navigation item is added. See the
+[Import Sessions guide](../docs/OPERATIONS.md#import-sessions-and-recent-imports-v03).
+
 The catalog route in `app/page.tsx` remains the route-level orchestrator. Its
 focused hooks own URL query state, paginated photo loading, lazy verified-taxon
 options, classification-job polling, and upload state. Components under

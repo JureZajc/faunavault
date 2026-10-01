@@ -23,6 +23,11 @@ from app.config import Settings, get_settings
 from app.database import create_database_engine
 from app.migrations import LATEST_SCHEMA_VERSION
 from app.services.image_variants import source_format_for_filename
+from app.services.import_sessions import (
+    ImportSessionOutcomes,
+    complete_import_session,
+    start_import_session,
+)
 from app.services.perceptual_duplicates import VisualDuplicateIndex, VisualIndexEntry
 from app.services.photo_lifecycle import create_photo_from_source, inspect_local_photo
 
@@ -42,6 +47,7 @@ class ScanFailure:
 
 @dataclass
 class ImportSummary:
+    import_session_id: str | None = None
     scanned: int = 0
     imported: int = 0
     duplicates: int = 0
@@ -179,6 +185,19 @@ async def import_folder(
         index = _visual_index(reader)
         engine = None if dry_run else create_database_engine(settings)
         try:
+            if engine is not None:
+                with Session(engine) as session:
+                    label = (
+                        "".join(
+                            character
+                            for character in root.name
+                            if character.isprintable() and character not in "/\\"
+                        ).strip()[:200]
+                        or None
+                    )
+                    summary.import_session_id = start_import_session(
+                        session, "folder_import", label=label
+                    ).id
             for item in _walk(root, recursive):
                 if isinstance(item, ScanFailure):
                     summary.failed += 1
@@ -249,6 +268,7 @@ async def import_folder(
                                 settings,
                                 allow_visual_duplicate=allow_visual_duplicates,
                                 classify=classify,
+                                import_session_id=summary.import_session_id,
                                 visual_lookup=lambda _session, value: index.find(value),
                             )
                         index.add(
@@ -281,6 +301,18 @@ async def import_folder(
                 except Exception as exc:
                     summary.failed += 1
                     _report("failed", path, str(exc), verbose=verbose)
+            if engine is not None:
+                with Session(engine) as session:
+                    complete_import_session(
+                        session,
+                        summary.import_session_id,
+                        ImportSessionOutcomes(
+                            duplicate_count=summary.duplicates,
+                            visual_duplicate_skipped_count=summary.visual_duplicates,
+                            unsupported_count=summary.unsupported,
+                            failed_count=summary.failed,
+                        ),
+                    )
         finally:
             if engine is not None:
                 engine.dispose()
@@ -329,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Import could not start: {exc}", file=sys.stderr)
         return 2
     print("Dry run complete" if args.dry_run else "Import complete")
+    if summary.import_session_id is not None:
+        print(f"Session: {summary.import_session_id}")
     for label, value in (
         ("Scanned", summary.scanned),
         ("Would import" if args.dry_run else "Imported", summary.imported),
