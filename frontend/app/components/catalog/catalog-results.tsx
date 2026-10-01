@@ -2,7 +2,8 @@
 
 import { ReactNode, useMemo } from "react";
 import { CatalogPhotoPage, Photo } from "../../lib/api";
-import { CatalogLayout } from "../../lib/catalog-query";
+import { CatalogLayout, REJECTED_PHOTOS_HREF } from "../../lib/catalog-query";
+import Link from "next/link";
 import MoveToTrashButton from "../move-to-trash-button";
 import PhotoCard from "./photo-card";
 
@@ -49,6 +50,9 @@ type CatalogResultsProps = {
   selectedIds: ReadonlySet<number>;
   isSelectionBusy: boolean;
   onToggleSelection: (photoId: number) => void;
+  rejectedReview?: boolean;
+  hasAdditionalRejectedFilters?: boolean;
+  onReviewRejected?: () => void;
 };
 
 export default function CatalogResults(props: CatalogResultsProps) {
@@ -63,7 +67,7 @@ export default function CatalogResults(props: CatalogResultsProps) {
       isSelected={props.selectedIds.has(photo.id)}
       isSelectionBusy={props.isSelectionBusy}
       onToggleSelection={props.onToggleSelection}
-      action={<MoveToTrashButton
+      action={props.rejectedReview ? undefined : <MoveToTrashButton
         photo={photo}
         onMoved={props.onPhotoMoved}
         onError={props.onError}
@@ -84,6 +88,12 @@ export default function CatalogResults(props: CatalogResultsProps) {
       <div className="grid gap-5 py-8 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {Array.from({ length: 8 }).map((_, index) => <div key={index} className="h-[28rem] animate-pulse rounded-lg border border-stone-200 bg-white" />)}
       </div>
+    ) : props.rejectedReview && photos.length === 0 ? (
+      <div className="py-8"><CatalogStateMessage
+        title={props.hasAdditionalRejectedFilters ? "No rejected photos match these filters" : "No rejected photos need cleanup"}
+        description={props.hasAdditionalRejectedFilters ? "Broaden the filters to review other active rejected photos." : "Reject decisions stay separate from Trash. You can return to Culling or List."}
+        action={<Link href={props.hasAdditionalRejectedFilters ? REJECTED_PHOTOS_HREF : "/cull"} onClick={props.onReviewRejected} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 px-4 text-sm font-semibold text-emerald-900">{props.hasAdditionalRejectedFilters ? "Review all rejected photos" : "Back to Culling"}</Link>}
+      /></div>
     ) : (props.catalog?.facets.active_total ?? 0) === 0 ? (
       <div className="py-8"><CatalogStateMessage title="Start your animal archive" description="Upload an image to create the first record in this local collection." /></div>
     ) : photos.length > 0 && props.viewMode === "flat" ? (

@@ -338,7 +338,7 @@ export type BulkPhotoActionRequest =
   | { operation: "remove_tags"; tags: string[] }
   | { operation: "set_category"; category: string }
   | { operation: "clear_category" }
-  | { operation: "move_to_trash" };
+  | { operation: "move_to_trash"; expected_culling_state?: "reject" };
 
 export type BulkPhotoRequest = BulkPhotoActionRequest & { photo_ids: number[] };
 
@@ -356,6 +356,7 @@ export type BulkPhotoErrorCode =
   | "duplicate_photo_ids"
   | "photos_not_found"
   | "photos_not_active"
+  | "photos_not_rejected"
   | "invalid_tags"
   | "invalid_category"
   | "bulk_operation_failed";

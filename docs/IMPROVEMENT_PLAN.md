@@ -453,9 +453,8 @@ atomic bulk actions share the same state.
 Schema 17 and portable export v8 preserve user decisions; backup-v1 verification
 and rehearsal support schemas 9–17. No queue membership table, culling sort,
 index, automatic decision, or automatic deletion is added. See the
-[Culling guide](OPERATIONS.md#photo-culling-v03). The recommended next v0.3
-workflow is an explicit review of rejected Photos before moving selected ones
-to recoverable Trash.
+[Culling guide](OPERATIONS.md#photo-culling-v03). Rejected review now connects
+this workflow to explicit selection and recoverable Trash, as described below.
 
 ## Current v0.3 feature: Two-photo Compare
 
@@ -474,5 +473,25 @@ conflict reloads keep lifecycle changes usable without a new cache or backend AP
 
 Compare adds no winner scoring, duplicate resolution, Trash, image processing,
 or synchronized viewing. See the [Compare guide](OPERATIONS.md#photo-compare-v03).
-The recommended next v0.3 feature remains explicit review of rejected Photos
-before recoverable Trash.
+Rejected review is now provided by the shared List workflow described below.
+
+## Current v0.3 feature: Rejected Photo Review and Cleanup
+
+Review rejected opens the existing List with the Reject criterion only. Normal
+catalog counts, pagination, cards, selection, detail/lightbox, culling actions,
+and Compare provide inspection before explicit recoverable Trash. Membership is
+active plus Reject; Pick/Clear and Trash remove Photos, and restore re-enters the
+set when Reject is retained. Smart Collections and duplicate review retain their
+existing dynamic lifecycle semantics.
+
+Cleanup submits at most 250 selected IDs through the existing typed bulk Trash
+operation with an optional still-Reject precondition. Membership validation and
+Trash share one SQLite write transaction; missing/inactive/non-Reject selections
+fail atomically. The confirmation reports the count and recoverability, while
+explicit refresh clears selection without retrying a failed mutation.
+
+No new route, queue state, schema, export format, index, automatic cleanup, or
+permanent deletion UI is added. See the
+[cleanup guide](OPERATIONS.md#rejected-photo-review-and-cleanup-v03). The
+recommended next v0.3 task is adding recent-import and manual Collection sources
+to Culling while retaining its existing bounded source/navigation semantics.

@@ -132,7 +132,25 @@ def apply_bulk_photo_action(
             )
 
     try:
+        guarded_trash = (
+            isinstance(request, BulkMoveToTrashRequest)
+            and request.expected_culling_state == "reject"
+        )
+        if guarded_trash:
+            # Serialize membership validation and Trash against other writers.
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
         photos = _load_active_photos(request.photo_ids, session)
+        if guarded_trash:
+            mismatched = [
+                photo.id for photo in photos if photo.culling_state != "reject"
+            ]
+            if mismatched:
+                raise _bulk_error(
+                    409,
+                    "photos_not_rejected",
+                    "One or more selected photos are no longer Reject. No photos were moved. Refresh and reselect.",
+                    photo_ids=mismatched,
+                )
         now = utc_now()
 
         if isinstance(request, BulkAddTagsRequest):

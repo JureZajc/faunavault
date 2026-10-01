@@ -14,6 +14,8 @@ type BulkActionDialogProps = {
   error: string | null;
   onClose: () => void;
   onSubmit: (request: BulkPhotoActionRequest) => Promise<boolean>;
+  rejectedReview?: boolean;
+  onRefreshRejected?: () => void;
 };
 
 export default function BulkActionDialog({
@@ -24,6 +26,8 @@ export default function BulkActionDialog({
   error,
   onClose,
   onSubmit,
+  rejectedReview = false,
+  onRefreshRejected,
 }: BulkActionDialogProps) {
   const [favorite, setFavorite] = useState(true);
   const [rating, setRating] = useState("5");
@@ -54,13 +58,16 @@ export default function BulkActionDialog({
 
   const tags = parseTags(tagsInput);
   const category = categoryInput.trim();
+  const trashTitle = rejectedReview
+    ? `Move ${selectedCount} selected ${selectedCount === 1 ? "photo" : "photos"} to Trash?`
+    : `Move ${selectedCount} photos to Trash?`;
   const title = action === "culling" ? `Culling decision for ${selectedCount} selected photos` : action === "favorite" ? `Favorite / Unfavorite ${selectedCount} selected photos` : action === "rating" ? `Set rating for ${selectedCount} selected photos` :
     action === "add_tags"
       ? `Add tags to ${selectedCount} selected photos`
       : action === "remove_tags"
         ? `Remove tags from ${selectedCount} selected photos`
         : action === "move_to_trash"
-          ? `Move ${selectedCount} photos to Trash?`
+          ? trashTitle
           : categoryMode === "clear"
             ? `Clear category for ${selectedCount} photos`
             : `Set category for ${selectedCount} photos`;
@@ -92,7 +99,9 @@ export default function BulkActionDialog({
         request = { operation: "set_category", category };
       }
     } else {
-      request = { operation: "move_to_trash" };
+      request = rejectedReview
+        ? { operation: "move_to_trash", expected_culling_state: "reject" }
+        : { operation: "move_to_trash" };
     }
     if (await onSubmit(request)) onClose();
   }
@@ -191,6 +200,11 @@ export default function BulkActionDialog({
             {validationError ?? error}
           </p>
         ) : null}
+        {error && rejectedReview && onRefreshRejected ? (
+          <button type="button" disabled={isBusy} onClick={onRefreshRejected} className="mt-3 min-h-11 text-sm font-semibold text-emerald-900 underline">
+            Refresh rejected photos
+          </button>
+        ) : null}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <button
@@ -204,7 +218,7 @@ export default function BulkActionDialog({
           </button>
           <button
             type="submit"
-            disabled={isBusy}
+            disabled={isBusy || selectedCount === 0}
             className={`min-h-11 rounded-md px-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${
               action === "move_to_trash"
                 ? "bg-red-700 hover:bg-red-800"
@@ -218,7 +232,7 @@ export default function BulkActionDialog({
                 : action === "remove_tags"
                   ? "Remove tags"
                   : action === "move_to_trash"
-                    ? "Move to Trash"
+                    ? rejectedReview ? "Move selected to Trash" : "Move to Trash"
                     : categoryMode === "clear"
                       ? "Clear category"
                       : "Set category"}

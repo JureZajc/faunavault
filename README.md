@@ -28,6 +28,9 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 - Two-photo Compare from List selection, Duplicate Review, or Culling, with
   independent zoom/pan, explicit original inspection, and shared curation.
   See the [Compare guide](docs/OPERATIONS.md#photo-compare-v03).
+- Review rejected Photos through List, inspect or Compare, and explicitly select
+  still-rejected Photos for recoverable Trash. Restore returns them to review.
+  [Cleanup guide](docs/OPERATIONS.md#rejected-photo-review-and-cleanup-v03).
 - Explicit cross-page selection for bulk tags, category, Collections, curation,
   and recoverable Trash.
 - SHA-256 exact duplicate protection and conservative visual duplicate review.

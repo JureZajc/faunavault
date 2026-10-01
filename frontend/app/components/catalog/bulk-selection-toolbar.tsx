@@ -22,6 +22,7 @@ type BulkSelectionToolbarProps = {
   onExit: () => void;
   onOpenAction: (action: BulkToolbarAction) => void;
   onCompare?: () => void;
+  rejectedReview?: boolean;
 };
 
 export default function BulkSelectionToolbar({
@@ -34,6 +35,7 @@ export default function BulkSelectionToolbar({
   onExit,
   onOpenAction,
   onCompare,
+  rejectedReview = false,
 }: BulkSelectionToolbarProps) {
   const selectPageRef = useRef<HTMLInputElement>(null);
   const visibleSelectedCount = visibleIds.filter((photoId) =>
@@ -108,6 +110,7 @@ export default function BulkSelectionToolbar({
           ].map(([action, label]) => (
             <button
               key={action}
+              aria-label={action === "move_to_trash" && rejectedReview ? `Move ${selectedIds.size} selected ${selectedIds.size === 1 ? "photo" : "photos"} to Trash` : undefined}
               type="button"
               disabled={isBusy || !hasSelection}
               onClick={() => onOpenAction(action as BulkToolbarAction)}
@@ -117,7 +120,7 @@ export default function BulkSelectionToolbar({
                   : "bg-emerald-800 text-white hover:bg-emerald-900"
               }`}
             >
-              {label}
+              {action === "move_to_trash" && rejectedReview ? "Move selected to Trash" : label}
             </button>
           ))}
         </div>

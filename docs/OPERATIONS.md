@@ -801,6 +801,65 @@ null/`pick`/`reject`; CSV uses `\N`/`pick`/`reject`. Backup format v1 supports s
 publication, and compares decisions during isolated recovery rehearsal. Historical
 backups upgrade to undecided. Production restore remains manual.
 
+## Rejected Photo Review and Cleanup (v0.3)
+
+Choose **Review rejected** in List or Culling, including at the end of a pass.
+This opens List with only the Reject filter (`/?catalog_culling_state=reject`),
+newest added first; source search, filters, sort, grouping, page, and Smart
+Collection editing context are cleared. Reject is a curation decision, not
+deletion. Membership is always active Photo plus `culling_state=reject`; there
+is no saved cleanup queue.
+
+The count comes from the normal paginated catalog. Other List filters can narrow
+review; the count then says **matching current filters**. An empty unqualified
+query says **No rejected photos need cleanup**, which says nothing about Trash.
+An empty narrowed query offers **Review all rejected photos**. Resetting filters
+or changing away from Reject returns to the usual List presentation.
+
+Open a card for Photo detail and its fullscreen viewer before cleanup. Choose
+**Select photos**, then check explicit Photos or **Select page**. Selection can
+span pages up to 250 IDs; it never silently selects all matching results. Page
+and layout changes retain selection; criteria/sort changes, successful bulk
+actions, and leaving List clear it. **Culling decision** can mark Pick or clear
+a mistaken Reject; those Photos leave the rejected results after refresh.
+
+Exactly two selected Photos enable the existing **Compare** action. Pick,
+Reject, Clear, Favorite, and Rating remain independent per side. **Back to List**
+preserves the rejected query, additional filters, sort, layout, and page, reloads
+membership, and clears selection. A page that no longer exists is corrected.
+
+**Move selected to Trash** requires a count-bearing confirmation, including for
+one Photo. Only the explicitly selected IDs are submitted. Cleanup checks all
+IDs within one write transaction: missing or already-trashed Photos, or a Reject
+changed to Pick/Undecided in another tab, abort the whole request. No Photos move
+on these conflicts. The dialog retains selection and reports the error; choose
+**Refresh rejected photos** to close it, clear selection, and reload before
+selecting again. Refresh does not retry the mutation. Other failures retain the
+dialog for explicit retry; a successful mutation with a failed catalog refresh
+is reported separately.
+
+Trash remains recoverable through the existing **Trash → Restore** flow. Restore
+returns a Photo to rejected review if its decision remains Reject. Favorites,
+Ratings, capture metadata, classification status, and `reviewed_at` survive
+Trash/restore. Favorites and high Ratings do not block an explicit Trash choice;
+there is no additional conditional warning. Cleanup does not accept AI review or
+enqueue classification; existing Trash behavior cancels active classification
+jobs. Duplicate candidates disappear while either Photo is in Trash and
+unresolved pairs return on restore; dismissed decisions remain preserved.
+Rejected Smart Collections update dynamically without definition changes.
+
+Cleanup uses `POST /photos/bulk` with `operation=move_to_trash`, explicit
+`photo_ids`, and optional `expected_culling_state=reject`. The rejected-review
+UI always supplies the precondition; existing callers without it retain ordinary
+bulk Trash semantics. A decision mismatch returns HTTP 409 `photos_not_rejected`
+with the mismatching IDs. Other metadata changes alone do not block cleanup.
+
+No individual Trash buttons are offered on rejected-review cards; inspection
+continues through existing Photo detail. Permanent deletion stays inside Trash
+with its existing confirmation. There is no automatic selection, Trash,
+permanent deletion, retention, scan, background job, or scheduling. Schema 17,
+export v8, and backup v1 remain unchanged.
+
 ## Photo Favorites and Ratings
 
 Favorite is a personal yes/no choice; Rating is an optional integer 1–5. Null

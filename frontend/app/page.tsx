@@ -34,13 +34,21 @@ import {
   SmartCollection,
   updateSmartCollection,
 } from "./lib/api";
-import { catalogSortOption, cullingListHref, hasCurationFilters, mapCatalogHref } from "./lib/catalog-query";
+import {
+  catalogSortOption,
+  cullingListHref,
+  hasCurationFilters,
+  hasAdditionalRejectedFilters,
+  mapCatalogHref,
+} from "./lib/catalog-query";
 import { compareHref } from "./lib/photo-compare";
 import { savedQueryFromState } from "./lib/smart-collections";
 
 function HomeContent() {
   const router = useRouter();
   const query = useCatalogQueryState();
+  const rejectedReview = query.homeView === "list" && query.catalogState.culling_state === "reject";
+  const additionalRejectedFilters = hasAdditionalRejectedFilters(query.catalogState);
   const editIdValue = new URLSearchParams(query.paramsString).get("smart_edit");
   const editId = editIdValue && /^\d+$/.test(editIdValue) && Number.isSafeInteger(Number(editIdValue)) && Number(editIdValue) > 0 ? Number(editIdValue) : null;
   const [editCollection, setEditCollection] = useState<SmartCollection | null>(null);
@@ -319,6 +327,7 @@ function HomeContent() {
           <>
             {editId !== null ? <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection ? ` “${editCollection.name}”` : ""}</p><p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>{editError ? <p role="alert" className="mt-2 text-sm text-red-700">{editError} <button type="button" onClick={() => { setEditError(null); void getSmartCollection(editId).then(setEditCollection).catch((error) => setEditError(error instanceof Error ? error.message : "Could not load Smart Collection")); }} className="underline">Retry</button></p> : null}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!editCollection || savingCriteria} onClick={async () => { setSavingCriteria(true); setEditError(null); try { await updateSmartCollection(editId, { query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); } catch (nextError) { setEditError(nextError instanceof Error ? nextError.message : "Could not save criteria"); } finally { setSavingCriteria(false); } }} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button><button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button></div></div> : null}
             <CatalogToolbar
+              onReviewRejected={() => { query.cancelPendingSearch(); selection.reset(); }}
               cullingState={query.catalogState.culling_state}
               onCullingStateChange={(value) => { selection.reset(); query.setCullingState(value); }}
               cullingHref={cullingListHref(query.catalogState, query.searchInput, query.returnTo)}
@@ -392,8 +401,26 @@ function HomeContent() {
               onSaveSmartCollection={editId === null ? () => setSaveSmartOpen(true) : undefined}
             />
 
+            {rejectedReview ? (
+              <section aria-label="Rejected photo review" className="mt-5 rounded-lg border border-stone-200 bg-white p-4">
+                <h2 className="text-2xl font-semibold">Rejected Photos</h2>
+                <p className="mt-2 text-sm leading-6 text-stone-600">
+                  Reject is a curation decision. Inspect photos or compare a
+                  selected pair, then explicitly select photos to move to
+                  recoverable Trash. Use Culling decision to mark Pick or clear
+                  a mistaken Reject.
+                </p>
+                <p role="status" className="mt-2 text-sm font-semibold">
+                  {isLoading ? "Loading rejected photos…" : catalog
+                    ? `${catalog.total} rejected ${catalog.total === 1 ? "photo" : "photos"}${additionalRejectedFilters ? " matching current filters" : ""}`
+                    : "Rejected count unavailable"}
+                </p>
+              </section>
+            ) : null}
+
             {selection.isSelecting ? (
               <BulkSelectionToolbar
+                rejectedReview={rejectedReview}
                 selectedIds={selection.selectedIds}
                 visibleIds={visiblePhotoIds}
                 isBusy={bulkActions.isBusy}
@@ -435,6 +462,9 @@ function HomeContent() {
             ) : null}
 
             <CatalogResults
+              onReviewRejected={() => { query.cancelPendingSearch(); selection.reset(); }}
+              rejectedReview={rejectedReview}
+              hasAdditionalRejectedFilters={additionalRejectedFilters}
               catalog={catalog}
               isLoading={isLoading}
               error={error}
@@ -458,6 +488,15 @@ function HomeContent() {
               onToggleSelection={selection.toggle}
             />
             <BulkActionDialog
+              rejectedReview={rejectedReview}
+              onRefreshRejected={() => {
+                if (bulkActions.isBusy) return;
+                setBulkDialog(null);
+                selection.reset();
+                bulkActions.clearError();
+                setActionError(null);
+                void loadPhotos().catch(() => undefined);
+              }}
               key={bulkDialog ?? "bulk-closed"}
               action={bulkDialog}
               selectedCount={selection.selectedCount}

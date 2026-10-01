@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import CompareBrowser from "../app/compare/compare-browser";
@@ -33,7 +33,7 @@ beforeEach(() => {
   });
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 test.each(["", "right=2", "left=1", "left=1&right=1", "left=0&right=2", "left=1.2&right=2", "left=1&right=9007199254740992", "left=1&left=3&right=2", "left=1&right=2&right=3"])("invalid route %s requests no photos", async (query) => {
   navigation.search = query;
