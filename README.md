@@ -25,6 +25,9 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 - Photo Culling with independent Pick / Reject decisions, sequential review,
   keyboard shortcuts, List filters, Smart Collections, and explicit bulk actions.
   [Culling guide](docs/OPERATIONS.md#photo-culling-v03).
+- Two-photo Compare from List selection, Duplicate Review, or Culling, with
+  independent zoom/pan, explicit original inspection, and shared curation.
+  See the [Compare guide](docs/OPERATIONS.md#photo-compare-v03).
 - Explicit cross-page selection for bulk tags, category, Collections, curation,
   and recoverable Trash.
 - SHA-256 exact duplicate protection and conservative visual duplicate review.

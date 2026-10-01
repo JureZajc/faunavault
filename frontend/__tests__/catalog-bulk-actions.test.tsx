@@ -187,6 +187,36 @@ test("selection uses photo IDs so duplicate filenames remain independent", async
   expect(screen.getByText("0 selected")).toBeTruthy();
 });
 
+test("Compare requires exactly two selected IDs across pages and returns to the applied query without selection", async () => {
+  window.history.replaceState(null, "", "/?catalog_category=mammal");
+  const view = render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await userEvent.click(screen.getByRole("button", { name: "Select photos" }));
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Compare" }).disabled).toBe(true);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Select photo 2: Second fox" }));
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Compare" }).disabled).toBe(true);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Select photo 1: First fox" }));
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Compare" }).disabled).toBe(false);
+  await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  await screen.findByRole("heading", { name: "Third fox" });
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Compare" }).disabled).toBe(false);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Select photo 3: Third fox" }));
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Compare" }).disabled).toBe(true);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Select photo 3: Third fox" }));
+  await userEvent.click(screen.getByRole("button", { name: "Compare" }));
+  const params = new URLSearchParams(window.location.search);
+  expect(window.location.pathname).toBe("/compare");
+  expect(params.get("left")).toBe("1"); expect(params.get("right")).toBe("2");
+  const returnTo = params.get("returnTo")!;
+  expect(returnTo).toContain("catalog_category=mammal"); expect(returnTo).toContain("catalog_page=2");
+  expect(screen.queryByRole("region", { name: "Bulk photo actions" })).toBeNull();
+  view.unmount();
+  window.history.replaceState(null, "", returnTo);
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Third fox" });
+  expect(screen.getByRole("button", { name: "Select photos" })).toBeTruthy();
+});
+
 test("selection spans pages and layouts but clears immediately for a new query", async () => {
   render(<Home />);
   await screen.findByRole("heading", { name: "First fox" });

@@ -244,6 +244,59 @@ selection, or Smart Collection definitions.
 
 ## Exact and possible visual duplicates
 
+### Photo Compare (v0.3)
+
+Compare exactly two active Photos:
+
+- In List, enter **Select photos**, explicitly select two (including across
+  pages), and click **Compare**. Other selection counts disable Compare.
+- In Duplicate Review, click **Compare** for the current candidate pair.
+- In Culling, use **Compare with next**, or **Compare with previous** at the
+  end. A source with no neighbor cannot open a comparison.
+
+The route `/compare?left=<id>&right=<id>` restores the same pair on refresh or
+when copied. Entry links include a local return URL. Returning to List preserves
+the applied filters, sort, layout, and page and clears selection. Leaving Culling
+resets its transient session history, as for Photo detail. Invalid or identical
+IDs show an explanation; unavailable Photos leave the surviving pane usable.
+
+Desktop (1024 px and wider) shows two large panes. Narrower screens use **Focus
+left photo** / **Focus right photo** to switch between them without discarding
+their viewing state. Each side includes filename/title, camera-local capture time
+with seconds and recorded offset, dimensions, filesize, category/species,
+camera/lens, GPS availability, and curation. Neutral “Differs” indicators compare
+metadata; larger files or dimensions do not imply a better Photo.
+
+Images initially use the normal preview (up to 1600 px), or a thumbnail when its
+resized filename is missing. Each pane has independent Fit/reset, 1–4× fitted
+zoom, pointer-drag/scroll panning, and directional pan buttons. **Load original
+resolution** explicitly requests a JPEG/PNG/WebP original; the preview stays
+visible while loading and on failure. HEIC/HEIF keeps its JPEG preview. Fit/reset
+resets zoom and pan; **Use preview** switches back after original inspection.
+Zoom is relative to fit, not a promise of one source pixel per display pixel.
+
+Pick, Reject, Clear decision, Favorite/Unfavorite, and Rating 1–5/clear use the
+normal guarded Photo edits. They remain independent, never affect the opposite
+side, and do not advance to another pair. Compare has no Trash or permanent
+deletion controls. Duplicate Review retains authoritative evidence and **Keep
+both / Not duplicates** or Trash resolution; return there to resolve the pair.
+
+Clicking or focusing a pane activates its shortcuts. **Left/Right arrows** select
+the active side; **P** picks, **X** rejects, **U** clears its culling decision,
+**F** toggles Favorite, **1–5** sets Rating, and **0** clears Rating. Typing,
+modifiers, held-key repeats, and modal dialogs suppress shortcuts. Native controls
+and image viewport arrows retain their normal navigation/scroll behavior. Every
+shortcut has an accessible control identifying its target side.
+
+Compare refreshes on focus/visibility, explicitly through each **Refresh** button,
+and every 30 seconds while visible, without overlapping requests or saves. A
+conflicting edit reloads confirmed state and requires another explicit action.
+Refresh failures identify stale state and disable edits until refresh succeeds.
+Photo detail APIs deliberately return the same unavailable response for Trash
+and permanent deletion. Changes use the same state as List, Culling, Photo detail,
+and Smart Collections. No winner selection, scoring, automatic alignment,
+synchronized zoom, image editing, new backend endpoint, or archive scan is added.
+
 ### Duplicate Review Center
 
 Open **Duplicates** (`/duplicates`) to curate possible visual duplicates already

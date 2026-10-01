@@ -35,6 +35,7 @@ import {
   updateSmartCollection,
 } from "./lib/api";
 import { catalogSortOption, cullingListHref, hasCurationFilters, mapCatalogHref } from "./lib/catalog-query";
+import { compareHref } from "./lib/photo-compare";
 import { savedQueryFromState } from "./lib/smart-collections";
 
 function HomeContent() {
@@ -400,6 +401,14 @@ function HomeContent() {
                 onTogglePage={selection.togglePage}
                 onClear={selection.clear}
                 onExit={selection.reset}
+                onCompare={() => {
+                  if (selection.selectedCount !== 2 || bulkActions.isBusy) return;
+                  const [left, right] = Array.from(selection.selectedIds).sort((a, b) => a - b);
+                  query.cancelPendingSearch();
+                  const href = compareHref(left, right, query.returnTo);
+                  selection.reset();
+                  router.push(href);
+                }}
                 onOpenAction={(action) => {
                   bulkActions.clearError();
                   if (action === "add_to_collection") {

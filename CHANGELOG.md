@@ -6,6 +6,14 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Two-photo Compare Mode with URL-restorable pairs, entry from exactly two List
+  selections, Duplicate Review candidates, and existing Culling neighbors.
+  Independent zoom/pan and deliberate JPEG/PNG/WebP original inspection support
+  larger viewing; narrow screens switch between Left and Right panes.
+- Compare shares Pick / Reject / Clear, Favorite, and Rating controls with Photo
+  detail, with targeted accessible controls, visible keyboard shortcuts, and
+  refresh/conflict handling. Decisions never choose a winner, affect the other
+  photo, resolve duplicates, or move a photo to Trash.
 - Photo Culling workspace with independent Pick / Reject / undecided decisions,
   successful-save auto-advance, session Previous/Next history, visible keyboard
   shortcuts, and entry from the complete filtered List query.

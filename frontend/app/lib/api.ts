@@ -840,8 +840,8 @@ export function getCatalogTaxa(
   return request<CatalogTaxonPage>(`/catalog/taxa?${params}`, { signal });
 }
 
-export function getPhoto(id: string) {
-  return request<Photo>(`/photos/${id}`);
+export function getPhoto(id: string, signal?: AbortSignal) {
+  return request<Photo>(`/photos/${id}`, { signal });
 }
 
 export function deletePhoto(id: number) {

@@ -21,6 +21,7 @@ type BulkSelectionToolbarProps = {
   onClear: () => void;
   onExit: () => void;
   onOpenAction: (action: BulkToolbarAction) => void;
+  onCompare?: () => void;
 };
 
 export default function BulkSelectionToolbar({
@@ -32,6 +33,7 @@ export default function BulkSelectionToolbar({
   onClear,
   onExit,
   onOpenAction,
+  onCompare,
 }: BulkSelectionToolbarProps) {
   const selectPageRef = useRef<HTMLInputElement>(null);
   const visibleSelectedCount = visibleIds.filter((photoId) =>
@@ -90,6 +92,10 @@ export default function BulkSelectionToolbar({
           </button>
         </div>
         <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
+          {onCompare ? <div>
+            <button type="button" disabled={isBusy || selectedIds.size !== 2} onClick={onCompare} aria-describedby="compare-selection-help" className="min-h-11 rounded-md border border-emerald-800 bg-white px-3 text-sm font-semibold text-emerald-900 disabled:opacity-50">Compare</button>
+            <p id="compare-selection-help" className="mt-1 text-xs text-stone-600">{selectedIds.size === 2 ? "Compare the selected pair" : "Select exactly two photos to compare"}</p>
+          </div> : null}
           {[
             ["add_to_collection", "Add to Collection"],
             ["favorite", "Favorite / Unfavorite"],
