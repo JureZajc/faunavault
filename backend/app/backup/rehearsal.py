@@ -20,6 +20,7 @@ from app.archive_integrity import (
     is_link_or_junction,
     open_read_only_database,
     read_duplicate_signature,
+    read_event_signature,
     read_import_session_signature,
     validate_flat_filename,
 )
@@ -160,6 +161,8 @@ class RecoverySnapshot:
     collection_memberships: tuple[tuple[int, int], ...] = ()
     smart_collections: tuple[SmartCollectionRecoveryRecord, ...] = ()
     import_sessions: tuple[tuple[object, ...], ...] = ()
+    archive_events: tuple[tuple, ...] = ()
+    archive_event_memberships: tuple[tuple, ...] = ()
     duplicate_pairs: str = hashlib.sha256(b"").hexdigest()
     duplicate_scans: str = hashlib.sha256(b"").hexdigest()
 
@@ -183,6 +186,8 @@ class RehearsalResult:
     albums: int
     doctor_status: str
     warnings: tuple[str, ...]
+    archive_events: int = 0
+    archive_event_memberships: int = 0
 
 
 def _is_within(path: Path, parent: Path) -> bool:
@@ -441,6 +446,8 @@ def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
 
 
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
+    if schema_version == 19:
+        return _read_schema_19_snapshot(database_path)
     if schema_version == 18:
         return _read_schema_18_snapshot(database_path)
     if schema_version == 17:
@@ -467,7 +474,13 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_18_snapshot(database_path)
+    return _read_schema_19_snapshot(database_path)
+
+
+def _read_schema_19_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_18_snapshot(database_path, schema_version=19)
+    events, memberships = read_event_signature(database_path)
+    return replace(base, archive_events=events, archive_event_memberships=memberships)
 
 
 def _read_schema_16_snapshot(
@@ -508,9 +521,14 @@ def _read_schema_17_snapshot(
     )
 
 
-def _read_schema_18_snapshot(database_path: Path) -> RecoverySnapshot:
-    base = _read_schema_17_snapshot(database_path, schema_version=18)
-    by_id = {photo.id: photo for photo in inspect_database(database_path, 18).photos}
+def _read_schema_18_snapshot(
+    database_path: Path, *, schema_version: int = 18
+) -> RecoverySnapshot:
+    base = _read_schema_17_snapshot(database_path, schema_version=schema_version)
+    by_id = {
+        photo.id: photo
+        for photo in inspect_database(database_path, schema_version).photos
+    }
     return replace(
         base,
         photos=tuple(
@@ -664,6 +682,13 @@ def _compare_recovery_snapshots(
         raise ArchiveIntegrityError("Collection metadata changed during rehearsal")
     if source.collection_memberships != current.collection_memberships:
         raise ArchiveIntegrityError("Collection memberships changed during rehearsal")
+    if (
+        source.archive_events != current.archive_events
+        or source.archive_event_memberships != current.archive_event_memberships
+    ):
+        raise ArchiveIntegrityError(
+            "Trip/Event metadata or memberships changed during rehearsal"
+        )
     if source.import_sessions != current.import_sessions:
         raise ArchiveIntegrityError("Import Session metadata changed during rehearsal")
     if source.smart_collections != current.smart_collections:
@@ -858,6 +883,8 @@ def rehearse_backup(backup_path: Path, target: Path) -> RehearsalResult:
             trashed_photos=inventory.trashed_photos,
             animals=inventory.animals,
             taxa=inventory.taxa,
+            archive_events=inventory.archive_events,
+            archive_event_memberships=inventory.archive_event_memberships,
             collections=inventory.collections,
             collection_memberships=inventory.collection_memberships,
             albums=album_count,

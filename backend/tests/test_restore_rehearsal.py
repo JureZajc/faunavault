@@ -115,7 +115,7 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
     return backup
 
 
-@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14, 15, 16, 17, 18])
+@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
 def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
     tmp_path, monkeypatch, schema
 ):
@@ -248,6 +248,7 @@ def test_schema13_upgrade_failure_preserves_originals_and_retries(
             16,
             17,
             18,
+            19,
         )
         assert initialize_archive_storage(engine, settings).applied_migrations == ()
         with sqlite3.connect(database) as connection:
@@ -256,7 +257,7 @@ def test_schema13_upgrade_failure_preserves_originals_and_retries(
                 for row in connection.execute(
                     "SELECT version FROM schema_migration ORDER BY version"
                 )
-            ] == list(range(1, 19))
+            ] == list(range(1, 20))
             assert connection.execute(
                 "SELECT is_favorite, rating FROM photo ORDER BY id"
             ).fetchall() == [(0, None), (0, None)]
@@ -363,7 +364,7 @@ def test_frozen_schema9_fixture_verifies_rehearses_and_remains_immutable(tmp_pat
     assert verification.manifest is not None
     assert verification.manifest.database.schema_version == 9
     assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset(
-        {9, 10, 11, 12, 13, 14, 15, 16, 17, 18}
+        {9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
     )
     assert result.source_schema_version == 9
     assert result.current_schema_version == LATEST_SCHEMA_VERSION

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import EventListContext from "../components/events/event-list-context";
 import ArchiveNavigation from "../components/archive-navigation";
 import {
   CatalogCategoryFilter, CatalogDateFilters, CatalogStatusFilter,
@@ -30,6 +31,7 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
       .map((taxon) => [taxon.taxon_id, taxon]),
   ).values());
   const summary = [
+    state.event_id !== undefined ? `Trip/Event #${state.event_id}` : null,
     state.uncategorized ? "Category: Unknown" : state.category ? `Category: ${state.category}` : null,
     state.taxon_id ? `Taxon: ${taxonOptions.find((taxon) => taxon.taxon_id === state.taxon_id)?.label ?? `#${state.taxon_id}`}` : null,
     state.status ? `Status: ${state.status.replaceAll("_", " ")}` : null,
@@ -50,6 +52,7 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
           <ArchiveNavigation active="map" />
           <p className="text-sm text-stone-500 lg:text-right">Browse active photos by capture location</p>
         </div>
+        {state.event_id !== undefined ? <div className="mt-5"><EventListContext id={String(state.event_id)} /></div> : null}
         <header className="mt-6 rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Archive geography</p>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

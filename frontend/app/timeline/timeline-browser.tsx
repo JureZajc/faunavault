@@ -1,44 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import TimelinePreview from "../components/photo-thumbnail-preview";
 import ArchiveNavigation from "../components/archive-navigation";
 import { usePhotoTimeline } from "../hooks/use-photo-timeline";
 import {
-  imageUrl,
   TimelineMonth,
-  TimelinePhotoPreview,
   TimelineYear,
 } from "../lib/api";
 import {
   timelineMonthHref,
   timelineMonthName,
-  timelinePreviewTitle,
 } from "../lib/photo-timeline";
-
-function TimelinePreview({ preview }: { preview: TimelinePhotoPreview }) {
-  const [failed, setFailed] = useState(false);
-  const title = timelinePreviewTitle(preview);
-
-  return (
-    <div className="aspect-[4/3] min-w-0 overflow-hidden rounded-md bg-stone-100">
-      {failed ? (
-        <div className="grid h-full place-items-center px-2 text-center text-xs font-medium text-stone-500">
-          Image unavailable
-        </div>
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element -- Local backend thumbnails bypass Next image optimization.
-        <img
-          src={imageUrl("thumbs", preview.thumbnail_filename)}
-          alt={title}
-          loading="lazy"
-          onError={() => setFailed(true)}
-          className="h-full w-full object-cover"
-        />
-      )}
-    </div>
-  );
-}
 
 function TimelineMonthCard({ year, month }: { year: number; month: TimelineMonth }) {
   const name = timelineMonthName(month.month);

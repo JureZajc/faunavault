@@ -17,6 +17,8 @@ from pydantic import ValidationError
 from app.archive_export.schema import (
     EXPORT_FORMAT_VERSION,
     AnimalExport,
+    ArchiveEventExport,
+    ArchiveEventPhotoExport,
     ArchiveMetadataExport,
     CollectionExport,
     CollectionPhotoExport,
@@ -36,6 +38,7 @@ from app.archive_integrity import (
     open_read_only_database,
     snapshot_database,
     validate_database_connection,
+    validate_event_tables,
     validate_flat_filename,
 )
 from app.catalog_query import CatalogSavedQuery
@@ -183,6 +186,8 @@ class SnapshotData:
     collection_photos: list[CollectionPhotoExport]
     smart_collections: list[SmartCollectionExport]
     import_sessions: list[ImportSessionExport]
+    archive_events: list[ArchiveEventExport]
+    archive_event_photos: list[ArchiveEventPhotoExport]
 
 
 @dataclass(frozen=True)
@@ -655,6 +660,32 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             )
             for row in connection.execute("SELECT * FROM import_session ORDER BY id")
         ]
+        validate_event_tables(connection)
+        archive_events = [
+            ArchiveEventExport(
+                **{
+                    key: row[key]
+                    for key in (
+                        "id",
+                        "kind",
+                        "title",
+                        "start_date",
+                        "end_date",
+                        "location_label",
+                        "notes",
+                    )
+                },
+                created_at=_timestamp(row["created_at"], "archive_event.created_at"),
+                updated_at=_timestamp(row["updated_at"], "archive_event.updated_at"),
+            )
+            for row in connection.execute("SELECT * FROM archive_event ORDER BY id")
+        ]
+        archive_event_photos = [
+            ArchiveEventPhotoExport(event_id=row["event_id"], photo_id=row["photo_id"])
+            for row in connection.execute(
+                "SELECT event_id, photo_id FROM archive_event_photo ORDER BY event_id, photo_id"
+            )
+        ]
         return SnapshotData(
             migrations[-1],
             photos,
@@ -664,6 +695,8 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             collection_photos,
             smart_collections,
             import_sessions,
+            archive_events,
+            archive_event_photos,
         )
     except ArchiveExportIntegrityError:
         raise
@@ -801,6 +834,8 @@ def _build_document(
             collection_memberships=len(snapshot.collection_photos),
             smart_collections=len(snapshot.smart_collections),
             import_sessions=len(snapshot.import_sessions),
+            archive_events=len(snapshot.archive_events),
+            archive_event_memberships=len(snapshot.archive_event_photos),
             original_bytes=sum(photo.original_size_bytes for photo in photos),
         ),
         photos=photos,
@@ -810,6 +845,8 @@ def _build_document(
         collection_photos=snapshot.collection_photos,
         smart_collections=snapshot.smart_collections,
         import_sessions=snapshot.import_sessions,
+        archive_events=snapshot.archive_events,
+        archive_event_photos=snapshot.archive_event_photos,
     )
 
 

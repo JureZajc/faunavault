@@ -1,5 +1,8 @@
 "use client";
 
+import AddToEventDialog from "./components/events/add-to-event-dialog";
+import EventListContext from "./components/events/event-list-context";
+
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AlbumBrowser from "./components/album-browser";
@@ -67,10 +70,15 @@ function HomeContent() {
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [editId]);
+  const addToEvent = new URLSearchParams(query.paramsString).get("add_to_event");
+  const [addEventIds, setAddEventIds] = useState<number[] | null>(null);
+  const [eventBusy, setEventBusy] = useState(false);
   const selectionContextKey = useMemo(
     () =>
       JSON.stringify({
         view: query.homeView,
+        eventId: query.catalogState.event_id ?? null,
+        addToEvent,
         favoritesOnly: query.catalogState.favorites_only ?? false,
         cullingState: query.catalogState.culling_state ?? null,
         importSessionId: query.catalogState.import_session_id ?? null,
@@ -85,7 +93,7 @@ function HomeContent() {
         sort: query.catalogState.sort,
         order: query.catalogState.order,
       }),
-    [query.catalogState, query.homeView],
+    [query.catalogState, query.homeView, addToEvent],
   );
   const selection = useCatalogSelection(selectionContextKey);
   const {
@@ -162,6 +170,7 @@ function HomeContent() {
   const sortOption = catalogSortOption(query.catalogState);
   const hasActiveViewFilters =
     query.catalogState.import_session_id !== undefined ||
+    query.catalogState.event_id !== undefined ||
     query.searchInput.trim() !== "" ||
     statusFilter !== "all" ||
     categoryFilter !== "all" ||
@@ -294,6 +303,7 @@ function HomeContent() {
             active={query.homeView}
             onNavigate={(section, event) => {
               if (
+                section === "events" ||
                 section === "collections" ||
                 section === "review" ||
                 section === "cull" ||
@@ -329,7 +339,10 @@ function HomeContent() {
           />
         ) : (
           <>
-            {editId !== null ? <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection ? ` “${editCollection.name}”` : ""}</p><p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>{editError ? <p role="alert" className="mt-2 text-sm text-red-700">{editError} <button type="button" onClick={() => { setEditError(null); void getSmartCollection(editId).then(setEditCollection).catch((error) => setEditError(error instanceof Error ? error.message : "Could not load Smart Collection")); }} className="underline">Retry</button></p> : null}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!editCollection || savingCriteria} onClick={async () => { setSavingCriteria(true); setEditError(null); try { await updateSmartCollection(editId, { query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); } catch (nextError) { setEditError(nextError instanceof Error ? nextError.message : "Could not save criteria"); } finally { setSavingCriteria(false); } }} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button><button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button></div></div> : null}
+            {editId !== null ? <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection ? ` “${editCollection.name}”` : ""}</p><p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>{editError ? <p role="alert" className="mt-2 text-sm text-red-700">{editError} <button type="button" onClick={() => { setEditError(null); void getSmartCollection(editId).then(setEditCollection).catch((error) => setEditError(error instanceof Error ? error.message : "Could not load Smart Collection")); }} className="underline">Retry</button></p> : null}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!editCollection || savingCriteria || query.catalogState.event_id !== undefined} onClick={async () => { setSavingCriteria(true); setEditError(null); try { await updateSmartCollection(editId, { query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); } catch (nextError) { setEditError(nextError instanceof Error ? nextError.message : "Could not save criteria"); } finally { setSavingCriteria(false); } }} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button><button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button></div></div> : null}
+            {query.catalogState.event_id !== undefined ? <EventListContext key={`source-${query.catalogState.event_id}`} id={String(query.catalogState.event_id)} revision={catalog} /> : null}
+            {addToEvent !== null ? <EventListContext key={`add-${addToEvent}`} id={addToEvent} adding selectedIds={selection.selectedIds} busy={bulkActions.isBusy || eventBusy} onBusyChange={setEventBusy} onSelect={selection.enter} onDates={(start, end) => { selection.reset(); query.setTakenRange(start, end); }} onAdded={(message) => { selection.reset(); setSuccessNotice(message); }} /> : null}
+            {query.catalogState.event_id !== undefined ? <p className="mb-3 text-sm text-stone-600">Trip/Event membership cannot be saved as Smart Collection criteria. Clear the Trip/Event filter to save a date or metadata query.</p> : null}
             {query.catalogState.import_session_id ? <ImportSessionSummary id={query.catalogState.import_session_id} revision={catalog} /> : null}
             <CatalogToolbar
               rejectedHref={query.catalogState.import_session_id ? importRejectedHref(query.catalogState.import_session_id) : undefined}
@@ -404,7 +417,7 @@ function HomeContent() {
                 query.clearFilters();
               }}
               onEnterSelectionMode={selection.enter}
-              onSaveSmartCollection={editId === null ? () => setSaveSmartOpen(true) : undefined}
+              onSaveSmartCollection={editId === null && query.catalogState.event_id === undefined ? () => setSaveSmartOpen(true) : undefined}
             />
 
             {rejectedReview ? (
@@ -429,7 +442,7 @@ function HomeContent() {
                 rejectedReview={rejectedReview}
                 selectedIds={selection.selectedIds}
                 visibleIds={visiblePhotoIds}
-                isBusy={bulkActions.isBusy}
+                isBusy={bulkActions.isBusy || eventBusy}
                 error={selection.error}
                 onTogglePage={selection.togglePage}
                 onClear={selection.clear}
@@ -444,7 +457,10 @@ function HomeContent() {
                 }}
                 onOpenAction={(action) => {
                   bulkActions.clearError();
-                  if (action === "add_to_collection") {
+                  if (eventBusy) return;
+                  if (action === "add_to_event") {
+                    setAddEventIds([...selection.selectedIds].sort((a, b) => a - b));
+                  } else if (action === "add_to_collection") {
                     setAddCollectionIds(
                       Array.from(selection.selectedIds).sort((a, b) => a - b),
                     );
@@ -490,7 +506,7 @@ function HomeContent() {
               onError={setActionError}
               isSelectionMode={selection.isSelecting}
               selectedIds={selection.selectedIds}
-              isSelectionBusy={bulkActions.isBusy}
+              isSelectionBusy={bulkActions.isBusy || eventBusy}
               onToggleSelection={selection.toggle}
             />
             <BulkActionDialog
@@ -507,13 +523,14 @@ function HomeContent() {
               action={bulkDialog}
               selectedCount={selection.selectedCount}
               categoryOptions={categoryOptions}
-              isBusy={bulkActions.isBusy}
+              isBusy={bulkActions.isBusy || eventBusy}
               error={bulkActions.error}
               onClose={() => {
                 if (!bulkActions.isBusy) setBulkDialog(null);
               }}
               onSubmit={bulkActions.execute}
             />
+            {addEventIds ? <AddToEventDialog photoIds={addEventIds} onClose={() => setAddEventIds(null)} onSuccess={(response) => { setAddEventIds(null); selection.reset(); setSuccessNotice(`Added ${response.added_count} Photos to the Trip/Event${response.already_present_count ? `; ${response.already_present_count} already present` : ""}.`); void loadPhotos().catch(() => undefined); }} /> : null}
             <AddToCollectionDialog
               key={addCollectionIds?.join("-") ?? "collection-closed"}
               photoIds={addCollectionIds}

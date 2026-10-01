@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     JSON,
@@ -310,6 +310,60 @@ def validate_capture_metadata(_mapper, _connection, photo: Photo) -> None:
             raise ValueError("capture timestamp must be camera-local")
         if offset is not None and (captured is None or not -1439 <= offset <= 1439):
             raise ValueError("capture offset requires captured_at and must be in range")
+
+
+class ArchiveEvent(SQLModel, table=True):
+    __tablename__ = "archive_event"
+    __table_args__ = (
+        CheckConstraint("kind IN ('trip', 'event')", name="ck_archive_event_kind"),
+        CheckConstraint(
+            "length(title) BETWEEN 1 AND 100", name="ck_archive_event_title"
+        ),
+        CheckConstraint("start_date <= end_date", name="ck_archive_event_dates"),
+        CheckConstraint(
+            "location_label IS NULL OR length(location_label) BETWEEN 1 AND 200",
+            name="ck_archive_event_location",
+        ),
+        CheckConstraint(
+            "notes IS NULL OR length(notes) BETWEEN 1 AND 2000",
+            name="ck_archive_event_notes",
+        ),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    kind: str
+    title: str
+    start_date: date
+    end_date: date
+    location_label: str | None = None
+    notes: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ArchiveEventPhoto(SQLModel, table=True):
+    __tablename__ = "archive_event_photo"
+    __table_args__ = (
+        Index("ix_archive_event_photo_photo_event", "photo_id", "event_id"),
+    )
+
+    event_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("archive_event.id", ondelete="CASCADE"),
+            primary_key=True,
+            nullable=False,
+        )
+    )
+    photo_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("photo.id", ondelete="CASCADE"),
+            primary_key=True,
+            nullable=False,
+        )
+    )
 
 
 class Collection(SQLModel, table=True):

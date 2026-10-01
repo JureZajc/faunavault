@@ -28,6 +28,77 @@ function fixturePath(filename: string) {
   return path.join(testRoot(), "fixtures", filename);
 }
 
+test("Trips & Events explicit membership, Culling and responsive navigation", async ({ page, request }) => {
+  const filenames = ["faunavault-e2e-trip-first.jpg", "faunavault-e2e-trip-second.jpg"];
+  const ids: number[] = [];
+  let eventId: number | undefined;
+  try {
+    for (let index = 0; index < filenames.length; index++) {
+      const upload = await request.post("http://127.0.0.1:8001/photos/upload", {
+        multipart: {
+          allow_visual_duplicate: "true",
+          file: { name: filenames[index], mimeType: "image/jpeg", buffer: Buffer.concat([await readFile(fixturePath(index === 0 ? "faunavault-e2e-culling-reject.jpg" : "faunavault-e2e-culling-pick.jpg")), Buffer.from(`trip-fixture-${index}`)]) },
+        },
+      });
+      expect(upload.ok()).toBe(true);
+      ids.push((await upload.json()).id);
+    }
+    await page.goto("/events");
+    await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveCount(10);
+    await page.getByRole("button", { name: "Create Trip/Event" }).click();
+    const form = page.getByRole("dialog");
+    await form.getByLabel("Title", { exact: true }).fill("E2E Valencia Trip");
+    await form.getByLabel("Start date").fill("2026-08-12");
+    await form.getByLabel("End date").fill("2026-08-17");
+    await form.getByLabel("Location (optional)").fill("Valencia, Spain");
+    await form.getByRole("button", { name: "Create Trip/Event" }).click();
+    await expect(page).toHaveURL(/\/events\/[1-9]\d*$/);
+    eventId = Number(new URL(page.url()).pathname.split("/").pop());
+    await page.getByRole("link", { name: "Add Photos", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`add_to_event=${eventId}`));
+    await page.getByRole("searchbox", { name: "Search", exact: true }).fill("faunavault-e2e-trip-");
+    await expect(catalogCard(page, filenames[0])).toHaveCount(1);
+    await page.getByRole("button", { name: "Select Photos to add" }).click();
+    for (const id of ids) await page.getByRole("checkbox", { name: new RegExp(`Select photo ${id}:`) }).check();
+    await page.getByRole("button", { name: "Add selected to this Trip" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Added 2 Photos" })).toBeVisible();
+    await page.getByRole("link", { name: "Back to Trip/Event" }).click();
+    await expect(page).toHaveURL(new RegExp(`/events/${eventId}$`));
+    await page.reload();
+    await expect(page.getByText(/2 active Photos · 2 undecided/)).toBeVisible();
+    for (const filename of filenames) await expect(catalogCard(page, filename)).toHaveCount(1);
+    await page.getByRole("link", { name: "Cull this Trip" }).click();
+    await expect(page).toHaveURL(new RegExp(`catalog_event_id=${eventId}`));
+    await expect(page.getByRole("heading", { name: "Photo Culling" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: filenames[1] })).toBeVisible();
+    await page.goto(`/events/${eventId}`);
+    await catalogCard(page, filenames[0]).getByRole("button", { name: "Remove from Trip" }).click();
+    const confirmation = page.getByRole("dialog");
+    await expect(confirmation.getByRole("button", { name: "Cancel" })).toBeFocused();
+    await expect(confirmation).toContainText("Photos remain in FaunaVault");
+    await confirmation.getByRole("button", { name: "Remove memberships" }).click();
+    await expect(catalogCard(page, filenames[0])).toHaveCount(0);
+    await expect(catalogCard(page, filenames[1])).toHaveCount(1);
+    const retained = await request.get(`http://127.0.0.1:8001/photos/${ids[0]}`);
+    expect(retained.ok()).toBe(true);
+    expect(await retained.json()).toMatchObject({ deleted_at: null });
+    await page.screenshot({ path: test.info().outputPath("event-desktop.png"), fullPage: true });
+    await page.setViewportSize({ width: 360, height: 760 });
+    await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link", { name: "Trips & Events", exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath("event-mobile.png"), fullPage: true });
+    await page.goto("/events");
+    await expect(page.getByRole("heading", { name: "E2E Valencia Trip" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  } finally {
+    if (eventId) await request.delete(`http://127.0.0.1:8001/events/${eventId}`);
+    for (const id of ids) {
+      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
+      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+    }
+  }
+});
+
 
 
 function uploadProgress(page: Page) {
@@ -816,7 +887,9 @@ test("Map filters restore and open equivalent List including missing-GPS photos"
     await page.goto("/map");
     await page.getByRole("button", { name: "Filters", exact: true }).click();
     await page.getByRole("combobox", { name: "Category", exact: true }).selectOption("bird");
+    await expect(page).toHaveURL(/catalog_category=bird/);
     await page.getByLabel("Taken from", { exact: true }).fill("2026-01-01");
+    await expect(page).toHaveURL(/catalog_taken_from=2026-01-01/);
     await page.getByLabel("Taken to", { exact: true }).fill("2026-01-31");
     await expect(page.getByText("1 mapped photo", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open map preview for map-filter-0.jpg" })).toBeVisible();

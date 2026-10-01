@@ -23,6 +23,7 @@ from app.routers.catalog import create_catalog_router
 from app.routers.classification import create_classification_router
 from app.routers.collections import create_collections_router
 from app.routers.duplicates import create_duplicates_router
+from app.routers.events import create_events_router
 from app.routers.import_sessions import create_import_sessions_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
 from app.routers.review import create_review_router
@@ -178,6 +179,7 @@ app.include_router(create_photo_lifecycle_router(lambda: settings))
 app.include_router(create_bulk_photos_router())
 app.include_router(create_catalog_router())
 app.include_router(create_collections_router())
+app.include_router(create_events_router())
 app.include_router(create_smart_collections_router())
 app.include_router(create_classification_router(lambda: settings))
 app.include_router(create_albums_router())

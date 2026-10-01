@@ -156,6 +156,7 @@ export type CatalogSort =
 export type CatalogOrder = "asc" | "desc";
 
 export type CatalogQuery = {
+  event_id?: number;
   import_session_id?: string;
   culling_state?: CullingFilter;
   favorites_only?: boolean;
@@ -174,6 +175,44 @@ export type CatalogQuery = {
   sort: CatalogSort;
   order: CatalogOrder;
 };
+
+export type EventMetadata = {
+  kind: "trip" | "event";
+  title: string;
+  start_date: string;
+  end_date: string;
+  location_label: string | null;
+  notes: string | null;
+};
+export type ArchiveEventSummary = Omit<EventMetadata, "notes"> & {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  active_photo_count: number;
+  previews: TimelinePhotoPreview[];
+};
+export type ArchiveEventDetail = ArchiveEventSummary & {
+  notes: string | null;
+  trash_photo_count: number;
+  undecided_count: number;
+  pick_count: number;
+  reject_count: number;
+};
+export type ArchiveEventPage = { items: ArchiveEventSummary[]; total: number; page: number; page_size: number; total_pages: number };
+export type EventAddResponse = { event_id: number; requested_count: number; added_count: number; already_present_count: number };
+export type EventRemoveResponse = { event_id: number; requested_count: number; removed_count: number; already_absent_count: number };
+
+export function getEvents(page = 1, kind?: EventMetadata["kind"], signal?: AbortSignal) {
+  const params = new URLSearchParams({ page: String(page), page_size: "24" });
+  if (kind) params.set("kind", kind);
+  return request<ArchiveEventPage>(`/events?${params}`, { signal });
+}
+export function getEvent(id: number, signal?: AbortSignal) { return request<ArchiveEventDetail>(`/events/${id}`, { signal }); }
+export function createEvent(metadata: EventMetadata) { return request<ArchiveEventDetail>("/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(metadata) }); }
+export function updateEvent(id: number, metadata: Partial<EventMetadata>) { return request<ArchiveEventDetail>(`/events/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(metadata) }); }
+export function deleteEvent(id: number) { return request<{ event_id: number; status: "deleted" }>(`/events/${id}`, { method: "DELETE" }); }
+export function addEventPhotos(id: number, photoIds: number[]) { return request<EventAddResponse>(`/events/${id}/photos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_ids: photoIds }) }); }
+export function removeEventPhotos(id: number, photoIds: number[]) { return request<EventRemoveResponse>(`/events/${id}/photos`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_ids: photoIds }) }); }
 
 export type CatalogFacets = {
   active_total: number;
@@ -240,7 +279,7 @@ export type CollectionDetail = CollectionSummary & {
   photos: CollectionPhotoPage;
 };
 
-export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size">;
+export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id">;
 export type SmartCollectionSummary = {
   id: number;
   name: string;
@@ -816,6 +855,7 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
 
 function catalogQueryParams(query: CatalogQuery) {
   const params = new URLSearchParams();
+  if (query.event_id !== undefined) params.set("event_id", String(query.event_id));
   params.set("page", String(query.page));
   params.set("page_size", String(query.page_size));
   if (query.import_session_id) params.set("import_session_id", query.import_session_id);

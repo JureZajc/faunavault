@@ -27,12 +27,12 @@ export type CatalogSortOption =
 
 export type CatalogState = CatalogQuery & { layout: CatalogLayout };
 export type MapCatalogQuery = Pick<CatalogQuery,
-  "status" | "category" | "uncategorized" | "taxon_id" | "taken_from" | "taken_to"
+  "event_id" | "status" | "category" | "uncategorized" | "taxon_id" | "taken_from" | "taken_to"
 >;
 
 export function mapCatalogQuery(state: MapCatalogQuery): MapCatalogQuery {
-  const { status, category, uncategorized, taxon_id, taken_from, taken_to } = state;
-  return { status, category, uncategorized, taxon_id, taken_from, taken_to };
+  const { event_id, status, category, uncategorized, taxon_id, taken_from, taken_to } = state;
+  return { event_id, status, category, uncategorized, taxon_id, taken_from, taken_to };
 }
 
 export function writeMapCatalogState(current: URLSearchParams, state: MapCatalogQuery) {
@@ -70,7 +70,7 @@ export const REJECTED_PHOTOS_HREF = "/?catalog_culling_state=reject";
 
 export function hasAdditionalRejectedFilters(state: CatalogQuery) {
   return Boolean(
-    state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
+    state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
     state.taxon_id || state.taken_from || state.taken_to || state.favorites_only ||
     state.rating || state.rating_min || state.unrated,
   );
@@ -149,6 +149,7 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   const unrated = params.get("catalog_unrated") === "1";
   const culling = params.get("catalog_culling_state");
   return {
+    event_id: params.has("catalog_event_id") ? positiveInteger(params.get("catalog_event_id")) ?? 0 : undefined,
     import_session_id: params.get("catalog_import_session_id") || undefined,
     culling_state: culling && ["pick", "reject", "undecided"].includes(culling) ? culling as CullingFilter : undefined,
     favorites_only: params.get("catalog_favorites_only") === "1" || undefined,
@@ -179,6 +180,7 @@ export function writeCatalogState(
     if (value) params.set(key, value);
     else params.delete(key);
   };
+  setOrDelete("catalog_event_id", state.event_id !== undefined ? String(state.event_id) : undefined);
   setOrDelete("catalog_import_session_id", state.import_session_id);
   setOrDelete("catalog_favorites_only", state.favorites_only ? "1" : undefined);
   setOrDelete("catalog_rating", state.rating ? String(state.rating) : undefined);

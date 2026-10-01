@@ -10,7 +10,7 @@ export type BulkDialogAction =
   | "remove_tags"
   | "category"
   | "move_to_trash";
-export type BulkToolbarAction = BulkDialogAction | "add_to_collection";
+export type BulkToolbarAction = BulkDialogAction | "add_to_collection" | "add_to_event";
 
 type BulkSelectionToolbarProps = {
   selectedIds: ReadonlySet<number>;
@@ -100,6 +100,7 @@ export default function BulkSelectionToolbar({
           </div> : null}
           {[
             ["add_to_collection", "Add to Collection"],
+            ["add_to_event", "Add to Trip/Event"],
             ["favorite", "Favorite / Unfavorite"],
             ["rating", "Set rating"],
             ["culling", "Culling decision"],
