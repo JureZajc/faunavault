@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
+from uuid import UUID
 
 CHUNK_SIZE = 1024 * 1024
 JOB_STATUSES = ("queued", "running", "succeeded", "failed")
@@ -57,6 +58,7 @@ class PhotoRecord:
     is_favorite: bool = False
     rating: int | None = None
     culling_state: str | None = None
+    import_session_id: str | None = None
 
     def signature(self) -> tuple[object, ...]:
         return (
@@ -87,6 +89,7 @@ class PhotoRecord:
             self.is_favorite,
             self.rating,
             self.culling_state,
+            self.import_session_id,
         )
 
 
@@ -599,6 +602,147 @@ def _inspect_schema_17(connection, migrations: list[int]) -> DatabaseInventory:
     )
 
 
+IMPORT_SESSION_COLUMNS = "id, source_kind, started_at, completed_at, label, imported_count, duplicate_count, visual_duplicate_skipped_count, unsupported_count, failed_count"
+
+
+def _import_session_records(connection) -> tuple[tuple[object, ...], ...]:
+    rows = tuple(
+        tuple(row)
+        for row in connection.execute(
+            f"SELECT {IMPORT_SESSION_COLUMNS} FROM import_session ORDER BY id"
+        )
+    )
+    for row in rows:
+        try:
+            if str(UUID(row[0])) != row[0]:
+                raise ValueError("noncanonical ID")
+            if not isinstance(row[1], str) or not 1 <= len(row[1]) <= 100:
+                raise ValueError("invalid source kind")
+            started = datetime.fromisoformat(row[2])
+            completed = datetime.fromisoformat(row[3]) if row[3] is not None else None
+            if completed is not None and completed < started:
+                raise ValueError("completion precedes start")
+            label = row[4]
+            if label is not None and (
+                not isinstance(label, str)
+                or not 1 <= len(label) <= 200
+                or any(
+                    not character.isprintable() or character in "/\\"
+                    for character in label
+                )
+            ):
+                raise ValueError("invalid safe label")
+            if type(row[5]) is not int or row[5] < 0:
+                raise ValueError("invalid imported count")
+            if any(
+                value is not None and (type(value) is not int or value < 0)
+                for value in row[6:]
+            ):
+                raise ValueError("invalid outcome count")
+            if completed is not None and any(value is None for value in row[6:]):
+                raise ValueError("completed summary is missing outcomes")
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ArchiveIntegrityError(
+                f"Invalid Import Session metadata: {exc}"
+            ) from exc
+    return rows
+
+
+def read_import_session_signature(path: Path) -> tuple[tuple[object, ...], ...]:
+    connection = open_read_only_database(path)
+    try:
+        return _import_session_records(connection)
+    except sqlite3.Error as exc:
+        raise ArchiveIntegrityError(f"Could not read Import Sessions: {exc}") from exc
+    finally:
+        connection.close()
+
+
+def _photo_from_schema_18_row(row) -> PhotoRecord:
+    return replace(_photo_from_schema_17_row(row), import_session_id=row[27])
+
+
+def _inspect_schema_18(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_17(connection, migrations)
+    columns = {row[1]: row for row in connection.execute("PRAGMA table_info(photo)")}
+    column = columns.get("import_session_id")
+    if (
+        column is None
+        or column[2].upper() != "VARCHAR"
+        or column[3] != 0
+        or column[4] is not None
+    ):
+        raise ArchiveIntegrityError("Invalid Photo import_session_id column structure")
+    foreign_keys = list(connection.execute("PRAGMA foreign_key_list(photo)"))
+    if not any(
+        row[2:5] == ("import_session", "import_session_id", "id")
+        for row in foreign_keys
+    ):
+        raise ArchiveIntegrityError("Missing Photo Import Session foreign key")
+    indexes = list(connection.execute("PRAGMA index_list(photo)"))
+    if (
+        not any(row[1] == "ix_photo_import_session_id" for row in indexes)
+        or list(connection.execute("PRAGMA index_info(ix_photo_import_session_id)"))[0][
+            2
+        ]
+        != "import_session_id"
+    ):
+        raise ArchiveIntegrityError("Missing Photo Import Session index")
+    required = {
+        "id": ("VARCHAR", 1),
+        "source_kind": ("VARCHAR", 1),
+        "started_at": ("DATETIME", 1),
+        "completed_at": ("DATETIME", 0),
+        "label": ("VARCHAR", 0),
+        "imported_count": ("INTEGER", 1),
+        "duplicate_count": ("INTEGER", 0),
+        "visual_duplicate_skipped_count": ("INTEGER", 0),
+        "unsupported_count": ("INTEGER", 0),
+        "failed_count": ("INTEGER", 0),
+    }
+    session_columns = {
+        row[1]: row for row in connection.execute("PRAGMA table_info(import_session)")
+    }
+    if (
+        any(
+            name not in session_columns
+            or (session_columns[name][2].upper(), session_columns[name][3]) != shape
+            for name, shape in required.items()
+        )
+        or session_columns["id"][5] != 1
+        or str(session_columns["imported_count"][4]).strip("()'\"") != "0"
+        or any(
+            row[4] is not None
+            for name, row in session_columns.items()
+            if name in required and name != "imported_count"
+        )
+    ):
+        raise ArchiveIntegrityError("Invalid Import Session table structure")
+    records = _import_session_records(connection)
+    identities = {row[0] for row in records}
+    values = list(
+        connection.execute("SELECT id, import_session_id FROM photo ORDER BY id")
+    )
+    if any(row[1] is not None and row[1] not in identities for row in values):
+        raise ArchiveIntegrityError("Photo references an absent Import Session")
+    memberships = dict(
+        connection.execute(
+            "SELECT import_session_id, COUNT(*) FROM photo WHERE import_session_id IS NOT NULL GROUP BY import_session_id"
+        )
+    )
+    if any(row[5] < memberships.get(row[0], 0) for row in records):
+        raise ArchiveIntegrityError(
+            "Import Session imported count is below its surviving membership"
+        )
+    return replace(
+        base,
+        photos=[
+            replace(photo, import_session_id=row[1])
+            for photo, row in zip(base.photos, values, strict=True)
+        ],
+    )
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
@@ -609,6 +753,7 @@ SCHEMA_INVENTORY_READERS = {
     15: _inspect_schema_15,
     16: _inspect_schema_16,
     17: _inspect_schema_17,
+    18: _inspect_schema_18,
 }
 
 
@@ -671,9 +816,9 @@ def read_photo_signature(path: Path) -> tuple[tuple[object, ...], ...]:
             "camera_model, lens_model, image_width, image_height, latitude, "
             "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden, is_favorite, rating, culling_state FROM photo ORDER BY id"
+            "location_metadata_overridden, is_favorite, rating, culling_state, import_session_id FROM photo ORDER BY id"
         ).fetchall()
-        return tuple(_photo_from_schema_17_row(row).signature() for row in rows)
+        return tuple(_photo_from_schema_18_row(row).signature() for row in rows)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check live archive state: {exc}"
@@ -693,10 +838,10 @@ def read_photo_record(path: Path, photo_id: int) -> PhotoRecord | None:
             "camera_model, lens_model, image_width, image_height, latitude, "
             "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden, is_favorite, rating, culling_state FROM photo WHERE id = ?",
+            "location_metadata_overridden, is_favorite, rating, culling_state, import_session_id FROM photo WHERE id = ?",
             (photo_id,),
         ).fetchone()
-        return None if row is None else _photo_from_schema_17_row(row)
+        return None if row is None else _photo_from_schema_18_row(row)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check photo {photo_id}: {exc}"

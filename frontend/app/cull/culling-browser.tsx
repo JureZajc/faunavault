@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ImportSessionSummary from "../components/import-session-summary";
+import { importRejectedHref } from "../lib/import-sessions";
 import ArchiveNavigation from "../components/archive-navigation";
 import CullingDecisionControls, { cullingLabel } from "../components/photo-detail/culling-decision-controls";
 import PhotoMedia from "../components/photo-detail/photo-media";
@@ -187,10 +189,12 @@ export default function CullingBrowser() {
   return <main ref={root} tabIndex={-1} className="min-h-screen bg-[#f7f8f4] text-stone-950 outline-none">
     <div className="mx-auto max-w-7xl px-3 py-8 sm:px-6">
       <ArchiveNavigation active="cull" onNavigate={(_section, event) => { if (saving.current) event.preventDefault(); }} />
+      <div className="mt-4"><Link href="/imports" className="text-sm font-semibold text-emerald-900 underline">Recent Imports</Link></div>
+      {query.import_session_id ? <div className="mt-4"><ImportSessionSummary id={query.import_session_id} revision={workspace} /></div> : null}
       <header className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <div><h1 className="text-3xl font-semibold">Photo Culling</h1><p className="mt-2 text-sm text-stone-600">{source === "list" ? "Current List query" : "Active undecided photos"} · Pick selects; Reject keeps the photo in your archive.</p></div>
         <div className="flex flex-wrap gap-2">
-          <Link href={REJECTED_PHOTOS_HREF} aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Review rejected</Link>
+          <Link href={query.import_session_id ? importRejectedHref(query.import_session_id) : REJECTED_PHOTOS_HREF} aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Review rejected</Link>
           <Link href={safeListReturn(params.get("returnTo"))} aria-disabled={busy} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Back to List</Link>
         </div>
       </header>

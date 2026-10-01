@@ -77,8 +77,42 @@ def synchronize_legacy_species_group(_mapper, _connection, animal: Animal) -> No
     )
 
 
+class ImportSession(SQLModel, table=True):
+    __tablename__ = "import_session"
+    __table_args__ = (
+        CheckConstraint("length(source_kind) BETWEEN 1 AND 100"),
+        CheckConstraint("label IS NULL OR length(label) BETWEEN 1 AND 200"),
+        CheckConstraint("imported_count >= 0"),
+        *(
+            CheckConstraint(f"{name} IS NULL OR {name} >= 0")
+            for name in (
+                "duplicate_count",
+                "visual_duplicate_skipped_count",
+                "unsupported_count",
+                "failed_count",
+            )
+        ),
+    )
+
+    id: str = Field(primary_key=True)
+    source_kind: str
+    started_at: datetime = Field(default_factory=utc_now)
+    completed_at: datetime | None = None
+    label: str | None = None
+    imported_count: int = Field(
+        default=0, sa_column=Column(Integer, nullable=False, server_default="0")
+    )
+    duplicate_count: int | None = None
+    visual_duplicate_skipped_count: int | None = None
+    unsupported_count: int | None = None
+    failed_count: int | None = None
+
+
 class Photo(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
+    import_session_id: str | None = Field(
+        default=None, foreign_key="import_session.id", index=True
+    )
     original_filename: str
     stored_filename: str
     resized_filename: str

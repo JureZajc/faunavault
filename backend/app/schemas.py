@@ -258,6 +258,7 @@ class PossibleVisualDuplicate(SQLModel):
 
 
 class BatchUploadResponse(SQLModel):
+    import_session_id: str
     uploaded: list[Photo]
     possible_duplicates: list[PossibleVisualDuplicate]
     failed: list[BatchUploadFailure]

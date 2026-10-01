@@ -21,6 +21,7 @@ from app.archive_export.schema import (
     CollectionExport,
     CollectionPhotoExport,
     ExportCounts,
+    ImportSessionExport,
     PhotoExport,
     SmartCollectionExport,
     TaxonExport,
@@ -46,6 +47,11 @@ CSV_FILENAME = "photos.csv"
 CSV_NULL = r"\N"
 CSV_COLUMNS = (
     "photo_id",
+    "import_session_id",
+    "import_source_kind",
+    "import_label",
+    "import_started_at",
+    "import_completed_at",
     "is_favorite",
     "rating",
     "culling_state",
@@ -129,6 +135,7 @@ class SnapshotPhoto:
     is_favorite: bool
     rating: int | None
     culling_state: str | None
+    import_session_id: str | None
     id: int
     original_filename: str
     stored_filename: str
@@ -175,6 +182,7 @@ class SnapshotData:
     collections: list[CollectionExport]
     collection_photos: list[CollectionPhotoExport]
     smart_collections: list[SmartCollectionExport]
+    import_sessions: list[ImportSessionExport]
 
 
 @dataclass(frozen=True)
@@ -398,7 +406,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             "reviewed_at, created_at, updated_at, "
             "extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden, is_favorite, rating, culling_state "
+            "location_metadata_overridden, is_favorite, rating, culling_state, import_session_id "
             "FROM photo ORDER BY id"
         ).fetchall()
         photos: list[SnapshotPhoto] = []
@@ -408,6 +416,9 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                 SnapshotPhoto(
                     is_favorite=_override_flag(row["is_favorite"]),
                     rating=row["rating"],
+                    import_session_id=_optional_text(
+                        row["import_session_id"], "Photo.import_session_id"
+                    ),
                     culling_state=row["culling_state"],
                     id=photo_id,
                     original_filename=_required_text(
@@ -622,6 +633,28 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                 "FROM smart_collection ORDER BY id"
             )
         ]
+        import_sessions = [
+            ImportSessionExport(
+                **{
+                    key: row[key]
+                    for key in (
+                        "id",
+                        "source_kind",
+                        "label",
+                        "imported_count",
+                        "duplicate_count",
+                        "visual_duplicate_skipped_count",
+                        "unsupported_count",
+                        "failed_count",
+                    )
+                },
+                started_at=_timestamp(row["started_at"], "import_session.started_at"),
+                completed_at=_timestamp(
+                    row["completed_at"], "import_session.completed_at", optional=True
+                ),
+            )
+            for row in connection.execute("SELECT * FROM import_session ORDER BY id")
+        ]
         return SnapshotData(
             migrations[-1],
             photos,
@@ -630,6 +663,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             collections,
             collection_photos,
             smart_collections,
+            import_sessions,
         )
     except ArchiveExportIntegrityError:
         raise
@@ -703,6 +737,7 @@ def _inventory_photos(
                 is_favorite=photo.is_favorite,
                 rating=photo.rating,
                 culling_state=photo.culling_state,
+                import_session_id=photo.import_session_id,
                 id=photo.id,
                 original_filename=photo.original_filename,
                 archive_relative_original_path=(
@@ -765,6 +800,7 @@ def _build_document(
             collections=len(snapshot.collections),
             collection_memberships=len(snapshot.collection_photos),
             smart_collections=len(snapshot.smart_collections),
+            import_sessions=len(snapshot.import_sessions),
             original_bytes=sum(photo.original_size_bytes for photo in photos),
         ),
         photos=photos,
@@ -773,6 +809,7 @@ def _build_document(
         collections=snapshot.collections,
         collection_photos=snapshot.collection_photos,
         smart_collections=snapshot.smart_collections,
+        import_sessions=snapshot.import_sessions,
     )
 
 
@@ -803,10 +840,12 @@ def _csv_value(value: object | None) -> str:
 
 
 def _csv_rows(document: ArchiveMetadataExport) -> list[list[str]]:
+    sessions = {item.id: item for item in document.import_sessions}
     animals = {animal.id: animal for animal in document.animals}
     taxa = {taxon.id: taxon for taxon in document.taxa}
     rows: list[list[str]] = []
     for photo in document.photos:
+        imported = sessions.get(photo.import_session_id)
         animal = animals.get(photo.animal_id) if photo.animal_id is not None else None
         taxon = (
             taxa.get(animal.taxon_id)
@@ -815,6 +854,11 @@ def _csv_rows(document: ArchiveMetadataExport) -> list[list[str]]:
         )
         values = (
             photo.id,
+            photo.import_session_id,
+            None if imported is None else imported.source_kind,
+            None if imported is None else imported.label,
+            None if imported is None else imported.started_at,
+            None if imported is None else imported.completed_at,
             photo.is_favorite,
             photo.rating,
             photo.culling_state,

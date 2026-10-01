@@ -13,6 +13,9 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 ## Key features
 
 - JPEG, PNG, WebP, HEIC, and HEIF uploads; recursive local folder import.
+- Recent Imports groups each browser selection or folder invocation, with live
+  progress and View imported photos / Cull this import actions.
+  [Import Sessions guide](docs/OPERATIONS.md#import-sessions-and-recent-imports-v03).
 - Untouched originals, local previews, capture/camera metadata, and GPS extraction.
 - Individual capture date/time, UTC offset, and GPS corrections, with retained
   extracted values and Restore original metadata. [Editing guide](docs/OPERATIONS.md#editable-capture-metadata-v02).
@@ -157,7 +160,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–17. Production restore remains manual.
+schemas 9–18. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)

@@ -19,7 +19,8 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
   const state = query.catalogState;
   const unsupportedSearch = Boolean(state.search);
   const unsupportedCuration = hasCurationFilters(state);
-  const unsupported = unsupportedSearch || unsupportedCuration;
+  const unsupportedImport = Boolean(state.import_session_id);
+  const unsupported = unsupportedSearch || unsupportedCuration || unsupportedImport;
   const locations = usePhotoMapPoints(state, unsupported);
   const options = useCatalogFacets();
   const taxa = useCatalogTaxa(state.taxon_id);
@@ -36,6 +37,7 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
     state.taken_to ? `Taken to ${state.taken_to}` : null,
     unsupportedCuration ? "Unsupported Favorite/Rating filters or Culling filters" : null,
     unsupportedSearch ? `Unsupported search: ${state.search}` : null,
+    unsupportedImport ? "Unsupported Import Session filter" : null,
   ].filter(Boolean);
   const ready = !locations.isLoading && !locations.error && !unsupported;
   const count = locations.points?.length ?? 0;
@@ -86,8 +88,8 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
           <h2 id="archive-map-heading" className="sr-only">Interactive archive map</h2>
           {unsupported ? (
             <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-              <p>{unsupportedCuration ? "Favorite/Rating filters are not supported on Map. Culling filters are also unsupported. Remove unsupported filters to view locations, or use View in List." : "Text search is not supported on Map. Remove it to view locations, or use View in List."}</p>
-              <button type="button" onClick={() => query.setStatus(state.status)} className={`${buttonClass} mt-3`}>{unsupportedCuration ? "Remove unsupported filters" : "Remove text search"}</button>
+              <p>{unsupportedImport ? "Import Session filters are not supported on Map. Remove unsupported filters to view locations, or use View in List." : unsupportedCuration ? "Favorite/Rating filters are not supported on Map. Culling filters are also unsupported. Remove unsupported filters to view locations, or use View in List." : "Text search is not supported on Map. Remove it to view locations, or use View in List."}</p>
+              <button type="button" onClick={() => query.setStatus(state.status)} className={`${buttonClass} mt-3`}>{unsupportedCuration || unsupportedImport ? "Remove unsupported filters" : "Remove text search"}</button>
             </div>
           ) : locations.isLoading ? (
             <div role="status" className="grid h-[clamp(24rem,calc(100dvh-13rem),56rem)] place-items-center rounded-lg border border-stone-200 bg-stone-200 text-sm text-stone-600">Loading photo locations…</div>

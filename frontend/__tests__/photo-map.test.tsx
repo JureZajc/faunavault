@@ -65,6 +65,19 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/map");
 });
 
+test("supplied Import Session criteria block Map and return to the scoped List", async () => {
+  const id = "b0ed3764-5211-4b54-9952-e3f29027dc21";
+  window.history.replaceState(null, "", `/map?catalog_import_session_id=${id}&catalog_category=bird`);
+  render(<MapBrowser focusPhotoId={null} />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("Import Session filters are not supported"));
+  expect(api.getPhotoMapPoints).not.toHaveBeenCalled();
+  expect(screen.getByRole("link", { name: "View in List" }).getAttribute("href")).toContain(`catalog_import_session_id=${id}`);
+  api.getPhotoMapPoints.mockResolvedValue([point()]);
+  await userEvent.click(screen.getByRole("button", { name: "Remove unsupported filters" }));
+  await waitFor(() => expect(api.getPhotoMapPoints).toHaveBeenCalled());
+  expect(window.location.search).toBe("?catalog_category=bird");
+});
+
 test.each(["", "&catalog_rating=5&catalog_unrated=1", "&catalog_culling_state=pick"])("unsupported curation URLs block map results and preserve criteria when returning to List %s", async (extra) => {
   window.history.replaceState(null, "", `/map?catalog_favorites_only=1&catalog_rating_min=4&catalog_category=bird${extra}`);
   render(<MapBrowser focusPhotoId={null} />);

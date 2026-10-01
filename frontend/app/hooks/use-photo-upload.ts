@@ -6,6 +6,10 @@ import {
   Photo,
   VisualDuplicateCandidate,
   uploadPhoto,
+  startImportSession,
+  completeImportSession,
+  getImportSession,
+  ImportSession,
 } from "../lib/api";
 
 export type UploadItemStatus =
@@ -158,6 +162,10 @@ export function usePhotoUpload({
   const executionGuard = useRef(false);
   const mounted = useRef(true);
   const catalogDirty = useRef(false);
+  const sessionId = useRef<string | null>(null);
+  const [importSession, setImportSession] = useState<ImportSession | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const retrySessionAction = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -193,6 +201,55 @@ export function usePhotoUpload({
     );
   }
 
+  async function beginSession(operationId: number, retry: () => Promise<void>) {
+    sessionId.current ??= crypto.randomUUID();
+    try {
+      const saved = await startImportSession(sessionId.current);
+      if (!operationIsCurrent(operationId)) return false;
+      setImportSession(saved);
+      setSessionError(null);
+      retrySessionAction.current = null;
+      return true;
+    } catch (error) {
+      if (operationIsCurrent(operationId)) {
+        setSessionError(`Could not start the import: ${error instanceof Error ? error.message : "Please try again."}`);
+        retrySessionAction.current = retry;
+      }
+      return false;
+    }
+  }
+
+  async function finalizeSession(operationId: number) {
+    if (!sessionId.current || !operationIsCurrent(operationId) || itemsRef.current.some((item) => ["queued", "uploading", "possible_duplicate"].includes(item.status))) return;
+    const items = itemsRef.current;
+    try {
+      const saved = await completeImportSession(sessionId.current, {
+        duplicate_count: items.filter((item) => item.status === "exact_duplicate").length,
+        visual_duplicate_skipped_count: items.filter((item) => item.status === "cancelled").length,
+        unsupported_count: items.filter((item) => item.status === "failed" && item.failure?.kind === "unsupported_format").length,
+        failed_count: items.filter((item) => item.status === "failed" && item.failure?.kind !== "unsupported_format").length,
+      });
+      if (!operationIsCurrent(operationId)) return;
+      setImportSession(saved);
+      setSessionError(null);
+      retrySessionAction.current = null;
+    } catch (error) {
+      if (operationIsCurrent(operationId)) {
+        setSessionError(`The import summary could not finalize: ${error instanceof Error ? error.message : "Please try again."} Saved photos remain in the archive.`);
+        retrySessionAction.current = async () => {
+          if (executionGuard.current) return;
+          executionGuard.current = true;
+          setIsProcessing(true);
+          try { await finalizeSession(operationSequence.current); }
+          finally { executionGuard.current = false; if (mounted.current) setIsProcessing(false); }
+        };
+        // The server may have saved Photos even when the final response was lost.
+        const saved = await getImportSession(sessionId.current).catch(() => null);
+        if (saved && operationIsCurrent(operationId)) setImportSession(saved);
+      }
+    }
+  }
+
   async function flushCatalog(operationId: number) {
     if (!catalogDirty.current || !operationIsCurrent(operationId)) return;
     try {
@@ -224,7 +281,7 @@ export function usePhotoUpload({
       reviewError: undefined,
     }));
     try {
-      const photo = await uploadPhoto(file);
+      const photo = await uploadPhoto(file, false, [], sessionId.current ?? undefined);
       if (!operationIsCurrent(operationId)) return;
       catalogDirty.current = true;
       updateItem(itemId, (item) => ({
@@ -282,6 +339,10 @@ export function usePhotoUpload({
 
   function selectFiles(files: File[]) {
     if (executionGuard.current || activeReviewId !== null) return;
+    sessionId.current = null;
+    setImportSession(null);
+    setSessionError(null);
+    retrySessionAction.current = null;
     const nextItems = files.map<UploadItem>((file, selectionIndex) => {
       itemSequence.current += 1;
       return {
@@ -313,6 +374,10 @@ export function usePhotoUpload({
     form.reset();
 
     try {
+      if (!await beginSession(operationId, () => submit(form))) {
+        if (operationIsCurrent(operationId)) setIsSelectionReady(true);
+        return;
+      }
       for (const item of queuedItems) {
         if (!operationIsCurrent(operationId) || !item.file) break;
         await uploadItem(item.id, item.file, operationId);
@@ -321,6 +386,7 @@ export function usePhotoUpload({
       if (!operationIsCurrent(operationId)) return;
       const review = nextPossibleDuplicate();
       setActiveReviewId(review?.id ?? null);
+      if (!review) await finalizeSession(operationId);
     } finally {
       if (operationIsCurrent(operationId)) {
         executionGuard.current = false;
@@ -336,6 +402,8 @@ export function usePhotoUpload({
       return;
     }
     await flushCatalog(operationId);
+    if (!operationIsCurrent(operationId)) return;
+    await finalizeSession(operationId);
     if (!operationIsCurrent(operationId)) return;
     setActiveReviewId(null);
     onQueueDrained();
@@ -365,7 +433,7 @@ export function usePhotoUpload({
 
     let reviewResolved = false;
     try {
-      const photo = await uploadPhoto(review.file, true, review.possibleDuplicate.candidates.slice(0, 3).map((candidate) => candidate.photo_id));
+      const photo = await uploadPhoto(review.file, true, review.possibleDuplicate.candidates.slice(0, 3).map((candidate) => candidate.photo_id), sessionId.current ?? undefined);
       if (!operationIsCurrent(operationId)) return;
       catalogDirty.current = true;
       updateItem(review.id, (item) => ({
@@ -461,11 +529,13 @@ export function usePhotoUpload({
     setCatalogRefreshError(null);
     onError(null);
     try {
+      if (!await beginSession(operationId, () => retryItem(itemId))) return;
       await uploadItem(item.id, item.file, operationId);
       await flushCatalog(operationId);
       if (!operationIsCurrent(operationId)) return;
       const review = nextPossibleDuplicate();
       setActiveReviewId(review?.id ?? null);
+      if (!review) await finalizeSession(operationId);
     } finally {
       if (operationIsCurrent(operationId)) {
         executionGuard.current = false;
@@ -515,6 +585,8 @@ export function usePhotoUpload({
       catalogRefreshError,
       currentReview,
       isConfirmingReview,
+      importSession,
+      sessionError,
     },
     actions: {
       selectFiles,
@@ -522,6 +594,7 @@ export function usePhotoUpload({
       retryItem,
       keepCurrentReview,
       cancelCurrentReview,
+      retrySession: () => retrySessionAction.current?.(),
     },
   };
 }

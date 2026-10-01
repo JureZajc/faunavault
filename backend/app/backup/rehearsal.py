@@ -20,6 +20,7 @@ from app.archive_integrity import (
     is_link_or_junction,
     open_read_only_database,
     read_duplicate_signature,
+    read_import_session_signature,
     validate_flat_filename,
 )
 from app.backup.integrity import copy_and_hash_stable
@@ -95,6 +96,7 @@ class PhotoRecoveryRecord:
     is_favorite: bool = False
     rating: int | None = None
     culling_state: str | None = None
+    import_session_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,7 @@ class RecoverySnapshot:
     collections: tuple[CollectionRecoveryRecord, ...] = ()
     collection_memberships: tuple[tuple[int, int], ...] = ()
     smart_collections: tuple[SmartCollectionRecoveryRecord, ...] = ()
+    import_sessions: tuple[tuple[object, ...], ...] = ()
     duplicate_pairs: str = hashlib.sha256(b"").hexdigest()
     duplicate_scans: str = hashlib.sha256(b"").hexdigest()
 
@@ -438,6 +441,8 @@ def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
 
 
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
+    if schema_version == 18:
+        return _read_schema_18_snapshot(database_path)
     if schema_version == 17:
         return _read_schema_17_snapshot(database_path)
     if schema_version == 16:
@@ -462,7 +467,7 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_17_snapshot(database_path)
+    return _read_schema_18_snapshot(database_path)
 
 
 def _read_schema_16_snapshot(
@@ -486,15 +491,33 @@ def _read_schema_16_snapshot(
     )
 
 
-def _read_schema_17_snapshot(database_path: Path) -> RecoverySnapshot:
-    base = _read_schema_16_snapshot(database_path, schema_version=17)
-    by_id = {photo.id: photo for photo in inspect_database(database_path, 17).photos}
+def _read_schema_17_snapshot(
+    database_path: Path, *, schema_version: int = 17
+) -> RecoverySnapshot:
+    base = _read_schema_16_snapshot(database_path, schema_version=schema_version)
+    by_id = {
+        photo.id: photo
+        for photo in inspect_database(database_path, schema_version).photos
+    }
     return replace(
         base,
         photos=tuple(
             replace(photo, culling_state=by_id[photo.id].culling_state)
             for photo in base.photos
         ),
+    )
+
+
+def _read_schema_18_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_17_snapshot(database_path, schema_version=18)
+    by_id = {photo.id: photo for photo in inspect_database(database_path, 18).photos}
+    return replace(
+        base,
+        photos=tuple(
+            replace(photo, import_session_id=by_id[photo.id].import_session_id)
+            for photo in base.photos
+        ),
+        import_sessions=read_import_session_signature(database_path),
     )
 
 
@@ -641,6 +664,8 @@ def _compare_recovery_snapshots(
         raise ArchiveIntegrityError("Collection metadata changed during rehearsal")
     if source.collection_memberships != current.collection_memberships:
         raise ArchiveIntegrityError("Collection memberships changed during rehearsal")
+    if source.import_sessions != current.import_sessions:
+        raise ArchiveIntegrityError("Import Session metadata changed during rehearsal")
     if source.smart_collections != current.smart_collections:
         raise ArchiveIntegrityError(
             "Smart Collection metadata changed during rehearsal"

@@ -34,6 +34,7 @@ from app.services.image_variants import (
     save_variant,
     source_format_for_extension,
 )
+from app.services.import_sessions import get_import_session, record_imported_photo
 from app.services.perceptual_duplicates import (
     find_visual_duplicate_candidates,
     perceptual_hash,
@@ -304,6 +305,7 @@ async def create_photo_from_upload(
     *,
     allow_visual_duplicate: bool = False,
     reviewed_candidate_ids: list[int] | None = None,
+    import_session_id: str | None = None,
 ) -> Photo:
     async def chunks() -> AsyncIterator[bytes]:
         while chunk := await file.read(1024 * 1024):
@@ -317,6 +319,7 @@ async def create_photo_from_upload(
         settings,
         allow_visual_duplicate=allow_visual_duplicate,
         reviewed_candidate_ids=reviewed_candidate_ids,
+        import_session_id=import_session_id,
     )
 
 
@@ -331,7 +334,12 @@ async def create_photo_from_source(
     classify: bool = False,
     visual_lookup: Callable[[Session, str], list] | None = None,
     reviewed_candidate_ids: list[int] | None = None,
+    import_session_id: str | None = None,
 ) -> Photo:
+    if import_session_id is not None:
+        item = get_import_session(session, import_session_id)
+        if item.completed_at is not None:
+            raise HTTPException(409, detail="Import Session is already finalized")
     reviewed_ids = reviewed_candidate_ids or []
     if (
         len(reviewed_ids) > 3
@@ -379,6 +387,7 @@ async def create_photo_from_source(
             session.add(animal)
             session.flush()
             photo = Photo(
+                import_session_id=import_session_id,
                 original_filename=prepared.original_filename,
                 stored_filename=prepared.stored_filename,
                 resized_filename=prepared.resized_filename,
@@ -406,6 +415,8 @@ async def create_photo_from_source(
             )
             session.add(photo)
             session.flush()
+            if import_session_id is not None:
+                record_imported_photo(session, import_session_id)
             from app.services.duplicate_review import record_ingestion_pairs
 
             record_ingestion_pairs(

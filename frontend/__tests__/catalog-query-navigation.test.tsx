@@ -269,5 +269,5 @@ test("List opens Map with supported membership filters and disables pending text
   expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toBe("/map?catalog_status=classified&catalog_category=bird&catalog_taxon=7&catalog_taken_from=2026-01-01");
   await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "f");
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
-  expect(screen.getByText("Clear text search and Favorite/Rating filters and Culling filters to view these filters on Map.")).toBeTruthy();
+  expect(screen.getByText("Clear Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.")).toBeTruthy();
 });

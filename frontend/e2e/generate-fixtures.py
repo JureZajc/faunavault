@@ -50,7 +50,9 @@ def bulk_scene(variant: int) -> Image.Image:
     if variant == 1:
         for offset in range(0, 640, 80):
             draw.rectangle((offset, 0, offset + 39, 480), fill=(40, 105, 150))
-        draw.ellipse((170, 90, 470, 390), fill=(235, 175, 45), outline=(20, 20, 20), width=12)
+        draw.ellipse(
+            (170, 90, 470, 390), fill=(235, 175, 45), outline=(20, 20, 20), width=12
+        )
     else:
         for offset in range(0, 480, 60):
             draw.rectangle((0, offset, 640, offset + 29), fill=(145, 55, 95))
@@ -132,8 +134,19 @@ def generate(test_root: Path) -> None:
     capture_edit = fixtures / "faunavault-e2e-capture-edit.jpg"
     generator = random.Random(150)
     capture_image = Image.new("RGB", (64, 48))
-    capture_image.putdata([tuple(generator.randrange(256) for _ in range(3)) for _ in range(64 * 48)])
+    capture_image.putdata(
+        [tuple(generator.randrange(256) for _ in range(3)) for _ in range(64 * 48)]
+    )
     capture_image.resize((640, 480)).save(capture_edit, format="JPEG", quality=92)
+    for seed in (81182, 81183):
+        generator = random.Random(seed)
+        image = Image.new("RGB", (64, 48))
+        image.putdata(
+            [tuple(generator.randrange(256) for _ in range(3)) for _ in range(64 * 48)]
+        )
+        image.resize((640, 480)).save(
+            fixtures / f"faunavault-e2e-import-{seed}.jpg", format="JPEG", quality=92
+        )
 
     exif = Image.Exif()
     exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:22 14:30:00"
@@ -160,8 +173,12 @@ def generate(test_root: Path) -> None:
     bulk_scene(2).save(bulk_second, format="JPEG", quality=92)
     # Dedicated byte identities; upload explicitly acknowledges any visual
     # similarity to the existing synthetic fixtures.
-    bulk_scene(1).save(fixtures / "faunavault-e2e-culling-reject.jpg", format="JPEG", quality=84)
-    bulk_scene(2).save(fixtures / "faunavault-e2e-culling-pick.jpg", format="JPEG", quality=84)
+    bulk_scene(1).save(
+        fixtures / "faunavault-e2e-culling-reject.jpg", format="JPEG", quality=84
+    )
+    bulk_scene(2).save(
+        fixtures / "faunavault-e2e-culling-pick.jpg", format="JPEG", quality=84
+    )
 
     heic_exif = Image.Exif()
     heic_exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:23 09:15:00"
@@ -198,6 +215,8 @@ def generate(test_root: Path) -> None:
             timeline_january,
             timeline_february,
             capture_edit,
+            fixtures / "faunavault-e2e-import-81182.jpg",
+            fixtures / "faunavault-e2e-import-81183.jpg",
         )
     ]
     for first_index, first_hash in enumerate(fixture_hashes):

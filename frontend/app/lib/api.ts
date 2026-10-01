@@ -7,6 +7,7 @@ export type CullingFilter = PhotoCullingState | "undecided";
 export type PhotoStatus = "pending" | "classified" | "needs_review";
 
 export type Photo = {
+  import_session_id?: string | null;
   culling_state: PhotoCullingState | null;
   is_favorite: boolean;
   rating: PhotoRating | null;
@@ -155,6 +156,7 @@ export type CatalogSort =
 export type CatalogOrder = "asc" | "desc";
 
 export type CatalogQuery = {
+  import_session_id?: string;
   culling_state?: CullingFilter;
   favorites_only?: boolean;
   rating?: PhotoRating;
@@ -388,6 +390,7 @@ export type PossibleVisualDuplicate = {
 };
 
 export type BatchUploadResponse = {
+  import_session_id: string;
   uploaded: Photo[];
   possible_duplicates: PossibleVisualDuplicate[];
   failed: BatchUploadFailure[];
@@ -446,6 +449,7 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type ApiErrorDetails = {
+  import_session_id?: string;
   code?: string;
   message?: string;
   photo_id?: number;
@@ -537,6 +541,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const safeDetails: ApiErrorDetails =
       typeof detail === "object" && detail !== null && !Array.isArray(detail)
         ? {
+            import_session_id: typeof detail.import_session_id === "string" ? detail.import_session_id : undefined,
             code: typeof detail.code === "string" ? detail.code : undefined,
             message:
               typeof detail.message === "string" ? detail.message : undefined,
@@ -764,6 +769,47 @@ export function getPhotos() {
   return request<Photo[]>("/photos");
 }
 
+export type ImportSessionOutcomes = {
+  duplicate_count: number;
+  visual_duplicate_skipped_count: number;
+  unsupported_count: number;
+  failed_count: number;
+};
+
+export type ImportSession = {
+  id: string;
+  source_kind: string;
+  started_at: string;
+  completed_at: string | null;
+  label: string | null;
+  imported_count: number;
+  duplicate_count: number | null;
+  visual_duplicate_skipped_count: number | null;
+  unsupported_count: number | null;
+  failed_count: number | null;
+  active_count: number;
+  trash_count: number;
+  undecided_count: number;
+  pick_count: number;
+  reject_count: number;
+};
+
+export function startImportSession(id: string) {
+  return request<ImportSession>("/import-sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+}
+
+export function completeImportSession(id: string, outcomes: ImportSessionOutcomes) {
+  return request<ImportSession>(`/import-sessions/${encodeURIComponent(id)}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(outcomes) });
+}
+
+export function getImportSession(id: string, signal?: AbortSignal) {
+  return request<ImportSession>(`/import-sessions/${encodeURIComponent(id)}`, { signal });
+}
+
+export function getImportSessions(page = 1, signal?: AbortSignal) {
+  return request<Paginated<ImportSession> & { total_pages: number }>(`/import-sessions?page=${page}&page_size=24`, { signal });
+}
+
 export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
   return request<CatalogPhotoPage>(`/catalog/photos?${catalogQueryParams(query)}`, { signal });
 }
@@ -772,6 +818,7 @@ function catalogQueryParams(query: CatalogQuery) {
   const params = new URLSearchParams();
   params.set("page", String(query.page));
   params.set("page_size", String(query.page_size));
+  if (query.import_session_id) params.set("import_session_id", query.import_session_id);
   if (query.search) params.set("search", query.search);
   if (query.status) params.set("status", query.status);
   if (query.category) params.set("category", query.category);
@@ -923,9 +970,10 @@ function fileWithRegisteredHeifMediaType(file: File) {
   });
 }
 
-export function uploadPhoto(file: File, allowVisualDuplicate = false, reviewedCandidateIds: number[] = []) {
+export function uploadPhoto(file: File, allowVisualDuplicate = false, reviewedCandidateIds: number[] = [], importSessionId?: string) {
   const formData = new FormData();
   formData.append("file", fileWithRegisteredHeifMediaType(file));
+  if (importSessionId) formData.append("import_session_id", importSessionId);
   if (allowVisualDuplicate) {
     formData.append("allow_visual_duplicate", "true");
   }
@@ -984,8 +1032,9 @@ export function dismissDuplicate(pair: DuplicateComparison) {
   });
 }
 
-export function uploadPhotoBatch(files: File[]) {
+export function uploadPhotoBatch(files: File[], importSessionId?: string) {
   const formData = new FormData();
+  if (importSessionId) formData.append("import_session_id", importSessionId);
   files.forEach((file) =>
     formData.append("files", fileWithRegisteredHeifMediaType(file)),
   );

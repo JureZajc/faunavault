@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
+import { importSessionFixture } from "./fixtures/import-sessions";
 import Home from "../app/page";
 import {
   ApiError,
@@ -14,6 +15,9 @@ const api = vi.hoisted(() => ({
   getCatalogTaxa: vi.fn(),
   getClassificationJobs: vi.fn(),
   uploadPhoto: vi.fn(),
+  startImportSession: vi.fn(),
+  completeImportSession: vi.fn(),
+  getImportSession: vi.fn(),
   uploadPhotoBatch: vi.fn(),
 }));
 
@@ -119,8 +123,8 @@ test("accepts HEIC and HEIF selections without a separate upload flow", async ()
   expect(screen.getByText("JPEG, PNG, WebP, HEIC, or HEIF.")).toBeTruthy();
   await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
   await waitFor(() => expect(api.uploadPhoto).toHaveBeenCalledTimes(2));
-  expect(api.uploadPhoto).toHaveBeenNthCalledWith(1, files[0]);
-  expect(api.uploadPhoto).toHaveBeenNthCalledWith(2, files[1]);
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(1, files[0], false, [], expect.any(String));
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(2, files[1], false, [], expect.any(String));
   expect(await row("iphone.HEIC").findByText("Uploaded")).toBeTruthy();
   expect(row("archive.heif").getByText("Uploaded")).toBeTruthy();
 });
@@ -134,6 +138,8 @@ function row(filename: string, occurrence = 0) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.startImportSession.mockImplementation(async (id: string) => importSessionFixture(id));
+  api.completeImportSession.mockImplementation(async (id: string, outcomes) => importSessionFixture(id, { ...outcomes, completed_at: "2026-10-01T10:01:00Z" }));
   window.history.replaceState(null, "", "/");
   api.getCatalogPhotos.mockImplementation(async (query: CatalogQuery) =>
     catalogPage(query),
@@ -159,6 +165,77 @@ beforeEach(() => {
   );
 });
 
+test("one browser selection shares an identity and the next selection gets another", async () => {
+  api.uploadPhoto.mockResolvedValue(photo(1));
+  render(<Home />);
+  const files = [new File(["one"], "one.jpg", { type: "image/jpeg" }), new File(["two"], "two.jpg", { type: "image/jpeg" })];
+  await selectFiles(files);
+  await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
+  await waitFor(() => expect(api.completeImportSession).toHaveBeenCalledTimes(1));
+  const firstId = api.startImportSession.mock.calls[0][0];
+  expect(api.startImportSession).toHaveBeenCalledTimes(1);
+  expect(api.uploadPhoto.mock.calls.map((call) => call[3])).toEqual([firstId, firstId]);
+  await selectFiles([new File(["three"], "three.jpg", { type: "image/jpeg" })]);
+  await userEvent.click(screen.getByRole("button", { name: "Upload photo" }));
+  await waitFor(() => expect(api.completeImportSession).toHaveBeenCalledTimes(2));
+  expect(api.startImportSession.mock.calls[1][0]).not.toBe(firstId);
+});
+
+test("starting failure retries the same identity before uploading any files", async () => {
+  api.startImportSession.mockRejectedValueOnce(new TypeError("Offline"));
+  api.uploadPhoto.mockResolvedValue(photo(1));
+  render(<Home />);
+  await selectFiles([new File(["one"], "one.jpg", { type: "image/jpeg" })]);
+  await userEvent.click(screen.getByRole("button", { name: "Upload photo" }));
+  expect(await screen.findByText(/Could not start the import: Offline/)).toBeTruthy();
+  expect(api.uploadPhoto).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Retry import session" }));
+  await waitFor(() => expect(api.completeImportSession).toHaveBeenCalledTimes(1));
+  expect(api.startImportSession.mock.calls[1][0]).toBe(api.startImportSession.mock.calls[0][0]);
+  expect(api.uploadPhoto).toHaveBeenCalledTimes(1);
+});
+
+test("finalization failure retries metadata without uploading saved photos again", async () => {
+  api.getImportSession.mockImplementation(async (id: string) => importSessionFixture(id, { imported_count: 1, active_count: 1, undecided_count: 1 }));
+  api.uploadPhoto.mockResolvedValue(photo(1));
+  api.completeImportSession.mockRejectedValueOnce(new TypeError("Offline"));
+  render(<Home />);
+  await selectFiles([new File(["one"], "one.jpg", { type: "image/jpeg" })]);
+  await userEvent.click(screen.getByRole("button", { name: "Upload photo" }));
+  expect(await screen.findByText(/summary could not finalize/)).toBeTruthy();
+  expect(row("one.jpg").getByText("Uploaded")).toBeTruthy();
+  expect(await screen.findByRole("link", { name: "View imported photos" })).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Retry import session" }));
+  await waitFor(() => expect(api.completeImportSession).toHaveBeenCalledTimes(2));
+  expect(api.uploadPhoto).toHaveBeenCalledTimes(1);
+  expect(api.completeImportSession.mock.calls[1]).toEqual(api.completeImportSession.mock.calls[0]);
+});
+
+test("file Retry reopens the same session and replaces its final failure summary", async () => {
+  api.uploadPhoto.mockRejectedValueOnce(new TypeError("Offline")).mockResolvedValueOnce(photo(1));
+  render(<Home />);
+  await selectFiles([new File(["one"], "one.jpg", { type: "image/jpeg" })]);
+  await userEvent.click(screen.getByRole("button", { name: "Upload photo" }));
+  await waitFor(() => expect(api.completeImportSession).toHaveBeenCalledTimes(1));
+  expect(api.completeImportSession.mock.calls[0][1].failed_count).toBe(1);
+  await userEvent.click(screen.getByRole("button", { name: "Retry file 1, one.jpg" }));
+  await waitFor(() => expect(api.completeImportSession).toHaveBeenCalledTimes(2));
+  expect(api.startImportSession.mock.calls[1][0]).toBe(api.startImportSession.mock.calls[0][0]);
+  expect(api.completeImportSession.mock.calls[1][1].failed_count).toBe(0);
+});
+
+test("visual review delays completion and cancellation records a skipped outcome", async () => {
+  api.uploadPhoto.mockRejectedValueOnce(new ApiError("Possible duplicate", 409, { code: "possible_visual_duplicate", candidates: [candidate()] }));
+  render(<Home />);
+  await selectFiles([new File(["one"], "one.jpg", { type: "image/jpeg" })]);
+  await userEvent.click(screen.getByRole("button", { name: "Upload photo" }));
+  await screen.findByRole("dialog", { name: "Possible duplicate" });
+  expect(api.completeImportSession).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
+  await waitFor(() => expect(api.completeImportSession).toHaveBeenCalledTimes(1));
+  expect(api.completeImportSession.mock.calls[0][1].visual_duplicate_skipped_count).toBe(1);
+});
+
 test("shows queued rows immediately and uploads only one file at a time", async () => {
   const first = deferred<Photo>();
   const second = deferred<Photo>();
@@ -182,20 +259,20 @@ test("shows queued rows immediately and uploads only one file at a time", async 
 
   await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
   await waitFor(() => expect(api.uploadPhoto).toHaveBeenCalledTimes(1));
-  expect(api.uploadPhoto).toHaveBeenNthCalledWith(1, files[0]);
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(1, files[0], false, [], expect.any(String));
   expect(row("one.jpg").getByText("Uploading")).toBeTruthy();
   expect(row("two.jpg").getByText("Waiting")).toBeTruthy();
   expect(input.disabled).toBe(true);
 
   first.resolve(photo(1, "one.jpg"));
   await waitFor(() => expect(api.uploadPhoto).toHaveBeenCalledTimes(2));
-  expect(api.uploadPhoto).toHaveBeenNthCalledWith(2, files[1]);
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(2, files[1], false, [], expect.any(String));
   expect(row("one.jpg").getByText("Uploaded")).toBeTruthy();
   expect(row("two.jpg").getByText("Uploading")).toBeTruthy();
 
   second.resolve(photo(2, "two.jpg"));
   await waitFor(() => expect(api.uploadPhoto).toHaveBeenCalledTimes(3));
-  expect(api.uploadPhoto).toHaveBeenNthCalledWith(3, files[2]);
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(3, files[2], false, [], expect.any(String));
   third.resolve(photo(3, "three.jpg"));
 
   await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/3 files: 3 uploaded/i));
@@ -269,7 +346,7 @@ test("retries only a transient failed item and preserves completed siblings", as
   await userEvent.click(retry);
   await waitFor(() => expect(row("first.jpg").getByText("Uploaded")).toBeTruthy());
   expect(row("second.jpg").getByText("Uploaded")).toBeTruthy();
-  expect(api.uploadPhoto).toHaveBeenLastCalledWith(firstFile);
+  expect(api.uploadPhoto).toHaveBeenLastCalledWith(firstFile, false, [], expect.any(String));
 });
 
 test("keeps duplicate filenames associated with their original File objects", async () => {
@@ -289,8 +366,8 @@ test("keeps duplicate filenames associated with their original File objects", as
   await userEvent.click(screen.getByRole("button", { name: "Upload photos" }));
 
   expect(await screen.findByAltText("Uploaded photo: same.jpg")).toBeTruthy();
-  expect(api.uploadPhoto).toHaveBeenNthCalledWith(1, first);
-  expect(api.uploadPhoto).toHaveBeenNthCalledWith(2, second);
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(1, first, false, [], expect.any(String));
+  expect(api.uploadPhoto).toHaveBeenNthCalledWith(2, second, false, [], expect.any(String));
   expect(row("same.jpg", 0).getByText("Possible duplicate")).toBeTruthy();
   expect(row("same.jpg", 1).getByText("Uploaded")).toBeTruthy();
 
@@ -368,7 +445,7 @@ test("turns a Keep both race into an exact duplicate result", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(row("race.jpg").getByText("Exact duplicate")).toBeTruthy();
   expect(row("race.jpg").getByRole("button", { name: "View Trash" })).toBeTruthy();
-  expect(api.uploadPhoto).toHaveBeenLastCalledWith(expect.any(File), true, [91]);
+  expect(api.uploadPhoto).toHaveBeenLastCalledWith(expect.any(File), true, [91], expect.any(String));
 });
 
 test("preserves accepted item states when catalog refresh fails", async () => {
