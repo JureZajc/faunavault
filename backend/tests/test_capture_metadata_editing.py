@@ -527,7 +527,7 @@ def test_schema15_backups_rehearsal_and_portable_export(lifecycle, tmp_path_fact
     backup, verification = create_backup(artifact_root / "backups", settings)
     assert verification.valid and verify_backup(backup).valid
     result = rehearse_backup(backup, artifact_root / "recovered")
-    assert result.source_schema_version == 16 and result.doctor_status == "HEALTHY"
+    assert result.source_schema_version == 17 and result.doctor_status == "HEALTHY"
     with sqlite3.connect(artifact_root / "recovered/data/faunavault.db") as connection:
         assert connection.execute(
             "SELECT captured_at, extracted_captured_at, latitude, capture_metadata_overridden, location_metadata_overridden FROM photo WHERE id=?",
@@ -541,7 +541,7 @@ def test_schema15_backups_rehearsal_and_portable_export(lifecycle, tmp_path_fact
         artifact_root / "export", settings, include_csv=True
     )
     payload = json.loads(export.json_path.read_text())
-    assert payload["format_version"] == 7
+    assert payload["format_version"] == 8
     exported = payload["photos"][0]
     assert exported["captured_at"] is None and exported["capture_metadata_overridden"]
     assert exported["extracted_captured_at"] == "2024-05-24T18:42:00.000000"
@@ -576,7 +576,7 @@ def test_migration15_copies_prior_metadata_once(lifecycle):
             "SELECT extracted_captured_at, extracted_captured_at_offset_minutes, extracted_latitude, extracted_longitude, capture_metadata_overridden, location_metadata_overridden FROM photo"
         ).one() == ("2024-05-24T18:42:00", 120, 46, 14, 0, 0)
     assert run_migrations(engine, settings) == []
-    assert inspect_database(settings.database_path, 16).migrations[-1] == 16
+    assert inspect_database(settings.database_path, 17).migrations[-1] == 17
 
 
 @pytest.mark.parametrize(

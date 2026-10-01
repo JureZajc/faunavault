@@ -17,7 +17,7 @@ vi.mock("../app/lib/api", async (importOriginal) => ({
 function photo(id: number, title: string, category: string | null): Photo {
   return {
     id,
-    original_filename: `${id}.jpg`, is_favorite: false, rating: null, stored_filename: `${id}.jpg`,
+    original_filename: `${id}.jpg`, culling_state: null, is_favorite: false, rating: null, stored_filename: `${id}.jpg`,
     resized_filename: `${id}-resized.jpg`, thumbnail_filename: `${id}-thumb.jpg`,
     display_title: title, common_name: null, breed_guess: null,
     species_guess: null, category, confidence: null, description: null, tags: [],

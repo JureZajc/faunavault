@@ -19,6 +19,7 @@ from sqlalchemy import (
 from sqlmodel import Field, SQLModel
 
 from app.album_identity import normalize_legacy_species_group
+from app.metadata_types import PhotoCullingState
 
 
 def utc_now() -> datetime:
@@ -83,6 +84,17 @@ class Photo(SQLModel, table=True):
     resized_filename: str
     thumbnail_filename: str
     display_title: str | None = None
+    culling_state: PhotoCullingState | None = Field(
+        default=None,
+        sa_column=Column(
+            String,
+            CheckConstraint(
+                "culling_state IS NULL OR culling_state IN ('pick', 'reject')",
+                name="ck_photo_culling_state",
+            ),
+            nullable=True,
+        ),
+    )
     is_favorite: bool = Field(
         default=False,
         sa_column=Column(

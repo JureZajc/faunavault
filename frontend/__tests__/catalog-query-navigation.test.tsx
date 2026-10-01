@@ -24,7 +24,7 @@ function photo(title: string): Photo {
   return {
     id: 1,
     original_filename: "fox.jpg",
-    is_favorite: false, rating: null,
+    culling_state: null, is_favorite: false, rating: null,
     stored_filename: "fox.jpg",
     resized_filename: "fox-resized.jpg",
     thumbnail_filename: "fox-thumb.jpg",
@@ -214,6 +214,29 @@ test("switches exact/minimum/unrated filters without combining them and follows 
   await waitFor(() => expect(window.location.search).not.toMatch(/catalog_(rating|favorites|unrated)/));
 });
 
+test("restores culling filters, saves Smart criteria and opens the full List in Culling", async () => {
+  window.history.replaceState(null, "", "/?catalog_culling_state=pick&catalog_favorites_only=1&catalog_page=2&catalog_layout=grouped");
+  render(<Home />);
+  await screen.findByRole("combobox", { name: "Culling filter" });
+  expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Culling filter" }).value).toBe("pick");
+  await waitFor(() => expect(api.getCatalogPhotos).toHaveBeenCalledWith(expect.objectContaining({ culling_state: "pick" }), expect.any(AbortSignal)));
+  const href = screen.getByRole("link", { name: "Open in Culling" }).getAttribute("href")!;
+  const params = new URL(href, "http://localhost").searchParams;
+  expect(params.get("catalog_culling_state")).toBe("pick");
+  expect(params.get("source")).toBe("list");
+  expect(params.has("catalog_page") || params.has("catalog_layout")).toBe(false);
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
+  await userEvent.click(screen.getByRole("button", { name: "Save as Smart Collection" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.type(within(dialog).getByRole("textbox"), "Picks");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Create Smart Collection" }));
+  await waitFor(() => expect(api.createSmartCollection).toHaveBeenCalledWith(expect.objectContaining({ query: expect.objectContaining({ culling_state: "pick" }) })));
+  window.history.pushState(null, "", "/?catalog_culling_state=reject"); window.dispatchEvent(new PopStateEvent("popstate"));
+  await waitFor(() => expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Culling filter" }).value).toBe("reject"));
+  await userEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+  await waitFor(() => expect(window.location.search).not.toContain("catalog_culling_state"));
+});
+
 test("preserves catalog parameters while switching collection views", async () => {
   window.history.replaceState(null, "", "/?catalog_page=2&catalog_status=classified");
   render(<Home />);
@@ -231,7 +254,7 @@ test("preserves catalog parameters while switching collection views", async () =
   const navigation = screen.getByRole("navigation", { name: "Archive views" });
   expect(
     Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Duplicates", "Trash"]);
+  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Culling", "Duplicates", "Trash"]);
   expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("href"))
     .toBe("/timeline");
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))
@@ -246,5 +269,5 @@ test("List opens Map with supported membership filters and disables pending text
   expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toBe("/map?catalog_status=classified&catalog_category=bird&catalog_taxon=7&catalog_taken_from=2026-01-01");
   await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "f");
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
-  expect(screen.getByText("Clear text search and Favorite/Rating filters to view these filters on Map.")).toBeTruthy();
+  expect(screen.getByText("Clear text search and Favorite/Rating filters and Culling filters to view these filters on Map.")).toBeTruthy();
 });

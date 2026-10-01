@@ -94,6 +94,7 @@ class PhotoRecoveryRecord:
     location_metadata_overridden: bool = False
     is_favorite: bool = False
     rating: int | None = None
+    culling_state: str | None = None
 
 
 @dataclass(frozen=True)
@@ -437,6 +438,8 @@ def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
 
 
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
+    if schema_version == 17:
+        return _read_schema_17_snapshot(database_path)
     if schema_version == 16:
         return _read_schema_16_snapshot(database_path)
     if schema_version == 15:
@@ -459,12 +462,17 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_16_snapshot(database_path)
+    return _read_schema_17_snapshot(database_path)
 
 
-def _read_schema_16_snapshot(database_path: Path) -> RecoverySnapshot:
-    base = _read_schema_15_snapshot(database_path, schema_version=16)
-    by_id = {photo.id: photo for photo in inspect_database(database_path, 16).photos}
+def _read_schema_16_snapshot(
+    database_path: Path, *, schema_version: int = 16
+) -> RecoverySnapshot:
+    base = _read_schema_15_snapshot(database_path, schema_version=schema_version)
+    by_id = {
+        photo.id: photo
+        for photo in inspect_database(database_path, schema_version).photos
+    }
     return replace(
         base,
         photos=tuple(
@@ -473,6 +481,18 @@ def _read_schema_16_snapshot(database_path: Path) -> RecoverySnapshot:
                 is_favorite=by_id[photo.id].is_favorite,
                 rating=by_id[photo.id].rating,
             )
+            for photo in base.photos
+        ),
+    )
+
+
+def _read_schema_17_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_16_snapshot(database_path, schema_version=17)
+    by_id = {photo.id: photo for photo in inspect_database(database_path, 17).photos}
+    return replace(
+        base,
+        photos=tuple(
+            replace(photo, culling_state=by_id[photo.id].culling_state)
             for photo in base.photos
         ),
     )

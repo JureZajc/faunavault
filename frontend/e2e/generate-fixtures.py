@@ -158,6 +158,10 @@ def generate(test_root: Path) -> None:
     temporary_recompressed.replace(recompressed)
     bulk_scene(1).save(bulk_first, format="JPEG", quality=92)
     bulk_scene(2).save(bulk_second, format="JPEG", quality=92)
+    # Dedicated byte identities; upload explicitly acknowledges any visual
+    # similarity to the existing synthetic fixtures.
+    bulk_scene(1).save(fixtures / "faunavault-e2e-culling-reject.jpg", format="JPEG", quality=84)
+    bulk_scene(2).save(fixtures / "faunavault-e2e-culling-pick.jpg", format="JPEG", quality=84)
 
     heic_exif = Image.Exif()
     heic_exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:23 09:15:00"

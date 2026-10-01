@@ -318,8 +318,8 @@ Canonical pair records contain evidence snapshots and `phash64-v1:d4`. New
 evidence/version cannot inherit an old dismissal silently. Candidates are derived
 and reproducible, while explicit dismissals are user-curation data. Schema-14
 verified backups include both pair records and scan state, and rehearsal checks
-their preservation. Backup v1 and historical schemas 9–16 remain supported.
-Portable metadata export v7 intentionally excludes duplicate curation state; use
+their preservation. Backup v1 and historical schemas 9–17 remain supported.
+Portable metadata export v8 intentionally excludes duplicate curation state; use
 verified backups to preserve decisions during recovery.
 
 ### Ingestion detection
@@ -432,8 +432,8 @@ capture/location override markers. Migration copies the previously persisted
 capture/GPS baseline; it does not scan image files. Capture-only correction and
 Restore do not accept pending AI classification review. Original files and EXIF
 bytes are never rewritten, nor are derivatives regenerated. Trash restoration
-preserves both corrections and provenance. Backup-v1 schemas 9–16 are supported;
-verification/rehearsal preserve all new fields. Portable JSON/CSV export v7
+preserves both corrections and provenance. Backup-v1 schemas 9–17 are supported;
+verification/rehearsal preserve all new fields. Portable JSON/CSV export v8
 includes effective values, retained extraction, and both markers.
 
 `backfill-photo-metadata` remains a stopped-archive, dry-run-by-default command.
@@ -487,7 +487,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v7](METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v8](METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -696,6 +696,58 @@ Before schema upgrades, FaunaVault creates timestamped SQLite backups next to th
 
 See [docs/IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) for the audit and prioritized remaining work.
 
+## Photo Culling (v0.3)
+
+Open **Culling** to review active Photos with no culling decision, newest added
+first. **Open in Culling** on List uses the complete current query and sort,
+including any Favorite, Rating, or culling filters; page, grouping, and explicit
+selection do not restrict this read-only queue source. Back to List restores the
+original List URL. Manual Collection and recent-import sources are not yet offered.
+
+Use **Pick**, **Reject**, or **Clear decision**. Pick and Reject advance only
+after a successful save; Clear stays on the current Photo. Next can skip without
+making a decision. Previous revisits decisions made during the session, including
+Photos that have left the undecided query. History is in memory and resets when
+you reload, leave Culling, or change the source; copied URLs retain criteria and
+the current Photo. Open Photo detail for normal Favorite/Rating and metadata edits.
+
+Visible shortcuts are **P** for Pick, **X** for Reject, **U** for Clear, and
+Left/Right arrows for navigation. Shortcuts ignore text inputs, editable content,
+modifiers, key repeat, and open dialogs/lightboxes. Native arrow controls retain
+their behavior. No simple key moves Photos to Trash or permanently deletes them.
+
+Counts describe the live matching source and decisions in this session. At the
+end of a pass the last Photo remains visible; Previous can revisit it and Restart
+queries the source again. Skipped Photos stay undecided. Empty sources show an
+explicit empty state. Failed saves retain confirmed state; retry explicitly.
+Conflicts refresh the current Photo without automatically submitting the decision
+again. A saved decision followed by a queue-refresh failure is reported separately.
+
+These concepts are independent: Favorite means personally important/liked,
+Rating is a personal 1–5 score, Pick selects during culling, Reject does not select
+during culling, and Trash controls the deletion lifecycle. A Favorite Pick, a
+three-star Pick, or a five-star Reject are all valid. Reject stays active in the
+archive. Culling changes do not accept AI classification, change `needs_review`
+or `reviewed_at`, or enqueue work. They update `updated_at` when changed, so the
+existing guard may reject an AI result queued against older Photo metadata.
+
+List supports All/Picked/Rejected/Undecided structured filters and restores them
+from URLs and browser history. Smart Collections save the same criteria: for
+example Picks from 2026, Favorite Picks, or five-star Picks. Select explicit Photos
+and use **Culling decision** for Mark Pick, Mark Reject, or Clear culling decision
+in bulk (maximum 250). A change in criteria resets selection. Card and duplicate
+indicators are display-only; human duplicate decisions remain authoritative.
+Map rejects unsupported culling filters and provides an explanation and List link.
+
+Schema 17 stores `culling_state` as null, `pick`, or `reject` with a database
+constraint. Existing Photos start null. Trash and restore preserve the field;
+permanent deletion removes it with the Photo. No automatic Trash/expiry is added.
+Portable export v8 includes decisions on active and trashed Photos: JSON uses
+null/`pick`/`reject`; CSV uses `\N`/`pick`/`reject`. Backup format v1 supports schemas
+9–17, verifies column structure and values, checks live metadata changes before
+publication, and compares decisions during isolated recovery rehearsal. Historical
+backups upgrade to undecided. Production restore remains manual.
+
 ## Photo Favorites and Ratings
 
 Favorite is a personal yes/no choice; Rating is an optional integer 1–5. Null
@@ -716,9 +768,9 @@ restore, capture correction/backfill, and duplicate decisions preserve curation.
 Permanent deletion removes it with the Photo. Curation advances `updated_at`,
 so an already queued/running AI job can become stale under the existing guard.
 
-Backup format v1 supports schemas 9–16. Schema-16 verification checks curation
+Backup format v1 supports schemas 9–17. Schema-16 verification checks curation
 column structure and values, including empty databases. Recovery rehearsal
 compares Favorite and Rating on active and Trash Photos; older backups migrate
 to false/null without rewriting frozen fixtures. Production restore remains
-manual and uses the same complete SQLite backup. Portable export v7 includes
+manual and uses the same complete SQLite backup. Portable export v8 includes
 JSON boolean/null/integer values and CSV `true`/`false`, 1–5, or `\N`.

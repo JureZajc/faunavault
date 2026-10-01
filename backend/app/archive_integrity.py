@@ -56,6 +56,7 @@ class PhotoRecord:
     location_metadata_overridden: bool = False
     is_favorite: bool = False
     rating: int | None = None
+    culling_state: str | None = None
 
     def signature(self) -> tuple[object, ...]:
         return (
@@ -85,6 +86,7 @@ class PhotoRecord:
             self.location_metadata_overridden,
             self.is_favorite,
             self.rating,
+            self.culling_state,
         )
 
 
@@ -563,6 +565,40 @@ def _inspect_schema_16(connection, migrations: list[int]) -> DatabaseInventory:
     return replace(base, photos=photos)
 
 
+def _validate_culling_state(value: object) -> str | None:
+    if value is not None and (
+        type(value) is not str or value not in {"pick", "reject"}
+    ):
+        raise ArchiveIntegrityError("Invalid Photo culling state")
+    return value
+
+
+def _photo_from_schema_17_row(row) -> PhotoRecord:
+    return replace(
+        _photo_from_schema_16_row(row), culling_state=_validate_culling_state(row[26])
+    )
+
+
+def _inspect_schema_17(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_16(connection, migrations)
+    columns = {row[1]: row for row in connection.execute("PRAGMA table_info(photo)")}
+    column = columns.get("culling_state")
+    if column is None:
+        raise ArchiveIntegrityError("Missing Photo culling_state column")
+    if column[2].upper() != "VARCHAR" or column[3] != 0 or column[4] is not None:
+        raise ArchiveIntegrityError("Invalid Photo culling_state column structure")
+    values = connection.execute(
+        "SELECT id, culling_state FROM photo ORDER BY id"
+    ).fetchall()
+    return replace(
+        base,
+        photos=[
+            replace(photo, culling_state=_validate_culling_state(row[1]))
+            for photo, row in zip(base.photos, values, strict=True)
+        ],
+    )
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
@@ -572,6 +608,7 @@ SCHEMA_INVENTORY_READERS = {
     14: _inspect_schema_14,
     15: _inspect_schema_15,
     16: _inspect_schema_16,
+    17: _inspect_schema_17,
 }
 
 
@@ -634,9 +671,9 @@ def read_photo_signature(path: Path) -> tuple[tuple[object, ...], ...]:
             "camera_model, lens_model, image_width, image_height, latitude, "
             "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden, is_favorite, rating FROM photo ORDER BY id"
+            "location_metadata_overridden, is_favorite, rating, culling_state FROM photo ORDER BY id"
         ).fetchall()
-        return tuple(_photo_from_schema_16_row(row).signature() for row in rows)
+        return tuple(_photo_from_schema_17_row(row).signature() for row in rows)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check live archive state: {exc}"
@@ -656,10 +693,10 @@ def read_photo_record(path: Path, photo_id: int) -> PhotoRecord | None:
             "camera_model, lens_model, image_width, image_height, latitude, "
             "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden, is_favorite, rating FROM photo WHERE id = ?",
+            "location_metadata_overridden, is_favorite, rating, culling_state FROM photo WHERE id = ?",
             (photo_id,),
         ).fetchone()
-        return None if row is None else _photo_from_schema_16_row(row)
+        return None if row is None else _photo_from_schema_17_row(row)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check photo {photo_id}: {exc}"

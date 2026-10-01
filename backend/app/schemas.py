@@ -16,11 +16,13 @@ from pydantic import Field as PydanticField
 from sqlmodel import Field, SQLModel
 
 from app.catalog_query import CatalogSavedQuery
-from app.metadata_types import PhotoRating
+from app.metadata_types import PhotoCullingState, PhotoRating
 from app.models import Animal, DuplicateScanState, Photo
 
 ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}
 BulkPhotoOperation = Literal[
+    "set_culling_state",
+    "clear_culling_state",
     "add_tags",
     "remove_tags",
     "set_category",
@@ -50,6 +52,7 @@ class PhotoUpdate(SQLModel):
     model_config = ConfigDict(extra="forbid")
 
     display_title: str | None = None
+    culling_state: PhotoCullingState | None = None
     is_favorite: StrictBool = False
     rating: PhotoRating | None = None
     common_name: str | None = None
@@ -153,6 +156,16 @@ class ReviewInbox(SQLModel):
     next_photo_id: int | None
     requested_photo_unavailable: bool
     low_confidence: bool
+
+
+class CullingWorkspace(SQLModel):
+    photo: Photo | None
+    total: int
+    position: int | None
+    previous_photo_id: int | None
+    next_photo_id: int | None
+    matches_query: bool
+    requested_photo_unavailable: bool
 
 
 class DuplicateIdentity(SQLModel):
@@ -399,6 +412,15 @@ class BulkClearRatingRequest(BulkPhotoRequestBase):
     operation: Literal["clear_rating"]
 
 
+class BulkSetCullingStateRequest(BulkPhotoRequestBase):
+    operation: Literal["set_culling_state"]
+    culling_state: PhotoCullingState
+
+
+class BulkClearCullingStateRequest(BulkPhotoRequestBase):
+    operation: Literal["clear_culling_state"]
+
+
 class BulkMoveToTrashRequest(BulkPhotoRequestBase):
     operation: Literal["move_to_trash"]
 
@@ -411,6 +433,8 @@ BulkPhotoRequest = Annotated[
     | BulkSetFavoriteRequest
     | BulkSetRatingRequest
     | BulkClearRatingRequest
+    | BulkSetCullingStateRequest
+    | BulkClearCullingStateRequest
     | BulkMoveToTrashRequest,
     PydanticField(discriminator="operation"),
 ]

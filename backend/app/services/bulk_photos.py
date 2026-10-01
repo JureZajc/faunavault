@@ -10,12 +10,14 @@ from app.models import Photo, utc_now
 from app.schemas import (
     BulkAddTagsRequest,
     BulkClearCategoryRequest,
+    BulkClearCullingStateRequest,
     BulkClearRatingRequest,
     BulkMoveToTrashRequest,
     BulkPhotoMutationResponse,
     BulkPhotoRequest,
     BulkRemoveTagsRequest,
     BulkSetCategoryRequest,
+    BulkSetCullingStateRequest,
     BulkSetFavoriteRequest,
     BulkSetRatingRequest,
 )
@@ -166,11 +168,21 @@ def apply_bulk_photo_action(
                     session.add(photo)
         elif isinstance(
             request,
-            (BulkSetFavoriteRequest, BulkSetRatingRequest, BulkClearRatingRequest),
+            (
+                BulkSetFavoriteRequest,
+                BulkSetRatingRequest,
+                BulkClearRatingRequest,
+                BulkSetCullingStateRequest,
+                BulkClearCullingStateRequest,
+            ),
         ):
             field = (
                 "is_favorite"
                 if isinstance(request, BulkSetFavoriteRequest)
+                else "culling_state"
+                if isinstance(
+                    request, (BulkSetCullingStateRequest, BulkClearCullingStateRequest)
+                )
                 else "rating"
             )
             value = (
@@ -178,6 +190,8 @@ def apply_bulk_photo_action(
                 if isinstance(request, BulkSetFavoriteRequest)
                 else request.rating
                 if isinstance(request, BulkSetRatingRequest)
+                else request.culling_state
+                if isinstance(request, BulkSetCullingStateRequest)
                 else None
             )
             for photo in photos:

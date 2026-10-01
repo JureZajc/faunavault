@@ -74,7 +74,7 @@ def test_requested_rows_relationships_and_migrated_indexes(archive):
         assert len(session.exec(select(Animal)).all()) == len(dataset.animals)
         assert len(session.exec(select(Taxon)).all()) == 8
     metadata = runner.database_metadata(engine)
-    assert metadata["schema_version"] == 16
+    assert metadata["schema_version"] == 17
     assert metadata["pragmas"]["foreign_keys"] == 1
     names = {index["name"] for index in metadata["indexes"]}
     assert {

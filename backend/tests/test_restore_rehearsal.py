@@ -100,6 +100,11 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
         if schema >= 16:
             connection.execute("UPDATE photo SET is_favorite=1, rating=5 WHERE id=1")
             connection.execute("UPDATE photo SET rating=2 WHERE id=2")
+    if schema >= 17:
+        with sqlite3.connect(database) as connection:
+            connection.execute(
+                "UPDATE photo SET culling_state=CASE WHEN id=1 THEN 'pick' ELSE 'reject' END"
+            )
     manifest_path = backup / "manifest.json"
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     payload["database"]["schema_version"] = schema
@@ -110,7 +115,7 @@ def _intermediate_backup(tmp_path, monkeypatch, schema):
     return backup
 
 
-@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14, 15, 16])
+@pytest.mark.parametrize("schema", [10, 11, 12, 13, 14, 15, 16, 17])
 def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
     tmp_path, monkeypatch, schema
 ):
@@ -178,6 +183,11 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
             assert connection.execute(
                 "SELECT is_favorite, rating FROM photo ORDER BY id"
             ).fetchall() == [(0, None), (0, None)]
+        assert connection.execute(
+            "SELECT culling_state FROM photo ORDER BY id"
+        ).fetchall() == (
+            [("pick",), ("reject",)] if schema >= 17 else [(None,), (None,)]
+        )
     for role in ("original", "resized", "thumbs"):
         for source in (backup / "images" / role).iterdir():
             assert (
@@ -234,7 +244,10 @@ def test_schema13_upgrade_failure_preserves_originals_and_retries(
                 "SELECT MAX(version) FROM schema_migration"
             ).fetchone() == (13,)
         assert _fingerprint(settings.image_dirs["original"]) == originals_before
-        assert initialize_archive_storage(engine, settings).applied_migrations == (16,)
+        assert initialize_archive_storage(engine, settings).applied_migrations == (
+            16,
+            17,
+        )
         assert initialize_archive_storage(engine, settings).applied_migrations == ()
         with sqlite3.connect(database) as connection:
             assert [
@@ -242,7 +255,7 @@ def test_schema13_upgrade_failure_preserves_originals_and_retries(
                 for row in connection.execute(
                     "SELECT version FROM schema_migration ORDER BY version"
                 )
-            ] == list(range(1, 17))
+            ] == list(range(1, 18))
             assert connection.execute(
                 "SELECT is_favorite, rating FROM photo ORDER BY id"
             ).fetchall() == [(0, None), (0, None)]
@@ -273,6 +286,7 @@ def test_schema13_upgrade_failure_preserves_originals_and_retries(
         (15, "photo", "location_metadata_overridden"),
         (16, "photo", "is_favorite"),
         (16, "photo", "rating"),
+        (17, "photo", "culling_state"),
     ],
 )
 def test_schema_claim_requires_actual_review_and_smart_columns(
@@ -348,7 +362,7 @@ def test_frozen_schema9_fixture_verifies_rehearses_and_remains_immutable(tmp_pat
     assert verification.manifest is not None
     assert verification.manifest.database.schema_version == 9
     assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset(
-        {9, 10, 11, 12, 13, 14, 15, 16}
+        {9, 10, 11, 12, 13, 14, 15, 16, 17}
     )
     assert result.source_schema_version == 9
     assert result.current_schema_version == LATEST_SCHEMA_VERSION

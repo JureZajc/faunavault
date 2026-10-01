@@ -71,7 +71,7 @@ def _create_archive(tmp_path: Path, *, populated: bool = True) -> ArchiveFixture
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for version in range(1, 17):
+        for version in range(1, 18):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (version,),
@@ -275,12 +275,12 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
 
     payload = json.loads(first_json)
     validated = ArchiveMetadataExport.model_validate(payload)
-    assert payload["format_version"] == 7
+    assert payload["format_version"] == 8
     assert all(
         photo["is_favorite"] is False and photo["rating"] is None
         for photo in payload["photos"]
     )
-    assert payload["source_database_schema_version"] == 16
+    assert payload["source_database_schema_version"] == 17
     assert payload["counts"] == {
         "photos": 3,
         "active_photos": 2,
@@ -385,7 +385,7 @@ def test_metadata_export_preserves_heic_source_identity_without_version_bump(
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     photo = next(item for item in payload["photos"] if item["id"] == 3)
 
-    assert payload["format_version"] == 7
+    assert payload["format_version"] == 8
     assert photo["original_filename"] == "iPhone.HEIC"
     assert photo["archive_relative_original_path"] == "images/original/three.heic"
     assert photo["media_type"] == "image/heic"
@@ -639,7 +639,7 @@ def test_cli_summary_warnings_exit_codes_and_help(
     assert export_cli.main([str(destination), "--csv"]) == 0
     captured = capsys.readouterr()
     assert "Metadata export: COMPLETE" in captured.out
-    assert "Format: v7" in captured.out
+    assert "Format: v8" in captured.out
     assert "Collections: 1 with 2 membership(s)" in captured.out
     assert "Photos: 3 total / 2 active / 1 Trash" in captured.out
     assert "1 photo(s) lacked a stored original size or SHA-256" in captured.out
@@ -667,13 +667,13 @@ def test_format_version_is_independent_and_schema_rejects_bad_artifacts(
     result = create_metadata_export(tmp_path / "valid", archive.settings)
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     payload["source_database_schema_version"] = 10
-    assert ArchiveMetadataExport.model_validate(payload).format_version == 7
+    assert ArchiveMetadataExport.model_validate(payload).format_version == 8
 
     payload["format_version"] = 1
     with pytest.raises(ValidationError):
         ArchiveMetadataExport.model_validate(payload)
 
-    payload["format_version"] = 7
+    payload["format_version"] = 8
     payload["photos"][0]["original_sha256"] = "BAD"
     with pytest.raises(ValidationError):
         ArchiveMetadataExport.model_validate(payload)

@@ -4,6 +4,24 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ## [Unreleased]
 
+### Added
+
+- Photo Culling workspace with independent Pick / Reject / undecided decisions,
+  successful-save auto-advance, session Previous/Next history, visible keyboard
+  shortcuts, and entry from the complete filtered List query.
+- URL-restorable culling filters, shared Smart Collection criteria, explicit
+  atomic bulk Pick / Reject / Clear actions, and detail/card/duplicate indicators.
+  Picking does not Favorite or Rate; Rejecting does not move a Photo to Trash
+  or accept AI classification.
+
+### Reliability and data safety
+
+- Schema 17 adds a constrained nullable Photo culling state; historical upgrades
+  initialize it to undecided and Trash/restore preserve it.
+- Portable metadata export v8 includes machine-readable culling decisions in
+  JSON/CSV. Backup format v1 verifies and rehearses schemas 9–17, including
+  culling metadata and detection of changes during backup creation.
+
 ## [0.2.0] - 2026-09-30
 
 ### Added

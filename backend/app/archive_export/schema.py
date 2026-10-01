@@ -8,9 +8,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.catalog_query import CatalogSavedQuery
-from app.metadata_types import PhotoRating
+from app.metadata_types import PhotoCullingState, PhotoRating
 
-EXPORT_FORMAT_VERSION = 7
+EXPORT_FORMAT_VERSION = 8
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -79,6 +79,7 @@ class PhotoExport(StrictExportModel):
     id: int = Field(ge=1)
     is_favorite: bool
     rating: PhotoRating | None
+    culling_state: PhotoCullingState | None
     original_filename: str
     archive_relative_original_path: str
     media_type: str | None

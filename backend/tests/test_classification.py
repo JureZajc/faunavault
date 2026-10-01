@@ -701,7 +701,10 @@ def test_trash_rejects_or_invalidates_classification(classification_app):
         assert job.failure_code == "photo_trashed"
 
 
-def test_photo_change_prevents_delayed_metadata_write(classification_app):
+@pytest.mark.parametrize("culling_state", [None, "pick", "reject"])
+def test_photo_change_prevents_delayed_metadata_write(
+    classification_app, culling_state
+):
     client, engine, settings, _ = classification_app
     photo = upload(client, "fox.jpg")
     job_id = client.post(f"/photos/{photo['id']}/classify").json()["jobs"][0]["job"][
@@ -709,6 +712,17 @@ def test_photo_change_prevents_delayed_metadata_write(classification_app):
     ]
 
     def edit_during_classification(_path: Path, runtime_settings: Settings):
+        if culling_state is not None:
+            current = client.get(f"/photos/{photo['id']}").json()
+            saved = client.patch(
+                f"/photos/{photo['id']}",
+                params={"expected_updated_at": current["updated_at"]},
+                json={"culling_state": culling_state},
+            )
+            assert saved.status_code == 200
+            return ClassificationOutcome(
+                result(runtime_settings.ai_primary_model), False
+            )
         with Session(engine) as session:
             stored = session.get(Photo, photo["id"])
             stored.display_title = "Manual title"
@@ -722,7 +736,11 @@ def test_photo_change_prevents_delayed_metadata_write(classification_app):
     with Session(engine) as session:
         stored = session.get(Photo, photo["id"])
         job = session.get(ClassificationJob, job_id)
-        assert stored.display_title == "Manual title"
+        if culling_state is None:
+            assert stored.display_title == "Manual title"
+        else:
+            assert stored.culling_state == culling_state
+            assert stored.display_title == photo["display_title"]
         assert job.failure_code == "photo_changed"
 
 
