@@ -9,7 +9,7 @@ import PhotoMedia from "../components/photo-detail/photo-media";
 import { PhotoMetadataDetails } from "../components/photo-detail/photo-metadata";
 import PhotoCurationSummary from "../components/photo-curation-summary";
 import { ApiError, CullingWorkspace, getCullingWorkspace, PhotoCullingState, updatePhoto } from "../lib/api";
-import { parseCatalogState } from "../lib/catalog-query";
+import { parseCatalogState, REJECTED_PHOTOS_HREF } from "../lib/catalog-query";
 import { compareHref } from "../lib/photo-compare";
 
 function message(error: unknown) {
@@ -189,7 +189,10 @@ export default function CullingBrowser() {
       <ArchiveNavigation active="cull" onNavigate={(_section, event) => { if (saving.current) event.preventDefault(); }} />
       <header className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <div><h1 className="text-3xl font-semibold">Photo Culling</h1><p className="mt-2 text-sm text-stone-600">{source === "list" ? "Current List query" : "Active undecided photos"} · Pick selects; Reject keeps the photo in your archive.</p></div>
-        <Link href={safeListReturn(params.get("returnTo"))} aria-disabled={busy} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Back to List</Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={REJECTED_PHOTOS_HREF} aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Review rejected</Link>
+          <Link href={safeListReturn(params.get("returnTo"))} aria-disabled={busy} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Back to List</Link>
+        </div>
       </header>
       <p role="status" className="mt-4 text-sm text-stone-600">{workspace?.total ?? 0} matching photos · {decided.size} decisions this session</p>
       {notice ? <p role="status" className="mt-3 text-sm text-emerald-900">{notice}</p> : null}

@@ -439,6 +439,78 @@ test("Photo Culling saves independent decisions and filters Picks", async ({ pag
   }
 });
 
+test("rejected review moves explicit selection to recoverable Trash and Compare updates membership", async ({ page, request }, testInfo) => {
+  const filenames = ["faunavault-e2e-cleanup-first.jpg", "faunavault-e2e-cleanup-second.jpg"];
+  const ids: number[] = [];
+  try {
+    for (let index = 0; index < 2; index++) {
+      const uploaded = await request.post("http://127.0.0.1:8001/photos/upload", {
+        multipart: { file: { name: filenames[index], mimeType: "image/jpeg", buffer: await readFile(fixturePath(index === 0 ? "faunavault-e2e-culling-reject.jpg" : "faunavault-e2e-culling-pick.jpg")) }, allow_visual_duplicate: "true" },
+      });
+      expect(uploaded.ok()).toBe(true);
+      ids.push((await uploaded.json()).id);
+    }
+    await page.goto("/cull?catalog_search=faunavault-e2e-cleanup");
+    await expect(page.getByRole("heading", { name: filenames[1] })).toBeVisible();
+    await page.getByRole("button", { name: "Reject (X)" }).click();
+    await expect(page.getByRole("heading", { name: filenames[0] })).toBeVisible();
+    await page.getByRole("button", { name: "Reject (X)" }).click();
+    await expect(page.getByText(/End of pass · 0 still match/)).toBeVisible();
+    await page.getByRole("link", { name: "Review rejected", exact: true }).click();
+    await expect(page).toHaveURL(/\/\?catalog_culling_state=reject$/);
+    await expect(page.getByText("2 rejected photos", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Move to Trash", exact: true })).toHaveCount(0);
+    await page.getByRole("searchbox").fill("no-cleanup-match");
+    await expect(page.getByRole("heading", { name: "No rejected photos match these filters" })).toBeVisible();
+    // A pending debounced search must not overwrite the all-Reject entry URL.
+    await page.getByRole("searchbox").fill("another-cleanup-miss");
+    await page.getByRole("link", { name: "Review all rejected photos", exact: true }).click();
+    await expect(page).toHaveURL(/\/\?catalog_culling_state=reject$/);
+    await expect(page.getByText("2 rejected photos", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Select photos", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Move 0 selected photos to Trash" })).toBeDisabled();
+    const checkbox = page.getByRole("checkbox", { name: new RegExp(`Select photo ${ids[0]}:`) });
+    await checkbox.focus();
+    await checkbox.press("Space");
+    await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Move 1 selected photo to Trash" }).click();
+    const dialog = page.getByRole("dialog", { name: "Move 1 selected photo to Trash?" });
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+    await expect(dialog).toContainText("can be restored later");
+    await page.setViewportSize({ width: 360, height: 760 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("rejected-confirmation-mobile.png"), fullPage: true });
+    await dialog.getByRole("button", { name: "Move selected to Trash" }).click();
+    await expect(page.getByText("1 rejected photo", { exact: true })).toBeVisible();
+    await expect(catalogCard(page, filenames[0])).toHaveCount(0);
+    await expect(catalogCard(page, filenames[1])).toHaveCount(1);
+    await page.getByRole("link", { name: "Trash", exact: true }).click();
+    await catalogCard(page, filenames[0]).getByRole("button", { name: "Restore", exact: true }).click();
+    await expect(catalogCard(page, filenames[0])).toHaveCount(0);
+    await page.getByRole("link", { name: "List", exact: true }).click();
+    await expect(page.getByText("2 rejected photos", { exact: true })).toBeVisible();
+    await expect(catalogCard(page, filenames[0])).toHaveCount(1);
+    await page.reload();
+    await expect(page.getByText("2 rejected photos", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Select photos", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Select page", exact: true }).check();
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await page.getByRole("button", { name: "Pick left photo", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Pick left photo", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("link", { name: "Back to List", exact: true }).click();
+    await expect(page.getByText("1 rejected photo", { exact: true })).toBeVisible();
+    await expect(catalogCard(page, filenames[0])).toHaveCount(0);
+    await expect(catalogCard(page, filenames[1])).toHaveCount(1);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("rejected-review-mobile.png"), fullPage: true });
+  } finally {
+    for (const id of ids) {
+      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
+      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+    }
+  }
+});
+
 test("HEIC upload produces browser-safe JPEG previews", async ({ page }) => {
   await page.goto("/");
   await uploadFile(page, HEIC_FILENAME);

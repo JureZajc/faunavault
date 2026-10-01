@@ -6,6 +6,15 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Rejected Photo Review and Cleanup through the existing filtered List, with
+  contextual Review rejected entry from List/Culling, live counts, shared
+  inspection/Compare, and explicit bounded selection for recoverable Trash.
+  Restore returns Photos still marked Reject to review; Reject itself never
+  deletes or moves a Photo.
+- Cleanup confirms the selected count and atomically checks that every selected
+  Photo is still active and Reject before moving any to Trash. Changed decisions
+  stop the request; refresh and reselect explicitly. Curation, AI review metadata,
+  and duplicate-review decisions retain their existing lifecycle semantics.
 - Two-photo Compare Mode with URL-restorable pairs, entry from exactly two List
   selections, Duplicate Review candidates, and existing Culling neighbors.
   Independent zoom/pan and deliberate JPEG/PNG/WebP original inspection support

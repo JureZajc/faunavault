@@ -48,6 +48,30 @@ beforeEach(() => {
   });
 });
 
+test("Review rejected opens the all-Reject List even from an empty filtered source", async () => {
+  window.history.replaceState(null, "", "/cull?source=list&catalog_search=missing&catalog_category=missing&catalog_sort=rating&returnTo=%2F%3Fsmart_edit%3D7");
+  render(<CullingBrowser />);
+  await screen.findByRole("heading", { name: "No photos to cull" });
+  const entry = screen.getByRole("link", { name: "Review rejected" });
+  expect(entry.getAttribute("href")).toBe("/?catalog_culling_state=reject");
+  expect(entry.getAttribute("aria-disabled")).toBe("false");
+});
+
+test("Review rejected is unavailable while saving a culling decision", async () => {
+  let finish!: (photo: Photo) => void;
+  api.updatePhoto.mockImplementationOnce(() => new Promise<Photo>((resolve) => { finish = resolve; }));
+  render(<CullingBrowser />);
+  await screen.findByRole("heading", { name: "Photo 3" });
+  await userEvent.click(screen.getByRole("button", { name: "Reject (X)" }));
+  const entry = screen.getByRole("link", { name: "Review rejected" });
+  expect(entry.getAttribute("aria-disabled")).toBe("true");
+  expect(entry.getAttribute("tabindex")).toBe("-1");
+  fireEvent.click(entry);
+  expect(window.location.pathname).toBe("/cull");
+  finish({ ...photos[0], culling_state: "reject" });
+  await waitFor(() => expect(entry.getAttribute("aria-disabled")).toBe("false"));
+});
+
 test("default queue auto-advances without losing previous saved decisions; clear stays and next follows history", async () => {
   render(<CullingBrowser />);
   await screen.findByRole("heading", { name: "Photo 3" });

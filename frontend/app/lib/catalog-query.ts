@@ -65,6 +65,16 @@ export const DEFAULT_CATALOG_STATE: CatalogState = {
   layout: "flat",
 };
 
+export const REJECTED_PHOTOS_HREF = "/?catalog_culling_state=reject";
+
+export function hasAdditionalRejectedFilters(state: CatalogQuery) {
+  return Boolean(
+    state.search || state.status || state.category || state.uncategorized ||
+    state.taxon_id || state.taken_from || state.taken_to || state.favorites_only ||
+    state.rating || state.rating_min || state.unrated,
+  );
+}
+
 const statuses = new Set<PhotoStatus>([
   "pending",
   "classified",

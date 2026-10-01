@@ -423,6 +423,7 @@ class BulkClearCullingStateRequest(BulkPhotoRequestBase):
 
 class BulkMoveToTrashRequest(BulkPhotoRequestBase):
     operation: Literal["move_to_trash"]
+    expected_culling_state: Literal["reject"] | None = None
 
 
 BulkPhotoRequest = Annotated[

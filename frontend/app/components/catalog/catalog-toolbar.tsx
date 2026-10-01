@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CatalogTaxonOption, CullingFilter } from "../../lib/api";
-import { CatalogLayout, CatalogSortOption } from "../../lib/catalog-query";
+import { CatalogLayout, CatalogSortOption, REJECTED_PHOTOS_HREF } from "../../lib/catalog-query";
 
 import {
   CatalogCurationFilters, CatalogCategoryFilter, CatalogDateFilters, CatalogStatusFilter, CatalogTaxonFilter,
@@ -32,6 +32,7 @@ type CatalogToolbarProps = {
   cullingState?: CullingFilter;
   onCullingStateChange?: (value?: CullingFilter) => void;
   cullingHref?: string;
+  onReviewRejected?: () => void;
   favoritesOnly?: boolean;
   ratingFilter?: string;
   onFavoritesOnlyChange: (value: boolean) => void;
@@ -72,7 +73,7 @@ type CatalogToolbarProps = {
 };
 
 export default function CatalogToolbar({
-  cullingState, onCullingStateChange, cullingHref,
+  cullingState, onCullingStateChange, cullingHref, onReviewRejected,
   favoritesOnly, ratingFilter, onFavoritesOnlyChange, onRatingFilterChange,
   searchQuery,
   statusFilter,
@@ -172,6 +173,7 @@ export default function CatalogToolbar({
         </p>
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:justify-end">
           {cullingHref ? <Link href={cullingHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Open in Culling</Link> : null}
+          <Link href={REJECTED_PHOTOS_HREF} onClick={onReviewRejected} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Review rejected</Link>
           {mapHref ? <div>
             {mapDisabled ? <button type="button" disabled aria-describedby="map-search-explanation" className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold opacity-50">View on Map</button>
               : <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">View on Map</Link>}

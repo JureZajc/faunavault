@@ -33,7 +33,7 @@ test("index distinguishes manual and Smart Collections and isolates an invalid s
   api.getSmartCollections.mockResolvedValue([{ ...smart, query_valid: false, query_error: "Unsupported saved query version 99." }]);
   render(<CollectionsBrowser />);
   expect(await screen.findByRole("heading", { name: "Smart Collections" })).toBeTruthy();
-  expect(screen.getAllByRole("link", { name: /Foxes/ }).map((link) => link.getAttribute("href"))).toEqual(["/collections/3", "/collections/smart/7"]);
+  await waitFor(() => expect(screen.getAllByRole("link", { name: /Foxes/ }).map((link) => link.getAttribute("href"))).toEqual(["/collections/3", "/collections/smart/7"]));
   expect(screen.getByText("Unsupported saved query version 99.")).toBeTruthy();
 });
 
