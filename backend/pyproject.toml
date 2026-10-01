@@ -1,6 +1,6 @@
 [project]
 name = "backend"
-version = "0.2.0"
+version = "0.3.0.dev0"
 description = "Local-first backend for the FaunaVault animal photo archive"
 readme = "README.md"
 license = "MIT"

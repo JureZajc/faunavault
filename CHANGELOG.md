@@ -2,6 +2,8 @@
 
 Release entries describe user-visible milestones rather than individual commits.
 
+## [Unreleased]
+
 ## [0.2.0] - 2026-09-30
 
 ### Added
