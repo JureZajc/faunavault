@@ -103,6 +103,8 @@ class DatabaseInventory:
     collections: int = 0
     collection_memberships: int = 0
     smart_collections: int = 0
+    archive_events: int = 0
+    archive_event_memberships: int = 0
 
     @property
     def active_photos(self) -> int:
@@ -743,6 +745,142 @@ def _inspect_schema_18(connection, migrations: list[int]) -> DatabaseInventory:
     )
 
 
+EVENT_COLUMNS = "id, kind, title, start_date, end_date, location_label, notes, created_at, updated_at"
+
+
+def _event_records(connection) -> tuple[tuple, tuple]:
+    from app.event_schemas import EventFields
+
+    records = tuple(
+        tuple(row)
+        for row in connection.execute(
+            f"SELECT {EVENT_COLUMNS} FROM archive_event ORDER BY id"
+        )
+    )
+    memberships = tuple(
+        tuple(row)
+        for row in connection.execute(
+            "SELECT event_id, photo_id FROM archive_event_photo ORDER BY event_id, photo_id"
+        )
+    )
+    for row in records:
+        try:
+            if type(row[0]) is not int or row[0] < 1:
+                raise ValueError("invalid Event ID")
+            fields = dict(zip(tuple(EventFields.model_fields), row[1:7], strict=True))
+            validated = EventFields(**fields)
+            if validated.model_dump(mode="json") != fields:
+                raise ValueError("noncanonical Event metadata")
+            for timestamp in row[7:]:
+                datetime.fromisoformat(timestamp)
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ArchiveIntegrityError(f"Invalid Trip/Event metadata: {exc}") from exc
+    event_ids = {row[0] for row in records}
+    photo_ids = {row[0] for row in connection.execute("SELECT id FROM photo")}
+    if len(set(memberships)) != len(memberships) or any(
+        type(event_id) is not int
+        or type(photo_id) is not int
+        or event_id not in event_ids
+        or photo_id not in photo_ids
+        for event_id, photo_id in memberships
+    ):
+        raise ArchiveIntegrityError("Invalid Trip/Event membership references")
+    return records, memberships
+
+
+def read_event_signature(path: Path) -> tuple[tuple, tuple]:
+    connection = open_read_only_database(path)
+    try:
+        return _event_records(connection)
+    except sqlite3.Error as exc:
+        raise ArchiveIntegrityError(f"Could not read Trips/Events: {exc}") from exc
+    finally:
+        connection.close()
+
+
+def validate_event_tables(connection) -> tuple[tuple, tuple]:
+    """Validate schema-19 structure even for an empty Event domain."""
+    shapes = {
+        "archive_event": {
+            "id": ("INTEGER", 1, 1),
+            "kind": ("VARCHAR", 1, 0),
+            "title": ("VARCHAR", 1, 0),
+            "start_date": ("DATE", 1, 0),
+            "end_date": ("DATE", 1, 0),
+            "location_label": ("VARCHAR", 0, 0),
+            "notes": ("VARCHAR", 0, 0),
+            "created_at": ("DATETIME", 1, 0),
+            "updated_at": ("DATETIME", 1, 0),
+        },
+        "archive_event_photo": {
+            "event_id": ("INTEGER", 1, 1),
+            "photo_id": ("INTEGER", 1, 2),
+        },
+    }
+    for table, required in shapes.items():
+        columns = {
+            row[1]: row for row in connection.execute(f"PRAGMA table_info({table})")
+        }
+        if any(
+            name not in columns
+            or (columns[name][2].upper(), columns[name][3], columns[name][5]) != shape
+            or columns[name][4] is not None
+            for name, shape in required.items()
+        ):
+            raise ArchiveIntegrityError(f"Invalid {table} table structure")
+        if {name for name, row in columns.items() if row[5]} != {
+            name for name, shape in required.items() if shape[2]
+        }:
+            raise ArchiveIntegrityError(f"Invalid {table} primary key")
+    sql = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='archive_event'"
+    ).fetchone()[0]
+    normalized = "".join(sql.lower().split())
+    for expression in (
+        "autoincrement",
+        "check(kindin('trip','event'))",
+        "check(length(title)between1and100)",
+        "check(start_date<=end_date)",
+        "check(location_labelisnullorlength(location_label)between1and200)",
+        "check(notesisnullorlength(notes)between1and2000)",
+    ):
+        if expression not in normalized:
+            raise ArchiveIntegrityError(
+                "Missing Trip/Event identity or metadata constraint"
+            )
+    foreign_keys = list(
+        connection.execute("PRAGMA foreign_key_list(archive_event_photo)")
+    )
+    if any(
+        not any(
+            row[2:5] == (target, column, "id") and row[6] == "CASCADE"
+            for row in foreign_keys
+        )
+        for target, column in (("archive_event", "event_id"), ("photo", "photo_id"))
+    ):
+        raise ArchiveIntegrityError("Missing Trip/Event membership cascade foreign key")
+    indexes = list(connection.execute("PRAGMA index_list(archive_event_photo)"))
+    if not any(
+        row[1] == "ix_archive_event_photo_photo_event" and row[4] == 0
+        for row in indexes
+    ) or [
+        row[2]
+        for row in connection.execute(
+            "PRAGMA index_info(ix_archive_event_photo_photo_event)"
+        )
+    ] != ["photo_id", "event_id"]:
+        raise ArchiveIntegrityError("Missing Trip/Event reverse membership index")
+    return _event_records(connection)
+
+
+def _inspect_schema_19(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_18(connection, migrations)
+    records, memberships = validate_event_tables(connection)
+    return replace(
+        base, archive_events=len(records), archive_event_memberships=len(memberships)
+    )
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
@@ -754,6 +892,7 @@ SCHEMA_INVENTORY_READERS = {
     16: _inspect_schema_16,
     17: _inspect_schema_17,
     18: _inspect_schema_18,
+    19: _inspect_schema_19,
 }
 
 

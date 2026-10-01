@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import ValidationError
 
-from app.catalog_query import CatalogSavedQuery
+from app.catalog_query import CatalogQuery
 from app.db import SessionDep
 from app.metadata_types import CullingFilter
 from app.schemas import (
@@ -29,9 +29,9 @@ from app.services.catalog import (
 RatingParameter = Literal["1", "2", "3", "4", "5"]
 
 
-def _validated_query(**values) -> CatalogSavedQuery:
+def _validated_query(**values) -> CatalogQuery:
     try:
-        return CatalogSavedQuery(**values)
+        return CatalogQuery(**values)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()[0]["msg"]) from exc
 
@@ -50,6 +50,7 @@ def create_catalog_router() -> APIRouter:
     @router.get("/map", response_model=list[PhotoMapPoint])
     def get_photo_map_points(
         session: SessionDep,
+        event_id: int | None = Query(default=None, ge=1, le=2**63 - 1),
         status: Literal["pending", "classified", "needs_review"] | None = None,
         category: str | None = Query(default=None, max_length=200),
         uncategorized: bool = False,
@@ -86,6 +87,7 @@ def create_catalog_router() -> APIRouter:
                 status_code=422, detail="Text search is not supported on Map."
             )
         criteria = _validated_query(
+            event_id=event_id,
             status=status,
             category=category,
             uncategorized=uncategorized,
@@ -113,6 +115,7 @@ def create_catalog_router() -> APIRouter:
         unrated: bool = False,
         culling_state: CullingFilter | None = None,
         import_session_id: str | None = None,
+        event_id: int | None = Query(default=None, ge=1, le=2**63 - 1),
         sort: Literal[
             "created_at",
             "captured_at",
@@ -126,6 +129,7 @@ def create_catalog_router() -> APIRouter:
         order: Literal["asc", "desc"] = "desc",
     ) -> CatalogPhotoPage:
         criteria = _validated_query(
+            event_id=event_id,
             search=search,
             status=status,
             category=category,
@@ -166,6 +170,7 @@ def create_catalog_router() -> APIRouter:
         unrated: bool = False,
         culling_state: CullingFilter | None = None,
         import_session_id: str | None = None,
+        event_id: int | None = Query(default=None, ge=1, le=2**63 - 1),
         sort: Literal[
             "created_at",
             "captured_at",
@@ -179,6 +184,7 @@ def create_catalog_router() -> APIRouter:
         order: Literal["asc", "desc"] = "desc",
     ) -> CullingWorkspace:
         criteria = _validated_query(
+            event_id=event_id,
             search=search,
             status=status,
             category=category,

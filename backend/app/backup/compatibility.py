@@ -4,5 +4,5 @@ from __future__ import annotations
 # application schema. Add a version only after its verifier and migration
 # rehearsal have dedicated compatibility coverage.
 SUPPORTED_BACKUP_SCHEMA_VERSIONS: frozenset[int] = frozenset(
-    {9, 10, 11, 12, 13, 14, 15, 16, 17, 18}
+    {9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
 )

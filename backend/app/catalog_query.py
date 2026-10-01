@@ -75,3 +75,9 @@ class CatalogSavedQuery(BaseModel):
         if self.taken_from and self.taken_to and self.taken_from > self.taken_to:
             raise ValueError("taken_from must be on or before taken_to")
         return self
+
+
+class CatalogQuery(CatalogSavedQuery):
+    """Live criteria; Event membership deliberately cannot be persisted in Smart queries."""
+
+    event_id: int | None = Field(default=None, ge=1, le=2**63 - 1)

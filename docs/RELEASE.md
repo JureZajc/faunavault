@@ -55,20 +55,20 @@ The published v0.1.0 tag, changelog entry, and
    The v0.2.0 readiness audit records a current dependency security blocker;
    functional success alone does not clear it for publication.
 5. Perform the fresh-clone rehearsal below without Ollama or personal data.
-6. Require backup-v1 schemas 9–16 to verify and rehearse. The full check includes
+6. Require backup-v1 schemas 9–19 to verify and rehearse. The full check includes
    fresh schema, genuine historical upgrades, schema-13 failure/retry, structural
    refusal, recovery, and export tests. For focused diagnosis only:
 
    ```sh
    cd backend
-   uv run --no-sync pytest tests/test_first_run.py tests/test_backup.py tests/test_restore_rehearsal.py tests/test_capture_metadata_editing.py tests/test_photo_curation.py tests/test_archive_export.py
+   uv run --no-sync pytest tests/test_first_run.py tests/test_backup.py tests/test_restore_rehearsal.py tests/test_capture_metadata_editing.py tests/test_photo_curation.py tests/test_events.py tests/test_archive_export.py
    cd ..
    ```
 
    Do not repeat a current successful full result unnecessarily. Check originals,
    active/Trash state, Collections, Smart definitions, classification, duplicate
    decisions, effective/extracted capture/GPS, manual overrides and clears, and
-   Favorites/Ratings. Required structures must be checked even in empty backups.
+   Favorites/Ratings, Import Sessions, Trips & Events and all explicit memberships. Required structures must be checked even in empty backups.
    Never regenerate the frozen schema-9 fixture or weaken historical support.
 7. Review the dated v0.2.0 changelog, README limitations,
    [readiness report and prepared notes](RELEASE_READINESS_V0.2.0.md), MIT license,

@@ -371,7 +371,7 @@ def test_schema16_export_backup_rehearsal_and_live_signature(
     backup, verification = create_backup(root / "backups", settings)
     assert verification.valid and verify_backup(backup).valid
     result = rehearse_backup(backup, root / "recovered")
-    assert result.source_schema_version == result.current_schema_version == 18
+    assert result.source_schema_version == result.current_schema_version == 19
     with sqlite3.connect(root / "recovered/data/faunavault.db") as connection:
         assert connection.execute(
             "SELECT is_favorite, rating FROM photo"
@@ -379,7 +379,7 @@ def test_schema16_export_backup_rehearsal_and_live_signature(
     exported = create_metadata_export(root / "export", settings, include_csv=True)
     payload = json.loads(exported.json_path.read_text())
     assert (
-        payload["format_version"] == 9 and payload["photos"][0]["is_favorite"] is True
+        payload["format_version"] == 10 and payload["photos"][0]["is_favorite"] is True
     )
     assert payload["photos"][0]["rating"] == 5
     with exported.csv_path.open(newline="", encoding="utf-8") as source:
@@ -398,7 +398,7 @@ def test_migration16_preserves_existing_metadata_and_is_idempotent(lifecycle):
         connection.exec_driver_sql("ALTER TABLE photo DROP COLUMN rating")
         connection.exec_driver_sql("ALTER TABLE photo DROP COLUMN culling_state")
     assert inspect_database(settings.database_path, 15).migrations[-1] == 15
-    assert run_migrations(engine, settings) == [16, 17, 18]
+    assert run_migrations(engine, settings) == [16, 17, 18, 19]
     assert client.get(f"/photos/{before['id']}").json() == before
     assert run_migrations(engine, settings) == []
 

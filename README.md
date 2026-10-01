@@ -21,6 +21,9 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   extracted values and Restore original metadata. [Editing guide](docs/OPERATIONS.md#editable-capture-metadata-v02).
 - Search, filters, sorting, Timeline, clustered Map, species Albums, manual
   Collections, and live Smart Collections.
+- Trips & Events group explicitly selected Photos around dated experiences, with
+  date suggestions, List/Map/Culling entry, and safe membership removal.
+  [Trips & Events guide](docs/OPERATIONS.md#trips--events-v03).
 - URL-restorable Map filters and compatible List navigation.
   [Map guide](docs/OPERATIONS.md#map-filters-and-list-navigation).
 - Personal Favorites and 1–5-star Ratings, with List filters, rating sorting,
@@ -34,7 +37,7 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 - Review rejected Photos through List, inspect or Compare, and explicitly select
   still-rejected Photos for recoverable Trash. Restore returns them to review.
   [Cleanup guide](docs/OPERATIONS.md#rejected-photo-review-and-cleanup-v03).
-- Explicit cross-page selection for bulk tags, category, Collections, curation,
+- Explicit cross-page selection for bulk tags, category, Collections, Trips & Events, curation,
   and recoverable Trash.
 - SHA-256 exact duplicate protection and conservative visual duplicate review.
 - Duplicate Review Center for archive curation, persistent Keep both decisions,
@@ -160,7 +163,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–18. Production restore remains manual.
+schemas 9–19. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)

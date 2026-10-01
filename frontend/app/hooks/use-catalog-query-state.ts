@@ -125,6 +125,11 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     updateCatalog({ ...catalogState, taxon_id: taxonId, page: 1 });
   }
 
+  function setTakenRange(takenFrom: string, takenTo: string) {
+    cancelPendingSearch();
+    updateCatalog({ ...catalogState, search: searchInput.trim() || undefined, taken_from: takenFrom, taken_to: takenTo, page: 1 });
+  }
+
   function setTakenFrom(takenFrom?: string) {
     updateCatalog({ ...catalogState, taken_from: takenFrom, page: 1 });
   }
@@ -151,6 +156,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
         ...catalogState,
         page: 1,
         favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
+        event_id: undefined,
         import_session_id: undefined,
         culling_state: undefined,
         search: undefined,
@@ -188,6 +194,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     setSort,
     setLayout,
     setTaxon,
+    setTakenRange,
     setTakenFrom,
     setTakenTo,
     setPage,

@@ -475,7 +475,7 @@ def test_schema18_verification_rejects_damaged_provenance(lifecycle, damage):
                 "UPDATE import_session SET label='private/parent/folder'"
             )
     with pytest.raises(ArchiveIntegrityError):
-        inspect_database(settings.database_path, 18)
+        inspect_database(settings.database_path, 19)
 
 
 def test_backup_export_rehearsal_and_session_only_changes(lifecycle, tmp_path_factory):
@@ -492,7 +492,7 @@ def test_backup_export_rehearsal_and_session_only_changes(lifecycle, tmp_path_fa
     assert first.json_path.read_bytes() == second.json_path.read_bytes()
     assert first.csv_path.read_bytes() == second.csv_path.read_bytes()
     payload = json.loads(first.json_path.read_text())
-    assert payload["format_version"] == 9 and payload["counts"]["import_sessions"] == 1
+    assert payload["format_version"] == 10 and payload["counts"]["import_sessions"] == 1
     assert payload["photos"][0]["import_session_id"] == identity
     invalid = json.loads(first.json_path.read_text())
     invalid["photos"][0]["import_session_id"] = str(uuid4())
@@ -505,7 +505,7 @@ def test_backup_export_rehearsal_and_session_only_changes(lifecycle, tmp_path_fa
     assert verification.valid and verify_backup(backup).valid
     recovered = tmp_path / "recovered"
     result = rehearse_backup(backup, recovered)
-    assert result.current_schema_version == result.source_schema_version == 18
+    assert result.current_schema_version == result.source_schema_version == 19
     assert read_import_session_signature(
         recovered / "data/faunavault.db"
     ) == read_import_session_signature(settings.database_path)
@@ -528,11 +528,11 @@ def test_schema18_migration_and_legacy_provenance(tmp_path, monkeypatch):
     )
     engine = create_database_engine(settings)
     assert inspect_database(settings.database_path, 17).migrations[-1] == 17
-    assert run_migrations(engine, settings) == [18]
+    assert run_migrations(engine, settings) == [18, 19]
     assert run_migrations(engine, settings) == []
     assert all(
         photo.import_session_id is None
-        for photo in inspect_database(settings.database_path, 18).photos
+        for photo in inspect_database(settings.database_path, 19).photos
     )
     assert read_import_session_signature(database) == ()
     engine.dispose()

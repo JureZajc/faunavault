@@ -18,7 +18,7 @@ export function compareReturnLocation(value: string | null) {
   try {
     const origin = "http://faunavault.local";
     const url = new URL(value, origin);
-    if (url.origin !== origin || !["/", "/duplicates", "/cull"].includes(url.pathname)) return "/";
+    if (url.origin !== origin || (!["/", "/duplicates", "/cull"].includes(url.pathname) && !/^\/events\/[1-9]\d*$/.test(url.pathname))) return "/";
     return `${url.pathname}${url.search}${url.hash}`;
   } catch { return "/"; }
 }

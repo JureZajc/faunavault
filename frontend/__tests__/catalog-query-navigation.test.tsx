@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   createSmartCollection: vi.fn(),
   getSmartCollection: vi.fn(),
   updateSmartCollection: vi.fn(),
+  getEvent: vi.fn(),
+  addEventPhotos: vi.fn(),
 }));
 
 vi.mock("../app/lib/api", async (importOriginal) => ({
@@ -94,6 +96,8 @@ beforeEach(() => {
   api.createSmartCollection.mockResolvedValue({ id: 8, name: "Foxes", query_valid: true });
   api.getSmartCollection.mockResolvedValue({ id: 7, name: "Birds", query_version: 1, query_valid: true, query_error: null, query: { sort: "created_at", order: "desc" }, created_at: "2026-01-01", updated_at: "2026-01-01" });
   api.updateSmartCollection.mockResolvedValue({ id: 7, name: "Birds", query_valid: true });
+  api.getEvent.mockImplementation(async (id) => ({ id, kind: "trip", title: `Trip ${id}`, start_date: "2026-08-12", end_date: "2026-08-17", location_label: null, notes: null, active_photo_count: 1, trash_photo_count: 0, undecided_count: 1, pick_count: 0, reject_count: 0, previews: [] }));
+  api.addEventPhotos.mockResolvedValue({ event_id: 7, requested_count: 1, added_count: 1, already_present_count: 0 });
 });
 
 test("saves current List criteria without page or layout and includes pending search text", async () => {
@@ -254,7 +258,7 @@ test("preserves catalog parameters while switching collection views", async () =
   const navigation = screen.getByRole("navigation", { name: "Archive views" });
   expect(
     Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Culling", "Duplicates", "Trash"]);
+  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash"]);
   expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("href"))
     .toBe("/timeline");
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))
@@ -270,4 +274,54 @@ test("List opens Map with supported membership filters and disables pending text
   await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "f");
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
   expect(screen.getByText("Clear Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.")).toBeTruthy();
+});
+
+test("List Event membership survives filters and prevents saving Smart criteria", async () => {
+  window.history.replaceState(null, "", "/?catalog_event_id=7");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Trip: Trip 7" });
+  expect(screen.queryByRole("button", { name: "Save as Smart Collection" })).toBeNull();
+  expect(screen.getByText(/Trip\/Event membership cannot be saved/)).toBeTruthy();
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Status" }), "classified");
+  await waitFor(() => expect(api.getCatalogPhotos).toHaveBeenLastCalledWith(expect.objectContaining({ event_id: 7, status: "classified" }), expect.any(AbortSignal)));
+  expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toContain("catalog_event_id=7");
+  await userEvent.click(screen.getByRole("button", { name: "Select photos" }));
+  await userEvent.click(await screen.findByRole("checkbox", { name: /Select photo 1:/ }));
+  expect(screen.getByText("1 selected", { exact: true })).toBeTruthy();
+  window.history.pushState(null, "", "/?catalog_event_id=8"); window.dispatchEvent(new PopStateEvent("popstate"));
+  await screen.findByRole("heading", { name: "Trip: Trip 8" });
+  await waitFor(() => expect(screen.queryByText("1 selected", { exact: true })).toBeNull());
+});
+
+test("List suggestion target does not scope membership; successful addition clears selection and stays in List", async () => {
+  window.history.replaceState(null, "", "/?add_to_event=7&catalog_taken_from=2026-08-12&catalog_taken_to=2026-08-17");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Add Photos to Trip: Trip 7" });
+  await screen.findByRole("heading", { name: "Fox" });
+  expect(api.getCatalogPhotos.mock.calls[0][0]).toMatchObject({ taken_from: "2026-08-12", taken_to: "2026-08-17" });
+  expect(api.getCatalogPhotos.mock.calls[0][0].event_id).toBeUndefined();
+  await userEvent.click(screen.getByRole("button", { name: "Select Photos to add" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: /Select photo 1:/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Add selected to this Trip" }));
+  await waitFor(() => expect(api.addEventPhotos).toHaveBeenCalledWith(7, [1]));
+  await waitFor(() => expect(screen.queryByText("1 selected", { exact: true })).toBeNull());
+  expect(window.location.pathname).toBe("/");
+  expect(window.location.search).toContain("add_to_event=7");
+});
+
+test("changing addition target clears selection; current dates preserve visible search and refresh copied date filters", async () => {
+  window.history.replaceState(null, "", "/?add_to_event=7&catalog_taken_from=2025-01-01&catalog_taken_to=2025-01-02&catalog_search=fox");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Add Photos to Trip: Trip 7" });
+  await screen.findByRole("heading", { name: "fox" });
+  await userEvent.click(screen.getByRole("button", { name: "Select Photos to add" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: /Select photo 1:/ }));
+  window.history.pushState(null, "", "/?add_to_event=8&catalog_search=fox"); window.dispatchEvent(new PopStateEvent("popstate"));
+  await screen.findByRole("heading", { name: "Add Photos to Trip: Trip 8" });
+  await waitFor(() => expect(screen.queryByText("1 selected", { exact: true })).toBeNull());
+  await userEvent.click(screen.getByRole("button", { name: "Use current Trip/Event dates" }));
+  expect(window.location.search).toContain("catalog_taken_from=2026-08-12");
+  expect(window.location.search).toContain("catalog_taken_to=2026-08-17");
+  expect(window.location.search).toContain("catalog_search=fox");
+  expect(window.location.search).toContain("add_to_event=8");
 });

@@ -1,8 +1,8 @@
-# FaunaVault metadata export format v9
+# FaunaVault metadata export format v10
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, manual Collections and their
-memberships, Smart Collection definitions, Import Sessions, Trash state, and authoritative original-file inventory.
+memberships, Smart Collection definitions, Import Sessions, Trips & Events, Trash state, and authoritative original-file inventory.
 It contains no media bytes and is not a backup, restore format, or supported
 import format.
 
@@ -12,15 +12,17 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v9 is `9`. |
+| `format_version` | Metadata export representation version; v10 is `10`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
-| `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, Import Session, and original-byte totals. |
+| `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, Import Session, Trip/Event, Event membership, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
 | `animals` | All Animals, including those without Photos, ordered by local ID. |
 | `taxa` | All locally stored Taxa, including unreferenced rows, ordered by local ID. |
 | `collections` | All user-defined Collections, ordered by local ID. |
 | `collection_photos` | All Collection membership pairs, including memberships to Trash Photos, ordered by Collection ID then Photo ID. |
 | `smart_collections` | Saved versioned catalog queries, ordered by local ID. |
+| `archive_events` | All Trips and Events, including empty ones, ordered by local ID. |
+| `archive_event_photos` | All Event membership pairs, including Trash Photos, ordered by Event ID then Photo ID. |
 | `import_sessions` | All historical sessions, including empty and unfinished ones, ordered by canonical UUID string. |
 
 Export format and database schema versions have separate compatibility
@@ -28,7 +30,7 @@ lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
 adds the durable Photo capture-metadata contract. Version 4 adds human review
-timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. Version 9 adds Import Sessions and Photo provenance. FaunaVault emits only v9.
+timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. Version 9 adds Import Sessions and Photo provenance. Version 10 adds Trips & Events and their explicit memberships. FaunaVault emits only v10.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -109,7 +111,7 @@ CSV adds a `culling_state` column using `pick`, `reject`, or the existing `\N`
 null sentinel. Smart Collection query version 1 can additionally store
 `culling_state: "pick" | "reject" | "undecided"`; omission/null means no culling
 filter. Existing saved queries remain valid. Historical v1–v7 exports stay
-unchanged; consumers must explicitly support v9.
+unchanged; consumers must explicitly support v10.
 
 `import_session_id` is a required nullable canonical UUID string referencing an
 `import_sessions` record in this artifact. Legacy Photos remain null; provenance
@@ -318,6 +320,9 @@ JSON. Override flags use lowercase `true`/`false` in CSV.
   session criteria, and five CSV provenance columns. Session-only history is
   available in JSON; legacy Photo provenance columns are `\N` in CSV.
 
+- v10: ordered Trips & Events, all authoritative metadata and explicit membership
+  pairs including Trash, with Event and membership counts. photos.csv is unchanged.
+
 ## Deliberate exclusions
 
 The format excludes originals and all other media bytes, derivative inventory,
@@ -328,3 +333,18 @@ application configuration, credentials, absolute database/image paths, staging
 and purge paths, database internals, and export bookkeeping. There is no import
 or restore guarantee. Keep verified FaunaVault backups containing SQLite and
 image bytes for disaster recovery.
+
+## Trips & Events (v10)
+
+`archive_events` contains `id`, `kind` (`trip` or `event`), `title`,
+`start_date`, `end_date`, nullable `location_label` and `notes`, and
+`created_at` / `updated_at`. Dates use canonical `YYYY-MM-DD` and must be ordered;
+timestamps use the existing UTC serialization. Titles have normalized whitespace;
+notes preserve internal line breaks as plain text. Duplicate titles are allowed.
+
+`archive_event_photos` contains only `event_id` and `photo_id`. IDs are positive,
+records and membership pairs are unique and sorted, and both referenced records
+must exist in the same export. The `counts` object adds `archive_events` and
+`archive_event_memberships`. Empty Events and memberships to Trash Photos are
+authoritative data and are included. `photos.csv` is unchanged: as with
+Collections, these many-to-many relationships belong in the authoritative JSON.

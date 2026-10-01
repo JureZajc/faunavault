@@ -6,9 +6,9 @@ from datetime import date, datetime, time, timedelta
 from sqlalchemy import Integer, String, and_, case, cast, func, or_
 from sqlmodel import Session, select
 
-from app.catalog_query import CatalogSavedQuery
+from app.catalog_query import CatalogQuery, CatalogSavedQuery
 from app.metadata_types import CullingFilter
-from app.models import Animal, Photo, Taxon
+from app.models import Animal, ArchiveEventPhoto, Photo, Taxon
 from app.schemas import (
     CatalogCategoryFacet,
     CatalogFacets,
@@ -23,6 +23,7 @@ from app.schemas import (
     TimelineResponse,
     TimelineYear,
 )
+from app.services.events import event_or_404
 
 TIMELINE_PREVIEW_LIMIT = 4
 
@@ -242,6 +243,14 @@ def _catalog_joins(query, criteria: CatalogSavedQuery):
 
 def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
     conditions = [Photo.deleted_at.is_(None)]
+    if isinstance(criteria, CatalogQuery) and criteria.event_id is not None:
+        conditions.append(
+            Photo.id.in_(
+                select(ArchiveEventPhoto.photo_id)
+                .where(ArchiveEventPhoto.event_id == criteria.event_id)
+                .correlate(None)
+            )
+        )
     if criteria.import_session_id is not None:
         conditions.append(Photo.import_session_id == criteria.import_session_id)
     if criteria.culling_state == "undecided":
@@ -302,8 +311,12 @@ def list_catalog_photos(
     unrated: bool = False,
     culling_state: CullingFilter | None = None,
     import_session_id: str | None = None,
+    event_id: int | None = None,
 ) -> CatalogPhotoPage:
-    criteria = CatalogSavedQuery(
+    if event_id is not None:
+        event_or_404(event_id, session)
+    criteria = CatalogQuery(
+        event_id=event_id,
         search=search,
         status=status,
         category=category,
@@ -329,7 +342,8 @@ def list_catalog_photos(
     conditions = _catalog_conditions(criteria)
 
     selective_photo_filters = bool(
-        import_session_id is not None
+        event_id is not None
+        or import_session_id is not None
         or culling_state is not None
         or favorites_only
         or rating is not None
@@ -388,6 +402,8 @@ def list_catalog_photos(
 def culling_workspace(
     session: Session, criteria: CatalogSavedQuery, photo_id: int | None = None
 ) -> CullingWorkspace:
+    if isinstance(criteria, CatalogQuery) and criteria.event_id is not None:
+        event_or_404(criteria.event_id, session)
     # A saved decision can leave the query. Keep that one active Photo as an
     # anchor while every candidate still obeys all other source criteria.
     base = criteria.model_copy(update={"culling_state": None})
@@ -451,6 +467,8 @@ def list_photo_map_points(
     session: Session, criteria: CatalogSavedQuery | None = None
 ) -> list[PhotoMapPoint]:
     criteria = criteria or CatalogSavedQuery()
+    if isinstance(criteria, CatalogQuery) and criteria.event_id is not None:
+        event_or_404(criteria.event_id, session)
     query = _catalog_joins(
         select(
             Photo.id,

@@ -2,6 +2,7 @@ import { SmartCollectionQuery } from "./api";
 import { CatalogState, DEFAULT_CATALOG_STATE, writeCatalogState } from "./catalog-query";
 
 export function savedQueryFromState(state: CatalogState, searchInput: string): SmartCollectionQuery {
+  if (state.event_id !== undefined) throw new Error("Trip/Event membership cannot be saved as Smart Collection criteria. Clear the Trip/Event filter first.");
   return {
     import_session_id: state.import_session_id,
     search: searchInput.trim() || undefined,

@@ -316,10 +316,10 @@ def test_schema17_migration_retry_and_metadata_preservation(lifecycle, monkeypat
         patcher.setattr(migrations, "_migration_17", fail)
         with pytest.raises(RuntimeError, match="migration17"):
             run_migrations(engine, settings)
-    assert run_migrations(engine, settings) == [17, 18]
+    assert run_migrations(engine, settings) == [17, 18, 19]
     assert run_migrations(engine, settings) == []
     assert client.get(f"/photos/{photo['id']}").json() == photo
-    assert inspect_database(settings.database_path, 18).photos[0].culling_state is None
+    assert inspect_database(settings.database_path, 19).photos[0].culling_state is None
 
 
 @pytest.mark.parametrize(
@@ -338,7 +338,7 @@ def test_schema17_verifies_column_structure(lifecycle, definition, empty):
                 f"ALTER TABLE photo ADD COLUMN culling_state {definition}"
             )
     with pytest.raises(ArchiveIntegrityError, match="culling_state"):
-        inspect_database(settings.database_path, 18)
+        inspect_database(settings.database_path, 19)
 
 
 def test_schema17_constraints_and_corruption(lifecycle):
@@ -350,7 +350,7 @@ def test_schema17_constraints_and_corruption(lifecycle):
         connection.exec_driver_sql("PRAGMA ignore_check_constraints=ON")
         connection.exec_driver_sql("UPDATE photo SET culling_state='invalid'")
     with pytest.raises(ArchiveIntegrityError):
-        inspect_database(settings.database_path, 18)
+        inspect_database(settings.database_path, 19)
 
 
 def test_culling_export_backup_rehearsal_and_live_changes(lifecycle, tmp_path_factory):
@@ -381,8 +381,8 @@ def test_culling_export_backup_rehearsal_and_live_changes(lifecycle, tmp_path_fa
     exported = create_metadata_export(tmp_path / "export", settings, include_csv=True)
     payload = json.loads(exported.json_path.read_text())
     assert (
-        payload["format_version"] == 9
-        and payload["source_database_schema_version"] == 18
+        payload["format_version"] == 10
+        and payload["source_database_schema_version"] == 19
     )
     assert [photo["culling_state"] for photo in payload["photos"]] == [
         "pick",
@@ -403,7 +403,7 @@ def test_culling_export_backup_rehearsal_and_live_changes(lifecycle, tmp_path_fa
     backup, verification = create_backup(tmp_path / "backups", settings)
     assert verification.valid and verify_backup(backup).valid
     result = rehearse_backup(backup, tmp_path / "recovered")
-    assert result.source_schema_version == result.current_schema_version == 18
+    assert result.source_schema_version == result.current_schema_version == 19
     with sqlite3.connect(tmp_path / "recovered/data/faunavault.db") as connection:
         assert connection.execute(
             "SELECT culling_state FROM photo ORDER BY id"

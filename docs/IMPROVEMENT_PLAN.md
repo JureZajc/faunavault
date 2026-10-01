@@ -493,5 +493,28 @@ explicit refresh clears selection without retrying a failed mutation.
 No new route, queue state, schema, export format, index, automatic cleanup, or
 permanent deletion UI is added. See the
 [cleanup guide](OPERATIONS.md#rejected-photo-review-and-cleanup-v03). The
-recommended next v0.3 task is adding recent-import and manual Collection sources
-to Culling while retaining its existing bounded source/navigation semantics.
+Recent Imports now provides scoped Culling and List selection; Trips & Events
+extends the same source/navigation semantics as described below.
+
+## Final planned v0.3 feature: Trips & Events
+
+Implemented a shared ArchiveEvent domain with Trip/Event kind, explicit dates,
+optional location/notes and many-to-many Photo membership. The top-level index
+and detail reuse cards, bounded cross-page selection, dialogs and catalog APIs.
+List provides explicit addition and camera-local date suggestions; Map/Culling,
+Photo detail and Compare preserve membership. Smart Collection query v1 excludes
+Event scope. No Timeline overlay or import-specific creation flow is added.
+
+Schema 19 preserves old migrations and creates empty tables for older archives.
+Trash/Restore retain joins, purge cascades joins, and empty Events remain.
+Backup-v1 schemas 9–19 verify structure and data before rehearsal writes, detect
+Event changes and compare exact recovery. Export v10 includes ordered Events and
+Trash memberships without changing photos.csv. Grouped page counts and ranked
+previews avoid per-card requests or complete member-set loading.
+
+Manual covers, recurrence, automatic membership, coordinates/geocoding and
+import-specific creation remain deferred. After the required acceptance checks
+pass, the next task is the v0.3 release-readiness review; implementation does not
+publish a release. See the [operations guide](OPERATIONS.md#trips--events-v03).
+The [19-point implementation report](TRIPS_EVENTS_IMPLEMENTATION.md) records
+scope, intentional limitations and actual acceptance results.

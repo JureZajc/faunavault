@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 18
+LATEST_SCHEMA_VERSION = 19
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -510,6 +510,17 @@ def _migration_18(connection) -> None:
     )
 
 
+def _migration_19(connection) -> None:
+    from app.models import ArchiveEvent, ArchiveEventPhoto
+
+    ArchiveEvent.__table__.create(connection, checkfirst=True)
+    ArchiveEventPhoto.__table__.create(connection, checkfirst=True)
+    # SQLite may retain table DDL after an interrupted index creation. Retry
+    # the index independently when the tables already exist.
+    for index in ArchiveEventPhoto.__table__.indexes:
+        index.create(connection, checkfirst=True)
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -581,6 +592,8 @@ def run_migrations(
                 _migration_17(connection)
             elif version == 18:
                 _migration_18(connection)
+            elif version == 19:
+                _migration_19(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

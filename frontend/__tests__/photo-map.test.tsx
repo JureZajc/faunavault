@@ -141,7 +141,7 @@ test("shows loading and then passes points plus focus to the map boundary", asyn
   expect(screen.getByText("2 mapped photos")).toBeTruthy();
   expect(
     screen.getAllByRole("link").map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Culling", "Duplicates", "Trash", "View in List"]);
+  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash", "View in List"]);
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("aria-current"))
     .toBe("page");
 });

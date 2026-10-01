@@ -6,6 +6,13 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Trips & Events with required dates, optional location/notes, explicit Photo
+  membership, a paginated index with deterministic previews, and List/Map/Culling
+  integration. Date suggestions use effective camera-local capture dates and
+  require selection. Removal and Event deletion preserve Photos.
+- List can add up to 250 selected Photos to an existing Trip/Event. Event scope
+  survives navigation and Compare returns; Smart Collections remain query v1
+  and exclude Event membership criteria.
 - Import Sessions group successful Photos from one browser selection or offline
   folder invocation. Contextual Recent Imports shows historical outcomes and live
   active/Trash/Pick/Reject counts, with View imported photos and Cull this import
@@ -41,18 +48,26 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Reliability and data safety
 
+- Schema 19 adds constrained Event metadata, non-reused IDs, and cascading
+  membership keys. Trash retains membership; permanent Photo deletion removes
+  joins while preserving empty Events. Metadata and membership changes never
+  modify Photo, AI review, or duplicate state.
+- Portable export v10 adds ordered Events/memberships and counts, including
+  Trash, while retaining photos.csv. Backup v1 keeps its manifest shape and
+  supports schemas 9–19, with structural verification, Event change signatures,
+  exact recovery comparisons, and rehearsal totals.
 - Schema 18 adds Import Sessions and nullable indexed Photo provenance. Existing
   Photos remain unassigned; Trash/restore retains membership and permanent
   deletion retains the session's original imported total. Folder dry runs stay
   read-only, and classification jobs do not control import completion.
-- Portable export v9 includes ordered sessions, aggregate history, nullable
+- Portable export v10 includes ordered sessions, aggregate history, nullable
   Photo membership, and CSV provenance. Backup format v1 retains its manifest
-  shape and supports schemas 9–18, validating relationships and detecting session
+  shape and supports schemas 9–19, validating relationships and detecting session
   changes during creation, with exact recovery comparisons.
 - Schema 17 adds a constrained nullable Photo culling state; historical upgrades
   initialize it to undecided and Trash/restore preserve it.
 - Portable metadata export includes machine-readable culling decisions in
-  JSON/CSV. Backup format v1 verifies and rehearses schemas 9–18, including
+  JSON/CSV. Backup format v1 verifies and rehearses schemas 9–19, including
   culling metadata and detection of changes during backup creation.
 
 ## [0.2.0] - 2026-09-30
