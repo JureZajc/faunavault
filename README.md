@@ -4,7 +4,8 @@ FaunaVault is a local-first animal photo archive for one person on one machine.
 Original photos and previews stay on your filesystem, metadata lives in SQLite,
 and optional AI classification runs through local Ollama vision models.
 
-**v0.2.0** is a source-based release. [Release notes](CHANGELOG.md) ·
+Current `master` is **v0.3.0.dev0** (unreleased development). The latest published
+source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 [MIT license](LICENSE)
 
 ![FaunaVault album view](faunavault-album-desktop.png)
