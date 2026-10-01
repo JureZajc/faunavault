@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 export type BulkDialogAction =
+  | "culling"
   | "favorite"
   | "rating"
   | "add_tags"
@@ -93,6 +94,7 @@ export default function BulkSelectionToolbar({
             ["add_to_collection", "Add to Collection"],
             ["favorite", "Favorite / Unfavorite"],
             ["rating", "Set rating"],
+            ["culling", "Culling decision"],
             ["add_tags", "Add tags"],
             ["remove_tags", "Remove tags"],
             ["category", "Set category"],

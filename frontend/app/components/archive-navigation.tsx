@@ -10,6 +10,7 @@ export type ArchiveSection =
   | "album"
   | "collections"
   | "review"
+  | "cull"
   | "duplicates"
   | "trash";
 
@@ -20,6 +21,7 @@ const destinations: { section: ArchiveSection; label: string; href: string }[] =
   { section: "album", label: "Albums", href: "/?view=album" },
   { section: "collections", label: "Collections", href: "/collections" },
   { section: "review", label: "Review", href: "/review" },
+  { section: "cull", label: "Culling", href: "/cull" },
   { section: "duplicates", label: "Duplicates", href: "/duplicates" },
   { section: "trash", label: "Trash", href: "/?view=trash" },
 ];
@@ -28,7 +30,7 @@ export default function ArchiveNavigation({ active, onNavigate }: {
   active: ArchiveSection;
   onNavigate?: (section: ArchiveSection, event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
-  return <nav aria-label="Archive views" className="grid w-full min-w-0 grid-cols-2 rounded-lg border border-stone-200 bg-stone-100 p-1 sm:grid-cols-4 xl:w-auto xl:grid-cols-8">
+  return <nav aria-label="Archive views" className="grid w-full min-w-0 grid-cols-3 rounded-lg border border-stone-200 bg-stone-100 p-1 sm:grid-cols-3 xl:w-auto xl:grid-cols-9">
     {destinations.map((destination) => <Link
       key={destination.section}
       href={destination.href}

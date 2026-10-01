@@ -250,7 +250,7 @@ def update_photo(
         classification_fields
         + CAPTURE_FIELDS
         + PROVENANCE_FIELDS
-        + ("is_favorite", "rating")
+        + ("is_favorite", "rating", "culling_state")
     )
     before = tuple(getattr(photo, name) for name in tracked)
     before_updated_at = photo.updated_at

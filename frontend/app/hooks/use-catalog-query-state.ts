@@ -13,7 +13,7 @@ import {
   writeHomeView,
   writeMapCatalogState,
 } from "../lib/catalog-query";
-import { PhotoStatus, PhotoRating } from "../lib/api";
+import { PhotoStatus, PhotoRating, CullingFilter } from "../lib/api";
 
 export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
   const router = useRouter();
@@ -91,6 +91,10 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     updateCatalog({ ...catalogState, favorites_only: favorites_only || undefined, page: 1 });
   }
 
+  function setCullingState(culling_state?: CullingFilter) {
+    updateCatalog({ ...catalogState, culling_state, page: 1 });
+  }
+
   function setRatingFilter(value: string) {
     const [kind, number] = value.split(":");
     updateCatalog({ ...catalogState, rating: kind === "exact" ? Number(number) as PhotoRating : undefined, rating_min: kind === "min" ? Number(number) as PhotoRating : undefined, unrated: kind === "unrated" || undefined, page: 1 });
@@ -147,6 +151,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
         ...catalogState,
         page: 1,
         favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
+        culling_state: undefined,
         search: undefined,
         status: undefined,
         category: undefined,
@@ -175,6 +180,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     setSearchInput,
     cancelPendingSearch,
     setFavoritesOnly,
+    setCullingState,
     setRatingFilter,
     setStatus,
     setCategory,

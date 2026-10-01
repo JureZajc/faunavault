@@ -48,6 +48,7 @@ CSV_COLUMNS = (
     "photo_id",
     "is_favorite",
     "rating",
+    "culling_state",
     "lifecycle_state",
     "original_filename",
     "archive_relative_original_path",
@@ -127,6 +128,7 @@ class ResolvedExportSource:
 class SnapshotPhoto:
     is_favorite: bool
     rating: int | None
+    culling_state: str | None
     id: int
     original_filename: str
     stored_filename: str
@@ -396,7 +398,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             "reviewed_at, created_at, updated_at, "
             "extracted_captured_at, extracted_captured_at_offset_minutes, "
             "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden, is_favorite, rating "
+            "location_metadata_overridden, is_favorite, rating, culling_state "
             "FROM photo ORDER BY id"
         ).fetchall()
         photos: list[SnapshotPhoto] = []
@@ -406,6 +408,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                 SnapshotPhoto(
                     is_favorite=_override_flag(row["is_favorite"]),
                     rating=row["rating"],
+                    culling_state=row["culling_state"],
                     id=photo_id,
                     original_filename=_required_text(
                         row["original_filename"], f"photo {photo_id} original_filename"
@@ -699,6 +702,7 @@ def _inventory_photos(
             PhotoExport(
                 is_favorite=photo.is_favorite,
                 rating=photo.rating,
+                culling_state=photo.culling_state,
                 id=photo.id,
                 original_filename=photo.original_filename,
                 archive_relative_original_path=(
@@ -813,6 +817,7 @@ def _csv_rows(document: ArchiveMetadataExport) -> list[list[str]]:
             photo.id,
             photo.is_favorite,
             photo.rating,
+            photo.culling_state,
             photo.lifecycle_state,
             photo.original_filename,
             photo.archive_relative_original_path,

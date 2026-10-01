@@ -1,10 +1,13 @@
 import type { MapCatalogQuery } from "./catalog-query";
 
 export type PhotoRating = 1 | 2 | 3 | 4 | 5;
+export type PhotoCullingState = "pick" | "reject";
+export type CullingFilter = PhotoCullingState | "undecided";
 
 export type PhotoStatus = "pending" | "classified" | "needs_review";
 
 export type Photo = {
+  culling_state: PhotoCullingState | null;
   is_favorite: boolean;
   rating: PhotoRating | null;
   id: number;
@@ -152,6 +155,7 @@ export type CatalogSort =
 export type CatalogOrder = "asc" | "desc";
 
 export type CatalogQuery = {
+  culling_state?: CullingFilter;
   favorites_only?: boolean;
   rating?: PhotoRating;
   rating_min?: PhotoRating;
@@ -277,6 +281,7 @@ export type CollectionRemovePhotosResponse = {
 };
 
 export type PhotoUpdate = Partial<{
+  culling_state: PhotoCullingState | null;
   is_favorite: boolean;
   rating: PhotoRating | null;
   captured_at: string | null;
@@ -312,6 +317,8 @@ export type ReviewAcceptResponse = {
 };
 
 export type BulkPhotoOperation =
+  | "set_culling_state"
+  | "clear_culling_state"
   | "set_favorite"
   | "set_rating"
   | "clear_rating"
@@ -322,6 +329,8 @@ export type BulkPhotoOperation =
   | "move_to_trash";
 
 export type BulkPhotoActionRequest =
+  | { operation: "set_culling_state"; culling_state: PhotoCullingState }
+  | { operation: "clear_culling_state" }
   | { operation: "set_favorite"; is_favorite: boolean }
   | { operation: "set_rating"; rating: PhotoRating }
   | { operation: "clear_rating" }
@@ -755,6 +764,10 @@ export function getPhotos() {
 }
 
 export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
+  return request<CatalogPhotoPage>(`/catalog/photos?${catalogQueryParams(query)}`, { signal });
+}
+
+function catalogQueryParams(query: CatalogQuery) {
   const params = new URLSearchParams();
   params.set("page", String(query.page));
   params.set("page_size", String(query.page_size));
@@ -765,13 +778,32 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
   if (query.rating) params.set("rating", String(query.rating));
   if (query.rating_min) params.set("rating_min", String(query.rating_min));
   if (query.unrated) params.set("unrated", "true");
+  if (query.culling_state) params.set("culling_state", query.culling_state);
   if (query.uncategorized) params.set("uncategorized", "true");
   if (query.taxon_id) params.set("taxon_id", String(query.taxon_id));
   if (query.taken_from) params.set("taken_from", query.taken_from);
   if (query.taken_to) params.set("taken_to", query.taken_to);
   params.set("sort", query.sort);
   params.set("order", query.order);
-  return request<CatalogPhotoPage>(`/catalog/photos?${params}`, { signal });
+  return params;
+}
+
+export type CullingWorkspace = {
+  photo: Photo | null;
+  total: number;
+  position: number | null;
+  previous_photo_id: number | null;
+  next_photo_id: number | null;
+  matches_query: boolean;
+  requested_photo_unavailable: boolean;
+};
+
+export function getCullingWorkspace(query: CatalogQuery, photoId?: number, signal?: AbortSignal) {
+  const params = catalogQueryParams(query);
+  params.delete("page");
+  params.delete("page_size");
+  if (photoId !== undefined) params.set("photo_id", String(photoId));
+  return request<CullingWorkspace>(`/catalog/culling?${params}`, { signal });
 }
 
 export function getCatalogFacets(signal?: AbortSignal) {

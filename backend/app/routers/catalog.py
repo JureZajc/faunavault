@@ -8,14 +8,17 @@ from pydantic import ValidationError
 
 from app.catalog_query import CatalogSavedQuery
 from app.db import SessionDep
+from app.metadata_types import CullingFilter
 from app.schemas import (
     CatalogFacets,
     CatalogPhotoPage,
     CatalogTaxonPage,
+    CullingWorkspace,
     PhotoMapPoint,
     TimelineResponse,
 )
 from app.services.catalog import (
+    culling_workspace,
     get_catalog_facets,
     get_photo_timeline,
     list_catalog_photos,
@@ -60,7 +63,14 @@ def create_catalog_router() -> APIRouter:
             default=None, include_in_schema=False
         ),
         unrated: bool = Query(default=False, include_in_schema=False),
+        culling_state: CullingFilter | None = Query(
+            default=None, include_in_schema=False
+        ),
     ) -> list[PhotoMapPoint]:
+        if culling_state is not None:
+            raise HTTPException(
+                status_code=422, detail="Culling filters are not supported on Map."
+            )
         if favorites_only or rating is not None or rating_min is not None or unrated:
             raise HTTPException(
                 status_code=422,
@@ -96,6 +106,7 @@ def create_catalog_router() -> APIRouter:
         rating: RatingParameter | None = None,
         rating_min: RatingParameter | None = None,
         unrated: bool = False,
+        culling_state: CullingFilter | None = None,
         sort: Literal[
             "created_at",
             "captured_at",
@@ -122,6 +133,7 @@ def create_catalog_router() -> APIRouter:
             rating=int(rating) if rating is not None else None,
             rating_min=int(rating_min) if rating_min is not None else None,
             unrated=unrated,
+            culling_state=culling_state,
         )
         return list_catalog_photos(
             session,
@@ -129,6 +141,52 @@ def create_catalog_router() -> APIRouter:
             page_size=page_size,
             **criteria.model_dump(),
         )
+
+    @router.get("/culling", response_model=CullingWorkspace)
+    def get_culling_workspace(
+        session: SessionDep,
+        photo_id: int | None = Query(default=None, ge=1),
+        search: str | None = Query(default=None, max_length=200),
+        status: Literal["pending", "classified", "needs_review"] | None = None,
+        category: str | None = Query(default=None, max_length=200),
+        uncategorized: bool = False,
+        taxon_id: int | None = Query(default=None, ge=1),
+        taken_from: date | None = None,
+        taken_to: date | None = None,
+        favorites_only: bool = False,
+        rating: RatingParameter | None = None,
+        rating_min: RatingParameter | None = None,
+        unrated: bool = False,
+        culling_state: CullingFilter | None = None,
+        sort: Literal[
+            "created_at",
+            "captured_at",
+            "name",
+            "species",
+            "confidence",
+            "rating",
+            "needs_review",
+            "pending",
+        ] = "created_at",
+        order: Literal["asc", "desc"] = "desc",
+    ) -> CullingWorkspace:
+        criteria = _validated_query(
+            search=search,
+            status=status,
+            category=category,
+            uncategorized=uncategorized,
+            taxon_id=taxon_id,
+            taken_from=taken_from,
+            taken_to=taken_to,
+            favorites_only=favorites_only,
+            rating=int(rating) if rating else None,
+            rating_min=int(rating_min) if rating_min else None,
+            unrated=unrated,
+            culling_state=culling_state,
+            sort=sort,
+            order=order,
+        )
+        return culling_workspace(session, criteria, photo_id)
 
     @router.get("/taxa", response_model=CatalogTaxonPage)
     def get_catalog_taxa(

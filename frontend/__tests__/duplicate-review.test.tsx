@@ -11,7 +11,7 @@ vi.mock("../app/lib/api", async (original) => ({ ...await original<typeof import
 vi.mock("../app/components/photo-detail/photo-media", () => ({ default: ({ photo }: { photo: Photo }) => <div>Preview {photo.id}</div> }));
 
 function photo(id: number): Photo {
-  return { extracted_captured_at: null, extracted_captured_at_offset_minutes: null, extracted_latitude: null, extracted_longitude: null, capture_metadata_overridden: false, location_metadata_overridden: false, id, original_filename: `fox-${id}.jpg`, is_favorite: false, rating: null, stored_filename: `${id}.jpg`, resized_filename: `${id}-resized.jpg`, thumbnail_filename: `${id}-thumb.jpg`, display_title: null, common_name: "Fox", breed_guess: null, species_guess: "Vulpes vulpes", category: "mammal", confidence: null, description: null, tags: [], status: "pending", animal_id: null, content_sha256: `${id}`, original_size_bytes: 1048576, media_type: "image/jpeg", captured_at: "2024-05-24T18:42:00", captured_at_offset_minutes: 120, camera_make: "SONY", camera_model: "Alpha", lens_model: null, image_width: 640, image_height: 480, latitude: null, longitude: null, deleted_at: null, reviewed_at: null, created_at: "2026-09-01T12:00:00", updated_at: "2026-09-01T12:00:00" };
+  return { extracted_captured_at: null, extracted_captured_at_offset_minutes: null, extracted_latitude: null, extracted_longitude: null, capture_metadata_overridden: false, location_metadata_overridden: false, id, original_filename: `fox-${id}.jpg`, culling_state: null, is_favorite: false, rating: null, stored_filename: `${id}.jpg`, resized_filename: `${id}-resized.jpg`, thumbnail_filename: `${id}-thumb.jpg`, display_title: null, common_name: "Fox", breed_guess: null, species_guess: "Vulpes vulpes", category: "mammal", confidence: null, description: null, tags: [], status: "pending", animal_id: null, content_sha256: `${id}`, original_size_bytes: 1048576, media_type: "image/jpeg", captured_at: "2024-05-24T18:42:00", captured_at_offset_minutes: 120, camera_make: "SONY", camera_model: "Alpha", lens_model: null, image_width: 640, image_height: 480, latitude: null, longitude: null, deleted_at: null, reviewed_at: null, created_at: "2026-09-01T12:00:00", updated_at: "2026-09-01T12:00:00" };
 }
 const pair: DuplicateComparison = { identity: { left: 1, right: 2 }, left_photo: photo(1), right_photo: photo(2), detector: "phash64-v1:d4", distance: 2, discovered_at: "2026-09-01T12:00:00" };
 function review(overrides: Partial<DuplicateReview> = {}): DuplicateReview {
@@ -40,6 +40,21 @@ test("shows pair evidence, metadata and restorable Photo links", async () => {
   expect(within(left).getByRole("link", { name: "Open left photo" }).getAttribute("href")).toBe("/photos/1?returnTo=%2Fduplicates%3Fleft%3D1%26right%3D2");
   expect(api.getDuplicateReview).toHaveBeenCalledWith({ left: 1, right: 2 }, expect.any(AbortSignal));
   expect(screen.getByText(/A full archive scan has not been run/)).toBeTruthy();
+});
+
+test("comparison shows culling alongside Favorite and Rating without deciding duplicates", async () => {
+  api.getDuplicateReview.mockResolvedValue(review({ pair: { ...pair,
+    left_photo: { ...pair.left_photo, culling_state: "pick", is_favorite: true, rating: 3 },
+    right_photo: { ...pair.right_photo, culling_state: "reject", rating: 5 },
+  } }));
+  render(<DuplicateBrowser />);
+  await screen.findByText("Picked");
+  expect(screen.getByLabelText("Favorite")).toBeTruthy();
+  expect(screen.getByLabelText("Rated 3 out of 5 stars")).toBeTruthy();
+  expect(screen.getByLabelText("Rejected")).toBeTruthy();
+  expect(screen.getByLabelText("Rated 5 out of 5 stars")).toBeTruthy();
+  expect(api.dismissDuplicate).not.toHaveBeenCalled();
+  expect(api.deletePhoto).not.toHaveBeenCalled();
 });
 
 test("Skip navigates without dismissing and wraps to the first pair", async () => {

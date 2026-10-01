@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.metadata_types import PhotoRating
+from app.metadata_types import CullingFilter, PhotoRating
 
 CatalogStatus = Literal["pending", "classified", "needs_review"]
 CatalogSort = Literal[
@@ -35,6 +35,7 @@ class CatalogSavedQuery(BaseModel):
     taken_from: date | None = Field(default=None, strict=False)
     taken_to: date | None = Field(default=None, strict=False)
     favorites_only: bool = False
+    culling_state: CullingFilter | None = None
     rating: PhotoRating | None = None
     rating_min: PhotoRating | None = None
     unrated: bool = False

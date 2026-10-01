@@ -27,7 +27,7 @@ function photo(id: number, title: string, filename = "duplicate.jpg"): Photo {
   return {
     id,
     original_filename: filename,
-    is_favorite: false, rating: null,
+    culling_state: null, is_favorite: false, rating: null,
     stored_filename: `${id}.jpg`,
     resized_filename: `${id}-resized.jpg`,
     thumbnail_filename: `${id}-thumb.jpg`,
@@ -132,13 +132,16 @@ test.each([
   ["favorite", "unfavorite", { operation: "set_favorite", is_favorite: false }, "Unfavorite selected"],
   ["rating", "4", { operation: "set_rating", rating: 4 }, "Set rating"],
   ["rating", "clear", { operation: "clear_rating" }, "Clear rating"],
+  ["culling", "pick", { operation: "set_culling_state", culling_state: "pick" }, "Mark Pick"],
+  ["culling", "reject", { operation: "set_culling_state", culling_state: "reject" }, "Mark Reject"],
+  ["culling", "clear", { operation: "clear_culling_state" }, "Clear culling decision"],
 ])("bulk curation %s %s uses explicitly selected IDs", async (action, value, expected, submitLabel) => {
   render(<Home />);
   await screen.findByRole("heading", { name: "First fox" });
   await enterAndSelectPage();
-  await userEvent.click(screen.getByRole("button", { name: action === "favorite" ? "Favorite / Unfavorite" : "Set rating" }));
+  await userEvent.click(screen.getByRole("button", { name: action === "culling" ? "Culling decision" : action === "favorite" ? "Favorite / Unfavorite" : "Set rating" }));
   const dialog = screen.getByRole("dialog");
-  await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: action === "favorite" ? "Favorite action" : "Rating action" }), value);
+  await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: action === "culling" ? "Culling action" : action === "favorite" ? "Favorite action" : "Rating action" }), value);
   await userEvent.click(within(dialog).getByRole("button", { name: submitLabel }));
   await waitFor(() => expect(api.bulkUpdatePhotos).toHaveBeenCalledWith({ ...expected, photo_ids: [1, 2] }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -152,6 +155,15 @@ test("changing a curation criterion clears selection", async () => {
   await userEvent.click(screen.getByRole("checkbox", { name: "Favorites only" }));
   await waitFor(() => expect(screen.queryByText("2 selected")).toBeNull());
   expect(screen.getByRole("button", { name: "Select photos" })).toBeTruthy();
+});
+
+test("changing culling criteria clears explicit selection", async () => {
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Culling filter" }), "pick");
+  await waitFor(() => expect(screen.queryByText("2 selected")).toBeNull());
+  expect(window.location.search).toContain("catalog_culling_state=pick");
 });
 
 test("selection uses photo IDs so duplicate filenames remain independent", async () => {

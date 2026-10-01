@@ -2,7 +2,7 @@
 
 import { FormEvent, useRef, useState } from "react";
 import { useModalAccessibility } from "../../hooks/use-modal-accessibility";
-import { BulkPhotoActionRequest, PhotoRating } from "../../lib/api";
+import { BulkPhotoActionRequest, PhotoCullingState, PhotoRating } from "../../lib/api";
 import { parseTags } from "../../lib/photo-metadata";
 import { BulkDialogAction } from "./bulk-selection-toolbar";
 
@@ -27,6 +27,7 @@ export default function BulkActionDialog({
 }: BulkActionDialogProps) {
   const [favorite, setFavorite] = useState(true);
   const [rating, setRating] = useState("5");
+  const [culling, setCulling] = useState<PhotoCullingState | "clear">("pick");
   const [tagsInput, setTagsInput] = useState("");
   const [categoryMode, setCategoryMode] = useState<"set" | "clear">("set");
   const [categoryInput, setCategoryInput] = useState("");
@@ -44,7 +45,7 @@ export default function BulkActionDialog({
     isOpen: action !== null,
     dialogRef,
     initialFocusRef:
-      (action === "move_to_trash" || action === "favorite" || action === "rating") ? cancelButtonRef : initialInputRef,
+      (action === "move_to_trash" || action === "favorite" || action === "rating" || action === "culling") ? cancelButtonRef : initialInputRef,
     onClose: close,
     isBusy,
   });
@@ -53,7 +54,7 @@ export default function BulkActionDialog({
 
   const tags = parseTags(tagsInput);
   const category = categoryInput.trim();
-  const title = action === "favorite" ? `Favorite / Unfavorite ${selectedCount} selected photos` : action === "rating" ? `Set rating for ${selectedCount} selected photos` :
+  const title = action === "culling" ? `Culling decision for ${selectedCount} selected photos` : action === "favorite" ? `Favorite / Unfavorite ${selectedCount} selected photos` : action === "rating" ? `Set rating for ${selectedCount} selected photos` :
     action === "add_tags"
       ? `Add tags to ${selectedCount} selected photos`
       : action === "remove_tags"
@@ -68,7 +69,9 @@ export default function BulkActionDialog({
     event.preventDefault();
     setValidationError(null);
     let request: BulkPhotoActionRequest;
-    if (action === "favorite") {
+    if (action === "culling") {
+      request = culling === "clear" ? { operation: "clear_culling_state" } : { operation: "set_culling_state", culling_state: culling };
+    } else if (action === "favorite") {
       request = { operation: "set_favorite", is_favorite: favorite };
     } else if (action === "rating") {
       request = rating === "clear" ? { operation: "clear_rating" } : { operation: "set_rating", rating: Number(rating) as PhotoRating };
@@ -111,7 +114,7 @@ export default function BulkActionDialog({
           {title}
         </h2>
         <p id="bulk-action-description" className="mt-2 text-sm leading-6 text-stone-600">
-          {action === "favorite" || action === "rating" ? "This changes only personal curation on the explicitly selected photos." : action === "add_tags"
+          {action === "culling" ? "Only explicitly selected photos change. Pick does not Favorite; Reject does not move to Trash. Ratings and AI Review stay independent." : action === "favorite" || action === "rating" ? "This changes only personal curation on the explicitly selected photos." : action === "add_tags"
             ? "New tags are added without replacing tags already on each photo."
             : action === "remove_tags"
               ? "Only the tags you enter will be removed; all other tags stay unchanged."
@@ -137,6 +140,7 @@ export default function BulkActionDialog({
 
         {action === "favorite" ? <label className="mt-4 block text-sm font-medium">Favorite action<select aria-label="Favorite action" value={favorite ? "favorite" : "unfavorite"} disabled={isBusy} onChange={(event) => setFavorite(event.target.value === "favorite")} className="mt-2 min-h-11 w-full rounded-md border px-3"><option value="favorite">Favorite selected</option><option value="unfavorite">Unfavorite selected</option></select></label> : null}
         {action === "rating" ? <label className="mt-4 block text-sm font-medium">Rating action<select aria-label="Rating action" value={rating} disabled={isBusy} onChange={(event) => setRating(event.target.value)} className="mt-2 min-h-11 w-full rounded-md border px-3">{[1,2,3,4,5].map((value) => <option key={value} value={value}>{value} stars</option>)}<option value="clear">Clear rating</option></select></label> : null}
+        {action === "culling" ? <label className="mt-4 block text-sm font-medium">Culling action<select value={culling} disabled={isBusy} onChange={(event) => setCulling(event.target.value as PhotoCullingState | "clear")} className="mt-2 min-h-11 w-full rounded-md border px-3"><option value="pick">Mark Pick</option><option value="reject">Mark Reject</option><option value="clear">Clear culling decision</option></select></label> : null}
         {action === "category" ? (
           <fieldset className="mt-4 space-y-3">
             <legend className="text-sm font-medium text-stone-700">Category action</legend>
@@ -209,7 +213,7 @@ export default function BulkActionDialog({
           >
             {isBusy
               ? "Working…"
-              : action === "favorite" ? (favorite ? "Favorite selected" : "Unfavorite selected") : action === "rating" ? (rating === "clear" ? "Clear rating" : "Set rating") : action === "add_tags"
+              : action === "culling" ? (culling === "clear" ? "Clear culling decision" : culling === "pick" ? "Mark Pick" : "Mark Reject") : action === "favorite" ? (favorite ? "Favorite selected" : "Unfavorite selected") : action === "rating" ? (rating === "clear" ? "Clear rating" : "Set rating") : action === "add_tags"
                 ? "Add tags"
                 : action === "remove_tags"
                   ? "Remove tags"

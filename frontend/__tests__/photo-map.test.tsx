@@ -65,7 +65,7 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/map");
 });
 
-test.each(["", "&catalog_rating=5&catalog_unrated=1"])("unsupported curation URLs block map results and preserve criteria when returning to List %s", async (extra) => {
+test.each(["", "&catalog_rating=5&catalog_unrated=1", "&catalog_culling_state=pick"])("unsupported curation URLs block map results and preserve criteria when returning to List %s", async (extra) => {
   window.history.replaceState(null, "", `/map?catalog_favorites_only=1&catalog_rating_min=4&catalog_category=bird${extra}`);
   render(<MapBrowser focusPhotoId={null} />);
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("Favorite/Rating filters are not supported"));
@@ -73,10 +73,11 @@ test.each(["", "&catalog_rating=5&catalog_unrated=1"])("unsupported curation URL
   const href = screen.getByRole("link", { name: "View in List" }).getAttribute("href");
   expect(href).toContain("catalog_favorites_only=1");
   expect(href).toContain("catalog_rating_min=4");
-  if (extra) {
+  if (extra.includes("catalog_rating=5")) {
     expect(href).toContain("catalog_rating=5");
     expect(href).toContain("catalog_unrated=1");
   }
+  if (extra.includes("catalog_culling_state")) expect(href).toContain("catalog_culling_state=pick");
   api.getPhotoMapPoints.mockResolvedValue([point()]);
   await userEvent.click(screen.getByRole("button", { name: "Remove unsupported filters" }));
   await waitFor(() => expect(api.getPhotoMapPoints).toHaveBeenCalled());
@@ -127,7 +128,7 @@ test("shows loading and then passes points plus focus to the map boundary", asyn
   expect(screen.getByText("2 mapped photos")).toBeTruthy();
   expect(
     screen.getAllByRole("link").map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Duplicates", "Trash", "View in List"]);
+  ).toEqual(["List", "Timeline", "Map", "Albums", "Collections", "Review", "Culling", "Duplicates", "Trash", "View in List"]);
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("aria-current"))
     .toBe("page");
 });

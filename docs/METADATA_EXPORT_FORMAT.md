@@ -1,4 +1,4 @@
-# FaunaVault metadata export format v7
+# FaunaVault metadata export format v8
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, manual Collections and their
@@ -12,7 +12,7 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v7 is `7`. |
+| `format_version` | Metadata export representation version; v8 is `8`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
 | `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
@@ -27,7 +27,7 @@ lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
 adds the durable Photo capture-metadata contract. Version 4 adds human review
-timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. FaunaVault emits only v7.
+timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. FaunaVault emits only v8.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -41,6 +41,7 @@ Each Photo contains these fields:
 id
 is_favorite
 rating
+culling_state
 original_filename
 archive_relative_original_path
 media_type
@@ -90,14 +91,23 @@ outcome, not classification-job execution state. `tags` is always a JSON string
 array and retains its stored order.
 `reviewed_at` records when a person accepted or changed classification metadata; null
 means no human review is recorded. A new AI result clears it.
-Capture/GPS-only edits, Restore, and Favorite/Rating-only edits do not change this review timestamp.
+Capture/GPS-only edits, Restore, and Favorite/Rating/culling-only edits do not change this review timestamp.
 
 `is_favorite` is a required JSON boolean. `rating` is a required nullable integer:
 null means unrated; 1–5 means an explicit personal rating. The two fields are
 independent, survive Trash/restore, and never encode AI confidence. CSV uses
 `true`/`false` for Favorite, integers for ratings, and the existing `\N` null
 sentinel for unrated. Historical v1–v6 artifacts remain unchanged; consumers must
-explicitly support v7.
+explicitly support the artifact version.
+
+`culling_state` is a required nullable string: null means undecided; `pick` and
+`reject` are explicit user decisions. Reject is independent of Trash; Pick is
+independent of Favorite and Rating. Active and trashed Photos both retain it.
+CSV adds a `culling_state` column using `pick`, `reject`, or the existing `\N`
+null sentinel. Smart Collection query version 1 can additionally store
+`culling_state: "pick" | "reject" | "undecided"`; omission/null means no culling
+filter. Existing saved queries remain valid. Historical v1–v7 exports stay
+unchanged; consumers must explicitly support v8.
 
 `captured_at` is the effective camera-local wall time, extracted or manually supplied, or null. It is never
 derived from upload time, filesystem metadata, a filename, or `created_at`.
@@ -276,6 +286,8 @@ JSON. Override flags use lowercase `true`/`false` in CSV.
 - v5: versioned Smart Collection query definitions.
 - v6: effective capture/GPS values with retained extraction and manual override state.
 - v7: required Photo Favorite boolean and nullable integer Rating from 1–5.
+- v8: required nullable Photo culling state (`pick`, `reject`, or null), plus
+  optional shared Smart Collection culling criteria.
 
 ## Deliberate exclusions
 

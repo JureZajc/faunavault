@@ -394,6 +394,51 @@ test("critical upload, detail, and Trash lifecycle", async ({ page }) => {
   });
 });
 
+test("Photo Culling saves independent decisions and filters Picks", async ({ page, request }) => {
+  const filenames = ["faunavault-e2e-culling-reject.jpg", "faunavault-e2e-culling-pick.jpg"];
+  const ids: number[] = [];
+  try {
+    for (const filename of filenames) {
+      const uploaded = await request.post("http://127.0.0.1:8001/photos/upload", {
+        multipart: { file: { name: filename, mimeType: "image/jpeg", buffer: await readFile(fixturePath(filename)) }, allow_visual_duplicate: "true" },
+      });
+      expect(uploaded.ok()).toBe(true);
+      ids.push((await uploaded.json()).id);
+    }
+    await page.goto("/cull?catalog_search=faunavault-e2e-culling");
+    await expect(page.getByRole("heading", { name: "Photo Culling" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: filenames[1] })).toBeVisible();
+    await expectDecodedImage(page.getByRole("img", { name: "Unclassified" }));
+    await page.screenshot({ path: test.info().outputPath("culling-desktop.png"), fullPage: true });
+    await page.getByRole("button", { name: "Pick (P)" }).click();
+    await expect(page.getByRole("heading", { name: filenames[0] })).toBeVisible();
+    await page.getByRole("button", { name: "Reject (X)" }).click();
+    await expect(page.getByRole("button", { name: "Reject (X)" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText(/End of pass · 0 still match/)).toBeVisible();
+    await page.getByRole("button", { name: "← Previous" }).click();
+    await expect(page.getByRole("heading", { name: filenames[1] })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Pick (P)" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("Saved: Rejected. End of pass.", { exact: true })).toHaveCount(0);
+    await page.setViewportSize({ width: 360, height: 760 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath("culling-mobile.png"), fullPage: true });
+    await page.goto("/?catalog_search=faunavault-e2e-culling");
+    await page.getByRole("combobox", { name: "Culling filter" }).selectOption("pick");
+    await expect(page).toHaveURL(/catalog_culling_state=pick/);
+    await expect(catalogCard(page, filenames[1])).toHaveCount(1);
+    await expect(catalogCard(page, filenames[0])).toHaveCount(0);
+    await page.reload();
+    await expect(catalogCard(page, filenames[1])).toHaveCount(1);
+    const rejected = await request.get(`http://127.0.0.1:8001/photos/${ids[0]}`);
+    expect(await rejected.json()).toMatchObject({ culling_state: "reject", deleted_at: null, is_favorite: false, rating: null, reviewed_at: null });
+  } finally {
+    for (const id of ids) {
+      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
+      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+    }
+  }
+});
+
 test("HEIC upload produces browser-safe JPEG previews", async ({ page }) => {
   await page.goto("/");
   await uploadFile(page, HEIC_FILENAME);

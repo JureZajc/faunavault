@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CatalogTaxonOption } from "../../lib/api";
+import { CatalogTaxonOption, CullingFilter } from "../../lib/api";
 import { CatalogLayout, CatalogSortOption } from "../../lib/catalog-query";
 
 import {
@@ -29,6 +29,9 @@ const sortLabels: Record<CatalogSortOption, string> = {
 };
 
 type CatalogToolbarProps = {
+  cullingState?: CullingFilter;
+  onCullingStateChange?: (value?: CullingFilter) => void;
+  cullingHref?: string;
   favoritesOnly?: boolean;
   ratingFilter?: string;
   onFavoritesOnlyChange: (value: boolean) => void;
@@ -69,6 +72,7 @@ type CatalogToolbarProps = {
 };
 
 export default function CatalogToolbar({
+  cullingState, onCullingStateChange, cullingHref,
   favoritesOnly, ratingFilter, onFavoritesOnlyChange, onRatingFilterChange,
   searchQuery,
   statusFilter,
@@ -153,6 +157,11 @@ export default function CatalogToolbar({
       </div>
 
       <CatalogCurationFilters favoritesOnly={favoritesOnly} ratingFilter={ratingFilter} onFavoritesOnlyChange={onFavoritesOnlyChange} onRatingFilterChange={onRatingFilterChange} />
+      <label className="mt-4 block text-sm font-medium text-stone-700">Culling filter
+        <select value={cullingState ?? ""} onChange={(event) => onCullingStateChange?.(event.target.value as CullingFilter || undefined)} className="ml-3 min-h-11 rounded-md border border-stone-200 bg-stone-50 px-3 text-sm">
+          <option value="">All culling states</option><option value="pick">Picked</option><option value="reject">Rejected</option><option value="undecided">Undecided</option>
+        </select>
+      </label>
       <CatalogDateFilters {...filterProps} />
 
       <div className="mt-4 flex flex-col gap-3 border-t border-stone-100 pt-4 text-sm text-stone-500 lg:flex-row lg:items-center lg:justify-between">
@@ -162,11 +171,11 @@ export default function CatalogToolbar({
           {totalCount === 1 ? "record" : "records"}
         </p>
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:justify-end">
-          <p>Backend-filtered local collection.</p>
+          {cullingHref ? <Link href={cullingHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Open in Culling</Link> : null}
           {mapHref ? <div>
             {mapDisabled ? <button type="button" disabled aria-describedby="map-search-explanation" className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold opacity-50">View on Map</button>
               : <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">View on Map</Link>}
-            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear text search and Favorite/Rating filters to view these filters on Map.</p> : null}
+            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear text search and Favorite/Rating filters and Culling filters to view these filters on Map.</p> : null}
           </div> : null}
           {onSaveSmartCollection ? <button type="button" onClick={onSaveSmartCollection} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Save as Smart Collection</button> : null}
           {hasActiveFilters ? (

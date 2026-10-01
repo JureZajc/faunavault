@@ -125,13 +125,13 @@ metadata. Recoverable Trash preserves membership, while permanent Photo deletion
 cascades only the join rows.
 
 Backup format v1 explicitly verifies and rehearses database schemas 9 through
-16. Schema-9 archives migrate to empty Collection tables; schema-10
+17. Schema-9 archives migrate to empty Collection tables; schema-10
 rehearsals compare Collection metadata and membership exactly; schema-11 also
 compares durable capture metadata; schema 12 preserves review timestamps and
 schema 13 preserves Smart Collection definitions; schema 14 preserves duplicate
 curation; schema 15 retains extracted capture/GPS and manual override state;
-schema 16 preserves Favorites and Ratings.
-Current metadata export v7
+schema 16 preserves Favorites and Ratings; schema 17 preserves culling decisions.
+Current metadata export v8
 includes capture fields, review timestamps, deterministic Collection records,
 Trash memberships, versioned Smart Collection definitions, and capture/GPS
 correction provenance.
@@ -145,7 +145,7 @@ Schema 15 retains original extracted values separately and marks manual edits or
 intentional clears per group. Backfill preserves those overrides, including
 nulls. Restore original metadata reuses trusted original decoding and extraction
 without changing image bytes. Capture-only edits preserve AI review state.
-Backup verification/rehearsal and portable export v7 retain correction provenance.
+Backup verification/rehearsal and portable export v8 retain correction provenance.
 Bulk capture correction remains a later product evaluation.
 
 ## Current product feature: Photo capture metadata / EXIF
@@ -437,6 +437,22 @@ Schema 16 adds independent personal Favorite and optional 1–5 Rating values to
 Photo metadata. List and query-v1 Smart Collections share Favorites, exact/minimum
 rating, and Unrated criteria with URL restoration and null-last rating sorting.
 Detail edits and explicit atomic bulk actions preserve AI review state. Cards
-and duplicate comparisons show compact indicators. Trash/restore, export v7,
-and backup-v1 verification/rehearsal preserve both fields; schemas 9–16 remain
+and duplicate comparisons show compact indicators. Trash/restore, export v8,
+and backup-v1 verification/rehearsal preserve both fields; schemas 9–17 remain
 supported. Map and Timeline retain their limited filtering contracts.
+
+## Current v0.3 feature: Photo Culling
+
+Pick/Reject/undecided is independent of Favorite, Rating, AI Review, and Trash.
+The focused Culling workspace reuses Photo media/metadata, advances after a
+successful decision, and keeps session history for revisiting completed Photos.
+Sources are active undecided Photos and the complete filtered List query. List
+URLs, Smart Collection queries, detail/card/duplicate indicators, and explicit
+atomic bulk actions share the same state.
+
+Schema 17 and portable export v8 preserve user decisions; backup-v1 verification
+and rehearsal support schemas 9–17. No queue membership table, culling sort,
+index, automatic decision, or automatic deletion is added. See the
+[Culling guide](OPERATIONS.md#photo-culling-v03). The recommended next v0.3
+workflow is an explicit review of rejected Photos before moving selected ones
+to recoverable Trash.

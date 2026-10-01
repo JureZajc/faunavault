@@ -46,7 +46,7 @@ function photo(overrides: Partial<Photo> = {}): Photo {
   return {
     id: 44,
     original_filename: "lion.jpg",
-    is_favorite: false, rating: null,
+    culling_state: null, is_favorite: false, rating: null,
     stored_filename: "lion.jpg",
     resized_filename: "lion-resized.jpg",
     thumbnail_filename: "lion-thumb.jpg",
@@ -147,6 +147,25 @@ test("curates a photo directly with accessible Favorite and rating controls", as
   expect(current.status).toBe("needs_review");
   expect(current.reviewed_at).toBeNull();
   expect(screen.queryByRole("button", { name: "Editing metadata" })).toBeNull();
+});
+
+test("detail culling decisions use the guarded PATCH independently of Favorite and Rating", async () => {
+  let current = photo({ is_favorite: true, rating: 5, status: "needs_review" });
+  api.getPhoto.mockResolvedValue(current);
+  api.updatePhoto.mockImplementation(async (_id, values) => {
+    current = { ...current, ...values, updated_at: "2026-08-12T10:00:00Z" };
+    return current;
+  });
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("button", { name: "Pick" });
+  await userEvent.click(screen.getByRole("button", { name: "Pick" }));
+  await screen.findByRole("button", { name: "Pick", pressed: true });
+  expect(api.updatePhoto).toHaveBeenLastCalledWith(44, { culling_state: "pick" }, "2026-08-12T08:00:00Z");
+  await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+  await screen.findByRole("button", { name: "Reject", pressed: true });
+  await userEvent.click(screen.getByRole("button", { name: "Clear decision" }));
+  await screen.findByText("Undecided");
+  expect(current.is_favorite && current.rating === 5 && current.status === "needs_review").toBe(true);
 });
 
 test("curation failures and pending saves retain confirmed values and block overlapping edits", async () => {

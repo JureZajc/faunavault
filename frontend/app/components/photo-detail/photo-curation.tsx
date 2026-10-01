@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Photo, PhotoRating, PhotoUpdate, updatePhoto } from "../../lib/api";
+import CullingDecisionControls from "./culling-decision-controls";
 
 export default function PhotoCuration({ photo, disabled, onPhotoUpdated, onBusyChange, onError }: {
   photo: Photo; disabled: boolean; onPhotoUpdated: (photo: Photo) => void;
@@ -18,7 +19,7 @@ export default function PhotoCuration({ photo, disabled, onPhotoUpdated, onBusyC
       onPhotoUpdated(await updatePhoto(photo.id, values, photo.updated_at));
       setNotice("Saved");
     } catch (error) {
-      onError(`Could not save Favorite or Rating: ${error instanceof Error ? error.message : "Please try again."}`);
+      onError(`Could not save Photo curation: ${error instanceof Error ? error.message : "Please try again."}`);
     } finally {
       saving.current = false; setBusy(false); onBusyChange(false);
     }
@@ -39,6 +40,7 @@ export default function PhotoCuration({ photo, disabled, onPhotoUpdated, onBusyC
       </div>
     </fieldset>
     <p className="text-xs text-stone-600">{photo.rating == null ? "Unrated" : `${photo.rating} out of 5 stars`}</p>
+    <CullingDecisionControls state={photo.culling_state} disabled={disabled || busy} onChange={(culling_state) => void save({ culling_state })} />
     <p role="status" className="text-xs text-stone-600">{busy ? "Saving…" : notice}</p>
   </section>;
 }

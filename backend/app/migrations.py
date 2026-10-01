@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 16
+LATEST_SCHEMA_VERSION = 17
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -483,6 +483,16 @@ def _migration_16(connection) -> None:
             )
 
 
+def _migration_17(connection) -> None:
+    if "culling_state" not in _columns(connection, "photo"):
+        connection.execute(
+            text(
+                "ALTER TABLE photo ADD COLUMN culling_state VARCHAR "
+                "CHECK (culling_state IS NULL OR culling_state IN ('pick', 'reject'))"
+            )
+        )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -550,6 +560,8 @@ def run_migrations(
                 _migration_15(connection)
             elif version == 16:
                 _migration_16(connection)
+            elif version == 17:
+                _migration_17(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

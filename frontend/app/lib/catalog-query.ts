@@ -4,6 +4,7 @@ import {
   CatalogSort,
   PhotoStatus,
   PhotoRating,
+  CullingFilter,
 } from "./api";
 
 export type CatalogLayout = "flat" | "grouped";
@@ -51,6 +52,7 @@ export function mapListHref(state: CatalogState) {
   const query = writeCatalogState(new URLSearchParams(), {
     ...DEFAULT_CATALOG_STATE, ...mapCatalogQuery(state), search: state.search,
     favorites_only: state.favorites_only, rating: state.rating, rating_min: state.rating_min, unrated: state.unrated,
+    culling_state: state.culling_state,
   }).toString();
   return query ? `/?${query}` : "/";
 }
@@ -110,8 +112,8 @@ export function parseRating(value: string | null): PhotoRating | undefined {
   return value && /^[1-5]$/.test(value) ? Number(value) as PhotoRating : undefined;
 }
 
-export function hasCurationFilters(state: Pick<CatalogQuery, "favorites_only" | "rating" | "rating_min" | "unrated">) {
-  return Boolean(state.favorites_only || state.rating || state.rating_min || state.unrated);
+export function hasCurationFilters(state: Pick<CatalogQuery, "favorites_only" | "rating" | "rating_min" | "unrated" | "culling_state">) {
+  return Boolean(state.culling_state || state.favorites_only || state.rating || state.rating_min || state.unrated);
 }
 
 function isoDate(value: string | null) {
@@ -134,7 +136,9 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   const rating = parseRating(params.get("catalog_rating"));
   const ratingMin = parseRating(params.get("catalog_rating_min"));
   const unrated = params.get("catalog_unrated") === "1";
+  const culling = params.get("catalog_culling_state");
   return {
+    culling_state: culling && ["pick", "reject", "undecided"].includes(culling) ? culling as CullingFilter : undefined,
     favorites_only: params.get("catalog_favorites_only") === "1" || undefined,
     rating,
     rating_min: ratingMin,
@@ -167,6 +171,7 @@ export function writeCatalogState(
   setOrDelete("catalog_rating", state.rating ? String(state.rating) : undefined);
   setOrDelete("catalog_rating_min", state.rating_min ? String(state.rating_min) : undefined);
   setOrDelete("catalog_unrated", state.unrated ? "1" : undefined);
+  setOrDelete("catalog_culling_state", state.culling_state);
   setOrDelete("catalog_page", state.page > 1 ? String(state.page) : undefined);
   setOrDelete("catalog_search", state.search);
   setOrDelete("catalog_status", state.status);
@@ -185,6 +190,15 @@ export function writeCatalogState(
   );
   setOrDelete("catalog_layout", state.layout === "grouped" ? "grouped" : undefined);
   return params;
+}
+
+export function cullingListHref(state: CatalogState, searchInput: string, returnTo: string) {
+  const params = writeCatalogState(new URLSearchParams(), {
+    ...state, search: searchInput.trim() || undefined, page: 1, layout: "flat",
+  });
+  params.set("source", "list");
+  params.set("returnTo", returnTo);
+  return `/cull?${params}`;
 }
 
 export function parseHomeView(params: URLSearchParams): HomeView {

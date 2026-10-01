@@ -7,6 +7,7 @@ from sqlalchemy import Integer, String, and_, case, cast, func, or_
 from sqlmodel import Session, select
 
 from app.catalog_query import CatalogSavedQuery
+from app.metadata_types import CullingFilter
 from app.models import Animal, Photo, Taxon
 from app.schemas import (
     CatalogCategoryFacet,
@@ -15,6 +16,7 @@ from app.schemas import (
     CatalogStatusCounts,
     CatalogTaxonOption,
     CatalogTaxonPage,
+    CullingWorkspace,
     PhotoMapPoint,
     TimelineMonth,
     TimelinePhotoPreview,
@@ -240,6 +242,10 @@ def _catalog_joins(query, criteria: CatalogSavedQuery):
 
 def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
     conditions = [Photo.deleted_at.is_(None)]
+    if criteria.culling_state == "undecided":
+        conditions.append(Photo.culling_state.is_(None))
+    elif criteria.culling_state is not None:
+        conditions.append(Photo.culling_state == criteria.culling_state)
     if criteria.favorites_only:
         conditions.append(Photo.is_favorite.is_(True))
     if criteria.rating is not None:
@@ -292,6 +298,7 @@ def list_catalog_photos(
     rating: int | None = None,
     rating_min: int | None = None,
     unrated: bool = False,
+    culling_state: CullingFilter | None = None,
 ) -> CatalogPhotoPage:
     criteria = CatalogSavedQuery(
         search=search,
@@ -307,6 +314,7 @@ def list_catalog_photos(
         rating=rating,
         rating_min=rating_min,
         unrated=unrated,
+        culling_state=culling_state,
     )
     search = criteria.search
     has_search = bool(search)
@@ -317,7 +325,8 @@ def list_catalog_photos(
     conditions = _catalog_conditions(criteria)
 
     selective_photo_filters = bool(
-        favorites_only
+        culling_state is not None
+        or favorites_only
         or rating is not None
         or rating_min is not None
         or unrated
@@ -368,6 +377,68 @@ def list_catalog_photos(
         total=total,
         total_pages=math.ceil(total / page_size) if total else 0,
         facets=get_catalog_facets(session),
+    )
+
+
+def culling_workspace(
+    session: Session, criteria: CatalogSavedQuery, photo_id: int | None = None
+) -> CullingWorkspace:
+    # A saved decision can leave the query. Keep that one active Photo as an
+    # anchor while every candidate still obeys all other source criteria.
+    base = criteria.model_copy(update={"culling_state": None})
+    match = (
+        Photo.culling_state.is_(None)
+        if criteria.culling_state == "undecided"
+        else Photo.culling_state == criteria.culling_state
+        if criteria.culling_state is not None
+        else Photo.deleted_at.is_(None)
+    )
+    matched = case((match, 1), else_=0)
+    ordering = _order_by(criteria.sort, criteria.order)
+    ranked = (
+        _catalog_joins(
+            select(
+                Photo.id.label("id"),
+                matched.label("matched"),
+                func.sum(matched).over().label("total"),
+                func.sum(matched)
+                .over(order_by=ordering, rows=(None, 0))
+                .label("position"),
+                func.lag(Photo.id).over(order_by=ordering).label("previous"),
+                func.lead(Photo.id).over(order_by=ordering).label("next"),
+                func.row_number().over(order_by=ordering).label("ordinal"),
+            ).select_from(Photo),
+            base,
+        )
+        .where(*_catalog_conditions(base), or_(match, Photo.id == photo_id))
+        .subquery()
+    )
+    row = None
+    if photo_id is not None:
+        row = session.exec(select(*ranked.c).where(ranked.c.id == photo_id)).first()
+    unavailable = photo_id is not None and row is None
+    if row is None:
+        row = session.exec(
+            select(*ranked.c).order_by(ranked.c.ordinal).limit(1)
+        ).first()
+    if row is None:
+        return CullingWorkspace(
+            photo=None,
+            total=0,
+            position=None,
+            previous_photo_id=None,
+            next_photo_id=None,
+            matches_query=False,
+            requested_photo_unavailable=unavailable,
+        )
+    return CullingWorkspace(
+        photo=session.get(Photo, row.id),
+        total=row.total,
+        position=row.position if row.matched else None,
+        previous_photo_id=row.previous,
+        next_photo_id=row.next,
+        matches_query=bool(row.matched),
+        requested_photo_unavailable=unavailable,
     )
 
 

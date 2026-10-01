@@ -124,7 +124,8 @@ with TestClient(main.app) as client:
             "ix_animal_legacy_species_group", "ix_collection_photo_photo_collection",
         } <= indexes
         connection.exec_driver_sql("SELECT reviewed_at, captured_at, perceptual_hash FROM photo LIMIT 0")
-        connection.exec_driver_sql("SELECT is_favorite, rating FROM photo LIMIT 0")
+        connection.exec_driver_sql("SELECT is_favorite, rating, culling_state FROM photo LIMIT 0")
+        assert "ix_photo_culling_state" not in indexes
         connection.exec_driver_sql("SELECT extracted_captured_at, extracted_captured_at_offset_minutes, extracted_latitude, extracted_longitude, capture_metadata_overridden, location_metadata_overridden FROM photo LIMIT 0")
         connection.exec_driver_sql("SELECT status, attempt_count, prompt_version FROM classification_job LIMIT 0")
         connection.exec_driver_sql("SELECT query_version, query_json FROM smart_collection LIMIT 0")
@@ -137,6 +138,7 @@ with TestClient(main.app) as client:
     upload = client.post("/photos/upload", files={"file": ("first-run.jpg", payload.getvalue(), "image/jpeg")})
     assert upload.status_code == 200, upload.text
     photo = upload.json()
+    assert photo["culling_state"] is None
     original = settings.image_dirs["original"] / photo["stored_filename"]
     before = (original.read_bytes(), original.stat().st_mtime_ns)
     first_backups = {item.name: item.read_bytes() for item in settings.database_path.parent.glob("*.pre-*")}

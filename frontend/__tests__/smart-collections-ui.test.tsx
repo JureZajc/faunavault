@@ -49,7 +49,7 @@ test("Smart detail shows criteria, empty results, URL page correction, and edit 
 });
 
 test("Smart detail displays curation criteria and preserves them in its edit link", async () => {
-  api.getSmartCollection.mockResolvedValue({ ...smart, query: { favorites_only: true, rating_min: 4, sort: "rating", order: "desc" } });
+  api.getSmartCollection.mockResolvedValue({ ...smart, query: { culling_state: "pick", favorites_only: true, rating_min: 4, sort: "rating", order: "desc" } });
   render(<SmartCollectionDetail collectionId={7} />);
   await screen.findByRole("heading", { name: "Foxes" });
   expect(screen.getByText(/Favorites only.*Rating: at least 4.*Sort: rating desc/)).toBeTruthy();
@@ -57,6 +57,8 @@ test("Smart detail displays curation criteria and preserves them in its edit lin
   expect(href).toContain("catalog_favorites_only=1");
   expect(href).toContain("catalog_rating_min=4");
   expect(href).toContain("catalog_sort=rating");
+  expect(href).toContain("catalog_culling_state=pick");
+  expect(screen.getByText(/Culling: Picked/)).toBeTruthy();
 });
 
 test("Smart detail renames and deletes without a membership action", async () => {

@@ -22,6 +22,9 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   [Map guide](docs/OPERATIONS.md#map-filters-and-list-navigation).
 - Personal Favorites and 1–5-star Ratings, with List filters, rating sorting,
   Smart Collection criteria, and bulk actions. [Curation guide](docs/OPERATIONS.md#photo-favorites-and-ratings).
+- Photo Culling with independent Pick / Reject decisions, sequential review,
+  keyboard shortcuts, List filters, Smart Collections, and explicit bulk actions.
+  [Culling guide](docs/OPERATIONS.md#photo-culling-v03).
 - Explicit cross-page selection for bulk tags, category, Collections, curation,
   and recoverable Trash.
 - SHA-256 exact duplicate protection and conservative visual duplicate review.
@@ -148,7 +151,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–16. Production restore remains manual.
+schemas 9–17. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)
