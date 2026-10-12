@@ -6,6 +6,27 @@ export type CullingFilter = PhotoCullingState | "undecided";
 
 export type PhotoStatus = "pending" | "classified" | "needs_review";
 
+export type InsightsCoverage = { known: number; missing: number; percentage: number };
+export type InsightsOverview = {
+  total_photos: number; verified_species: number; favorites: number; picks: number; rejects: number;
+  unverified_photos: number; other_taxon_rank_photos: number;
+  gps: InsightsCoverage; capture_dates: InsightsCoverage;
+};
+export type InsightsDistribution = {
+  value: string | null; label: string; photo_count: number; percentage: number; other: boolean;
+};
+export type InsightsResponse = {
+  year: number | null; overview: InsightsOverview; available_years: number[];
+  monthly: { period: number; photo_count: number }[];
+  yearly: { period: number; photo_count: number }[];
+  top_species: { taxon_id: number; common_name: string | null; scientific_name: string; photo_count: number; percentage: number }[];
+  categories: InsightsDistribution[]; classification: InsightsDistribution[];
+};
+
+export function getInsights(year?: number, signal?: AbortSignal) {
+  return request<InsightsResponse>(`/insights${year === undefined ? "" : `?year=${year}`}`, { signal });
+}
+
 export type Photo = {
   import_session_id?: string | null;
   culling_state: PhotoCullingState | null;

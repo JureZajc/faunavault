@@ -6,6 +6,7 @@ import type { MouseEvent } from "react";
 export type ArchiveSection =
   | "list"
   | "timeline"
+  | "insights"
   | "map"
   | "album"
   | "events"
@@ -18,6 +19,7 @@ export type ArchiveSection =
 const destinations: { section: ArchiveSection; label: string; href: string }[] = [
   { section: "list", label: "List", href: "/" },
   { section: "timeline", label: "Timeline", href: "/timeline" },
+  { section: "insights", label: "Insights", href: "/insights" },
   { section: "map", label: "Map", href: "/map" },
   { section: "album", label: "Albums", href: "/?view=album" },
   { section: "collections", label: "Collections", href: "/collections" },
@@ -32,7 +34,7 @@ export default function ArchiveNavigation({ active, onNavigate }: {
   active: ArchiveSection;
   onNavigate?: (section: ArchiveSection, event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
-  return <nav aria-label="Archive views" className="grid w-full min-w-0 grid-cols-3 rounded-lg border border-stone-200 bg-stone-100 p-1 sm:grid-cols-5 xl:grid-cols-5">
+  return <nav aria-label="Archive views" className="grid w-full min-w-0 grid-cols-3 rounded-lg border border-stone-200 bg-stone-100 p-1 sm:grid-cols-4 xl:grid-cols-6">
     {destinations.map((destination) => <Link
       key={destination.section}
       href={destination.href}

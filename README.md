@@ -21,6 +21,9 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   extracted values and Restore original metadata. [Editing guide](docs/OPERATIONS.md#editable-capture-metadata-v02).
 - Search, filters, sorting, Timeline, clustered Map, species Albums, manual
   Collections, and live Smart Collections.
+- Wildlife Insights summarizes active photos, verified species, capture activity,
+  categories, classification, curation, and GPS coverage, with year filters and
+  direct List/Map navigation. [Metric definitions and limits](docs/OPERATIONS.md#wildlife-insights).
 - Trips & Events group explicitly selected Photos around dated experiences, with
   date suggestions, List/Map/Culling entry, and safe membership removal.
   [Trips & Events guide](docs/OPERATIONS.md#trips--events-v03).
@@ -93,6 +96,10 @@ python scripts/dev.py dev
 Backend and frontend logs use `[backend]` and `[frontend]` prefixes. Both servers
 keep hot reload enabled. Press Ctrl+C once to stop both servers and their workers.
 If either server exits, the command reports its exit code and stops the other.
+Backend reload watches only `backend/app`; edits to tests or archive files do not
+restart it. On Windows, the backend uses a separate hidden console so reload
+signals cannot interrupt the launcher or frontend. The standalone `backend`
+command uses the same reload and shutdown handling.
 `dev` checks installed dependencies without reinstalling them; if setup is missing
 or incomplete, run `python scripts/dev.py setup` first.
 

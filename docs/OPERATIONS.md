@@ -39,6 +39,18 @@ portable originals is refused before initialization writes. Nothing is moved or
 automatically selected. Archive initialization is normal backend startup; there
 is no reset command in setup.
 
+## Development reload and shutdown
+
+Root commands `python scripts/dev.py dev` and `python scripts/dev.py backend`
+watch only `backend/app` for backend reloads. Test, documentation, and archive
+changes do not trigger a reload. Restart the command after changing backend
+environment settings or dependencies.
+
+On Windows, the launcher gives the backend a separate hidden console and keeps
+its output in the current terminal. Backend reloads leave the launcher and
+frontend running. Ctrl+C in the current terminal shuts down the managed servers
+and their workers, including a backend worker created by a reload.
+
 ## Setup diagnostics
 
 ```powershell
@@ -1034,3 +1046,85 @@ ordered with validated references; photos.csv is unchanged.
 
 Manual covers, recurrence, automatic membership, Event coordinates, geocoding and
 creation directly from Import Sessions remain deferred.
+
+## Wildlife Insights
+
+Open **Insights** in Archive navigation (`/insights`). All metrics describe active
+photos; Trash is excluded, including active photos marked Reject. Favorites and
+Pick/Reject are independent photo counts, so they do not partition the total.
+
+- **Active photos**: image records in the selected period, regardless of category,
+  classification, or taxonomy. All Time includes undated photos. A capture year
+  includes only effective `Photo.captured_at` values in that camera-local year.
+- **Verified species**: distinct linked local Taxon IDs at `SPECIES` rank through
+  Photo → Animal → Taxon, using the same linked-taxonomy definition as Albums.
+  Species guesses and unlinked legacy names do not count. Linked genera, families,
+  subspecies, and other ranks are reported separately and excluded from species.
+- **Top Species**: ten species ranked by active photo count, then scientific name
+  (SQLite NOCASE), then Taxon ID. Multiple photos of one Animal and photos of
+  multiple Animals sharing a Taxon each count once. Common names are preferred;
+  scientific names are the fallback. Photos without linked taxonomy are reported
+  separately. These are image counts, not counts of animals or wildlife observations.
+- **Coverage**: known and missing counts sum to the period's active total. GPS
+  requires both latitude and longitude within valid ranges (zero is valid).
+  Capture dates use effective values, including user corrections. Neither import
+  nor creation time fills missing capture dates. Stored offsets never shift the
+  camera-local grouping. Clearing or restoring metadata updates subsequent reads.
+- **Categories**: named categories plus Uncategorized (null, empty, or space-only).
+  The twenty most photographed named categories are shown, with an exact Other
+  categories remainder if needed to keep the response bounded.
+- **Classification**: Pending, Classified, and Needs Review use existing statuses.
+  Unclassified/pending photos still belong to all applicable totals. Unexpected
+  legacy statuses appear as Other status so the distribution reconciles.
+
+All percentages use the selected period's **entire active photo total**, rather
+than just dated, GPS-tagged, classified, or verified photos. Empty denominators
+produce 0%. API percentages round to two decimals; display uses at most one, so
+rounded shares need not sum to exactly 100%.
+
+All Time activity shows chronologically ordered yearly counts; selecting a year
+shows all twelve months with explicit zeros. Undated photos appear separately and
+never enter a chart bucket. Month/year links open the existing List for inclusive
+capture dates. Species/category/status links retain the selected capture year and
+use existing catalog URL parameters. Other remainder groups have no synthetic
+filter link. **View on Map** opens the existing Map with the capture-year filter;
+Insights performs no geocoding, location naming, remote analytics, or tracking.
+
+`GET /insights?year=2026` is read-only; omitting `year` selects All Time. Years
+1–9999 are valid, unknown valid years return an empty period, and invalid years
+return HTTP 422. `available_years` always describes the entire active archive;
+all overview and distribution fields are scoped. `yearly` contains scoped capture
+years; `monthly` is empty for All Time and twelve entries for a selected year.
+The page's `year` URL parameter is restorable; an invalid page value visibly falls
+back to All Time. Fetch failures provide Retry; switching years cancels old
+requests and ignores late responses.
+
+The service uses five aggregate queries for All Time and six for a selected year,
+without loading Photo objects or reading images. Existing relationship/capture
+indexes are reused. Year rows are bounded by the 1–9999 calendar; species and
+category results have fixed limits. There is no migration, cache, analytics DB,
+new chart dependency, or AI reclassification. Counts refresh on navigation/reload,
+not through live polling. Detailed geographic aggregation, heatmaps, and
+observation/deduplicated-animal inference remain outside this first version.
+
+For a disposable performance check, run from `backend`:
+
+```sh
+uv run --no-sync python -m app.cli.benchmark_insights --sizes 100000 --runs 20 --output ../insights-benchmark-results.json
+```
+
+This reuses the catalog benchmark's protected-location checks, deterministic
+synthetic dataset, production storage initializer/indexes, owned temporary
+database cleanup, and exclusive new-report publication. It never opens the live
+archive or reads original images. An independent in-memory oracle verifies
+population, distinct species, ranking counts/order, and breakdown reconciliation.
+`--verbose` prints emitted SQL and query plans. Choose a fresh output filename.
+
+On the development machine, 100,000 synthetic photos (95,000 active) produced
+2,550-byte All Time and 2,608-byte 2026 responses. Across 20 warm-cache service
+calls, All Time median/p95 were 220/228 ms with five queries; 2026 median/p95 were
+139/167 ms with six queries and 5,935 matching photos. These measurements exclude
+HTTP, JSON encoding, browser rendering, and cold disk reads. All Time joins reuse
+the catalog's active-ID lookup pattern to avoid reading wide rows in capture-index
+order; selected years retain the selective capture-index range scan. No new index
+or planner hint is required. Timings depend on machine and archive distribution.

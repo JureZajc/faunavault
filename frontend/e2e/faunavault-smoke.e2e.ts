@@ -44,7 +44,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
       ids.push((await upload.json()).id);
     }
     await page.goto("/events");
-    await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveCount(10);
+    await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveCount(11);
     await page.getByRole("button", { name: "Create Trip/Event" }).click();
     const form = page.getByRole("dialog");
     await form.getByLabel("Title", { exact: true }).fill("E2E Valencia Trip");

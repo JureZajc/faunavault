@@ -22,6 +22,21 @@ deployment. See the [root startup instructions](../README.md#starting-faunavault
 
 ## Architecture
 
+`/insights` is a read-only Wildlife Insights dashboard backed by `GET /insights`.
+Focused chart components use native CSS bars with semantic lists, visible counts,
+and keyboard-accessible List links. The `year` URL parameter restores selection;
+requests are aborted and stale results ignored when it changes. All Time shows
+yearly capture counts, while a selected year shows twelve months including zeros.
+Summary cards cover active photos, distinct linked species-rank Taxa, Favorites,
+Pick/Reject, and GPS/capture-date coverage. Category and classification counts
+share the selected period and denominator. Undated photos belong only to All Time;
+AI guesses never enter verified species counts. Photos are images, not observations
+or animal counts. Map links retain the capture-year filter.
+The frontend fetches aggregates without loading the entire catalog and adds no
+chart library. Top species are limited to ten; category charts show twenty named
+categories plus Uncategorized and an exact Other remainder when necessary.
+See [metric definitions and limitations](../docs/OPERATIONS.md#wildlife-insights).
+
 `/imports` is contextual Recent Imports, linked from upload, List, and Culling.
 The upload hook retains one UUID across sequential uploads, duplicate resolution,
 and retries, with separate session lifecycle errors. Session cards fetch bounded

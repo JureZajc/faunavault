@@ -88,6 +88,8 @@ BACKEND_STEPS = (
             "uvicorn",
             "app.main:app",
             "--reload",
+            "--reload-dir",
+            "app",
             "--host",
             "127.0.0.1",
             "--port",
@@ -536,22 +538,103 @@ def stream_output(name: str, process: subprocess.Popen[str]) -> None:
             dev_log(f"[{name}] {line.rstrip()}")
 
 
+def dev_process_options(name: str) -> dict:
+    if os.name != "nt":
+        return {"start_new_session": True}
+    if name != "backend":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    # Uvicorn reload uses CTRL_C_EVENT on Windows. A process group alone does
+    # not contain that console event; it can interrupt this launcher as well.
+    startup = subprocess.STARTUPINFO()
+    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.wShowWindow = subprocess.SW_HIDE
+    return {"creationflags": subprocess.CREATE_NEW_CONSOLE, "startupinfo": startup}
+
+
+def dev_process_command(
+    name: str, step: Step, executables: dict[str, str]
+) -> list[str]:
+    if os.name == "nt" and name == "backend":
+        # The shared step starts with uv run --no-sync uvicorn.
+        return [
+            str(backend_python()),
+            str(Path(__file__).with_name("windows_backend.py")),
+            *step.arguments[3:],
+        ]
+    return [executables[step.tool], *step.arguments]
+
+
+def interrupt_windows_console(pid: int) -> None:
+    """Run only in a short-lived helper, never detach the launcher's console."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    signatures = {
+        "FreeConsole": ([], wintypes.BOOL),
+        "AttachConsole": ([wintypes.DWORD], wintypes.BOOL),
+        "SetConsoleCtrlHandler": ([ctypes.c_void_p, wintypes.BOOL], wintypes.BOOL),
+        "GenerateConsoleCtrlEvent": ([wintypes.DWORD, wintypes.DWORD], wintypes.BOOL),
+    }
+    for name, (arguments, result) in signatures.items():
+        function = getattr(kernel, name)
+        function.argtypes = arguments
+        function.restype = result
+    kernel.FreeConsole()
+    if not kernel.AttachConsole(pid):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        # Attaching resets console handlers. Ignore our own Ctrl+C after attach.
+        if not kernel.SetConsoleCtrlHandler(None, True):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if not kernel.GenerateConsoleCtrlEvent(signal.CTRL_C_EVENT, 0):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel.FreeConsole()
+
+
+def interrupt_windows_backend(process: subprocess.Popen[str]) -> None:
+    # GenerateConsoleCtrlEvent only reaches processes on the caller's console.
+    # A windowless helper attaches to the backend's private console to interrupt
+    # its reloader and workers, leaving this terminal and the frontend alone.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runpy, sys; "
+            "runpy.run_path(sys.argv[1])['interrupt_windows_console'](int(sys.argv[2]))",
+            str(Path(__file__).resolve()),
+            str(process.pid),
+        ],
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        shell=False,
+        timeout=2,
+        check=True,
+    )
+
+
 def stop_dev_processes(
     processes: Sequence[subprocess.Popen[str]], job: WindowsJob | None
 ) -> None:
     # Ignore additional Ctrl+C presses until both trees have been reaped.
     previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
-        for process in processes:
+        for index, process in enumerate(processes):
             try:
                 if os.name == "nt":
                     if process.poll() is None:
-                        process.send_signal(signal.CTRL_BREAK_EVENT)
+                        if index == 0:  # Backend owns a separate, hidden console.
+                            interrupt_windows_backend(process)
+                        else:
+                            process.send_signal(signal.CTRL_BREAK_EVENT)
                 else:
                     os.killpg(process.pid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
-            except OSError as error:
+            except (OSError, subprocess.SubprocessError) as error:
                 dev_log(f"[dev] Shutdown signal failed: {error}", error=True)
 
         deadline = time.monotonic() + 5
@@ -583,8 +666,15 @@ def stop_dev_processes(
         signal.signal(signal.SIGINT, previous)
 
 
-def run_dev(*, which: Which = shutil.which, runner: Runner = subprocess.run) -> int:
-    steps = BACKEND_STEPS + FRONTEND_STEPS
+def run_dev(
+    *,
+    which: Which = shutil.which,
+    runner: Runner = subprocess.run,
+    backend_only: bool = False,
+) -> int:
+    steps = BACKEND_STEPS if backend_only else BACKEND_STEPS + FRONTEND_STEPS
+    names = ("backend",) if backend_only else ("backend", "frontend")
+    servers = "backend" if backend_only else "both servers"
     try:
         executables = resolve_tools(steps, which)
     except ToolNotFoundError as error:
@@ -594,11 +684,11 @@ def run_dev(*, which: Which = shutil.which, runner: Runner = subprocess.run) -> 
             file=sys.stderr,
         )
         return 127
-    if not check_dependencies_installed():
+    if not backend_only and not check_dependencies_installed():
         return 1
-    if (
-        not backend_python().is_file()
-        or not (FRONTEND_DEPENDENCIES_DIR / "next/dist/bin/next").is_file()
+    if not backend_python().is_file() or (
+        not backend_only
+        and not (FRONTEND_DEPENDENCIES_DIR / "next/dist/bin/next").is_file()
     ):
         print(
             "[dev] Incomplete dependencies. Run python scripts/dev.py setup.",
@@ -611,10 +701,11 @@ def run_dev(*, which: Which = shutil.which, runner: Runner = subprocess.run) -> 
     job = None
     label = "[dev]"
     try:
-        ready, message = node_readiness(which, runner)
-        if not ready:
-            print(f"[frontend] {message}", file=sys.stderr)
-            return 2
+        if not backend_only:
+            ready, message = node_readiness(which, runner)
+            if not ready:
+                print(f"[frontend] {message}", file=sys.stderr)
+                return 2
         result = runner(
             [str(backend_python()), "-c", BACKEND_IMPORT_PROBE],
             cwd=BACKEND_DIR,
@@ -629,22 +720,19 @@ def run_dev(*, which: Which = shutil.which, runner: Runner = subprocess.run) -> 
                 file=sys.stderr,
             )
             return 1
-        dev_log("[frontend] Frontend: http://localhost:3000")
+        if not backend_only:
+            dev_log("[frontend] Frontend: http://localhost:3000")
         dev_log("[backend] Backend: http://localhost:8000")
         dev_log("[backend] API health: http://localhost:8000/health")
-        dev_log("[dev] Press Ctrl+C to stop both servers.")
+        dev_log(f"[dev] Press Ctrl+C to stop {servers}.")
         if os.name == "nt":
             job = WindowsJob()
-        for name, step in zip(("backend", "frontend"), steps, strict=True):
+        for name, step in zip(names, steps, strict=True):
             label = step.label
             dev_log(label)
-            options = (
-                {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-                if os.name == "nt"
-                else {"start_new_session": True}
-            )
+            options = dev_process_options(name)
             process = subprocess.Popen(
-                [executables[step.tool], *step.arguments],
+                dev_process_command(name, step, executables),
                 cwd=step.cwd,
                 shell=False,
                 stdout=subprocess.PIPE,
@@ -668,13 +756,13 @@ def run_dev(*, which: Which = shutil.which, runner: Runner = subprocess.run) -> 
                 if code is not None:
                     dev_log(
                         f"{step.label} exited unexpectedly with exit code {code}; "
-                        "stopping both servers.",
+                        f"stopping {servers}.",
                         error=True,
                     )
                     return code if code > 0 else (128 - code if code < 0 else 1)
             time.sleep(0.1)
     except KeyboardInterrupt:
-        dev_log("\n[dev] Interrupted; stopping both servers.", error=True)
+        dev_log(f"\n[dev] Interrupted; stopping {servers}.", error=True)
         return 130
     except (OSError, subprocess.TimeoutExpired) as error:
         dev_log(
@@ -702,6 +790,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     if arguments.command == "dev":
         return run_dev()
+    if arguments.command == "backend":
+        return run_dev(backend_only=True)
     if arguments.command == "doctor":
         return run_doctor(arguments)
     if arguments.command == "benchmark-catalog":
@@ -711,12 +801,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not ready:
             print(message, file=sys.stderr)
             return 2
-    if arguments.command == "backend" and not backend_python().is_file():
-        print(
-            "Backend dependencies are not installed. Run python scripts/dev.py setup.",
-            file=sys.stderr,
-        )
-        return 1
     return run_command(arguments.command)
 
 
