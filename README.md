@@ -112,6 +112,16 @@ archives are upgraded without a reset. [Health](http://localhost:8000/health)
 reports status and application version. When running services separately, stop
 each server with Ctrl+C.
 
+Both services are **localhost-only by default**: the frontend (development and
+production) binds to `127.0.0.1:3000`, and the backend binds to `127.0.0.1:8000`.
+Use `localhost` or `127.0.0.1` in your browser on the same machine.
+
+FaunaVault has no authentication and is not intended for public internet exposure.
+Access from another device requires explicit, deliberate configuration of server
+bind addresses and the frontend API URL/backend CORS origins. Loopback binding
+does not replace authentication or other protections if you intentionally deploy
+FaunaVault on a network; configure those protections before exposing your archive.
+
 For an existing archive using old implicit E-drive image storage, explicitly set
 `IMAGE_DIR` to its existing root before upgrading. Startup refuses a populated
 database paired with empty implicit portable originals; it never moves your data.
