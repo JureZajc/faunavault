@@ -6,6 +6,11 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Wildlife Insights at `/insights`: active-photo summaries, distinct verified
+  species, yearly/monthly capture activity, top species, category/classification
+  charts, and GPS coverage. URL-restorable year selection and List/Map drill-downs
+  share existing capture and taxonomy semantics. Read-only SQLite aggregates
+  exclude Trash and require no migration, chart dependency, or external service.
 - Trips & Events with required dates, optional location/notes, explicit Photo
   membership, a paginated index with deterministic previews, and List/Map/Culling
   integration. Date suggestions use effective camera-local capture dates and
@@ -69,6 +74,13 @@ Release entries describe user-visible milestones rather than individual commits.
 - Portable metadata export includes machine-readable culling decisions in
   JSON/CSV. Backup format v1 verifies and rehearses schemas 9–19, including
   culling metadata and detection of changes during backup creation.
+
+### Fixed
+
+- Windows development reloads no longer interrupt the launcher and stop both
+  servers. Combined and standalone backend commands isolate reload signals and
+  retain Ctrl+C cleanup of workers. Backend watching is limited to `backend/app`,
+  so editing tests no longer restarts the server.
 
 ## [0.2.0] - 2026-09-30
 

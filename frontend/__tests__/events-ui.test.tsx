@@ -45,7 +45,7 @@ test("index restores kind/page, ignores stale responses, and supports Back/Forwa
   expect(screen.queryByRole("heading", { name: "Stale" })).toBeNull();
   act(() => { window.history.replaceState(null, "", "/events?kind=trip&page=2"); window.dispatchEvent(new PopStateEvent("popstate")); });
   await waitFor(() => expect(api.getEvents).toHaveBeenCalledWith(2, "trip", expect.any(AbortSignal)));
-  expect(within(screen.getByRole("navigation", { name: "Archive views" })).getAllByRole("link")).toHaveLength(10);
+  expect(within(screen.getByRole("navigation", { name: "Archive views" })).getAllByRole("link")).toHaveLength(11);
 });
 
 test("index empty and API failure states retry", async () => {

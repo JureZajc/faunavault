@@ -309,6 +309,7 @@ function HomeContent() {
                 section === "cull" ||
                 section === "duplicates" ||
                 section === "map" ||
+                section === "insights" ||
                 section === "timeline"
               ) {
                 selection.reset();

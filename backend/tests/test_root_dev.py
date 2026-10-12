@@ -127,6 +127,8 @@ def test_command_steps_match_the_documented_workflows(dev):
                 "uvicorn",
                 "app.main:app",
                 "--reload",
+                "--reload-dir",
+                "app",
                 "--host",
                 "127.0.0.1",
                 "--port",
@@ -557,6 +559,17 @@ def dev_runtime(dev, tmp_path, monkeypatch):
     monkeypatch.setattr(dev.subprocess, "Popen", popen)
     monkeypatch.setattr(dev.subprocess, "run", Mock())
     monkeypatch.setattr(dev.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False)
+    monkeypatch.setattr(dev.subprocess, "CREATE_NEW_CONSOLE", 16, raising=False)
+    monkeypatch.setattr(dev.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(dev.subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
+    monkeypatch.setattr(dev.subprocess, "SW_HIDE", 0, raising=False)
+    monkeypatch.setattr(
+        dev.subprocess,
+        "STARTUPINFO",
+        lambda: SimpleNamespace(dwFlags=0, wShowWindow=1),
+        raising=False,
+    )
+    monkeypatch.setattr(dev, "interrupt_windows_backend", Mock())
     monkeypatch.setattr(dev.signal, "CTRL_BREAK_EVENT", 1, raising=False)
     monkeypatch.setattr(dev.signal, "SIGKILL", 9, raising=False)
     monkeypatch.setattr(dev.time, "sleep", Mock(side_effect=KeyboardInterrupt))
@@ -582,14 +595,30 @@ def test_dev_starts_both_services_and_ctrl_c_stops_their_trees(
     calls = dev_runtime.popen.call_args_list
     assert len(calls) == 2
     for call, step in zip(calls, dev.BACKEND_STEPS + dev.FRONTEND_STEPS, strict=True):
-        assert call.args[0] == [f"resolved-{step.tool}", *step.arguments]
+        if platform == "nt" and step.tool == "uv":
+            assert call.args[0] == [
+                sys.executable,
+                str(DEV_SCRIPT.with_name("windows_backend.py")),
+                *step.arguments[3:],
+            ]
+        else:
+            assert call.args[0] == [f"resolved-{step.tool}", *step.arguments]
         assert call.kwargs["cwd"] == step.cwd
         assert call.kwargs["shell"] is False
         assert call.kwargs["stdout"] == subprocess.PIPE
         assert call.kwargs["stderr"] == subprocess.STDOUT
         assert call.kwargs["text"] is True
         if platform == "nt":
-            assert call.kwargs["creationflags"] == subprocess.CREATE_NEW_PROCESS_GROUP
+            if step.tool == "uv":
+                assert call.kwargs["creationflags"] == subprocess.CREATE_NEW_CONSOLE
+                startup = call.kwargs["startupinfo"]
+                assert startup.dwFlags & subprocess.STARTF_USESHOWWINDOW
+                assert startup.wShowWindow == subprocess.SW_HIDE
+            else:
+                assert (
+                    call.kwargs["creationflags"] == subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+                assert "startupinfo" not in call.kwargs
             assert "start_new_session" not in call.kwargs
         else:
             assert call.kwargs["start_new_session"] is True
@@ -609,7 +638,11 @@ def test_dev_starts_both_services_and_ctrl_c_stops_their_trees(
         assert process.stdout.closed
         assert process.wait.called
         if platform == "nt":
-            process.send_signal.assert_called_once_with(dev.signal.CTRL_BREAK_EVENT)
+            if process is dev_runtime.processes[0]:
+                dev.interrupt_windows_backend.assert_called_once_with(process)
+                process.send_signal.assert_not_called()
+            else:
+                process.send_signal.assert_called_once_with(dev.signal.CTRL_BREAK_EVENT)
         else:
             assert (process.pid, dev.signal.SIGTERM) in [
                 call.args for call in dev.os.killpg.call_args_list
@@ -818,6 +851,38 @@ def test_dev_main_dispatches_to_concurrent_runner(dev, monkeypatch):
     run_dev.assert_called_once_with()
 
 
+def test_backend_main_uses_managed_server_lifecycle(dev, monkeypatch):
+    run_dev = Mock(return_value=130)
+    monkeypatch.setattr(dev, "run_dev", run_dev)
+    assert dev.main(["backend"]) == 130
+    run_dev.assert_called_once_with(backend_only=True)
+
+
+@pytest.mark.parametrize("platform", ["nt", "posix"])
+def test_backend_only_needs_no_frontend_and_stops_its_workers(
+    dev, dev_runtime, platform, capsys
+):
+    dev.os.name = platform
+    (dev.FRONTEND_DEPENDENCIES_DIR / "next/dist/bin/next").unlink()
+    assert (
+        dev.run_dev(
+            backend_only=True, which=lambda tool: tool, runner=dev_runtime.runner
+        )
+        == 130
+    )
+    assert dev_runtime.popen.call_count == 1
+    assert dev_runtime.processes[0].wait.called
+    dev_runtime.processes[1].wait.assert_not_called()
+    assert dev_runtime.runner.call_args_list[0].args[0] == [
+        sys.executable,
+        "-c",
+        dev.BACKEND_IMPORT_PROBE,
+    ]
+    captured = capsys.readouterr()
+    assert "http://localhost:3000" not in captured.out
+    assert "Interrupted; stopping backend." in captured.err
+
+
 @pytest.mark.parametrize("failure", [None, "create", "configure", "assign"])
 def test_windows_job_owns_descendants_and_releases_handle(dev, monkeypatch, failure):
     import ctypes
@@ -863,3 +928,70 @@ def test_windows_job_owns_descendants_and_releases_handle(dev, monkeypatch, fail
         job.close()
         job.close()
     kernel.CloseHandle.assert_called_once_with(44)
+
+
+@pytest.mark.parametrize("failure", [None, "attach", "handler", "event"])
+def test_windows_console_interrupt_is_scoped_and_detaches(dev, monkeypatch, failure):
+    import ctypes
+
+    calls = []
+
+    def native(name, result=True):
+        return Mock(side_effect=lambda *args: calls.append((name, args)) or result)
+
+    kernel = SimpleNamespace(
+        FreeConsole=native("free"),
+        AttachConsole=native("attach", failure != "attach"),
+        SetConsoleCtrlHandler=native("handler", failure != "handler"),
+        GenerateConsoleCtrlEvent=native("event", failure != "event"),
+    )
+    monkeypatch.setattr(ctypes, "WinDLL", Mock(return_value=kernel), raising=False)
+    monkeypatch.setattr(ctypes, "get_last_error", lambda: 5, raising=False)
+    monkeypatch.setattr(
+        ctypes, "WinError", lambda code: OSError(code, "console failed"), raising=False
+    )
+    monkeypatch.setattr(dev.signal, "CTRL_C_EVENT", 0, raising=False)
+    if failure:
+        with pytest.raises(OSError, match="console failed"):
+            dev.interrupt_windows_console(101)
+    else:
+        dev.interrupt_windows_console(101)
+    assert calls[:2] == [("free", ()), ("attach", (101,))]
+    if failure != "attach":
+        assert calls[2] == ("handler", (None, True))
+        assert calls[-1] == ("free", ())
+    if failure in (None, "event"):
+        assert calls[3] == ("event", (0, 0))
+
+
+def test_windows_backend_shutdown_uses_windowless_helper(dev, monkeypatch):
+    runner = Mock()
+    monkeypatch.setattr(dev.subprocess, "run", runner)
+    monkeypatch.setattr(dev.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    dev.interrupt_windows_backend(SimpleNamespace(pid=101))
+    call = runner.call_args
+    assert call.args[0][0:2] == [sys.executable, "-c"]
+    assert call.args[0][-2:] == [str(DEV_SCRIPT), "101"]
+    assert call.kwargs["creationflags"] == 0x08000000
+    assert call.kwargs["shell"] is False
+    assert call.kwargs["timeout"] == 2
+    assert call.kwargs["check"] is True
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OSError("attach failed"),
+        subprocess.TimeoutExpired("helper", 2),
+        subprocess.CalledProcessError(1, "helper"),
+    ],
+)
+def test_windows_console_failure_still_closes_job_and_reaps_children(
+    dev, dev_runtime, failure, capsys
+):
+    dev.os.name = "nt"
+    dev.interrupt_windows_backend.side_effect = failure
+    assert dev_runtime.run() == 130
+    dev_runtime.job.close.assert_called_once()
+    assert all(process.wait.called for process in dev_runtime.processes)
+    assert "Shutdown signal failed" in capsys.readouterr().err

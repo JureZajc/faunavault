@@ -29,3 +29,4 @@ frontend/.env.*
 /catalog-benchmark-results.json
 /catalog-benchmark-100k-results.json
 /catalog-benchmark-r5-*
+/insights-benchmark-*.json
