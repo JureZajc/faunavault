@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -45,6 +47,7 @@ def test_help_exposes_only_the_supported_commands(dev):
         "check-clean",
         "backend",
         "frontend",
+        "dev",
         "benchmark-catalog",
         "doctor",
     )
@@ -54,6 +57,7 @@ def test_help_exposes_only_the_supported_commands(dev):
     assert "Run clean CI-equivalent validation" in help_text
     assert "Start the FastAPI development server." in help_text
     assert "Start the Next.js development server." in help_text
+    assert "Start both development servers in one terminal." in help_text
 
 
 def test_command_steps_match_the_documented_workflows(dev):
@@ -511,3 +515,334 @@ def test_root_doctor_incomplete_backend_imports(dev, monkeypatch, capsys):
         == 1
     )
     assert "Required imports failed" in capsys.readouterr().out
+
+
+@pytest.fixture
+def dev_runtime(dev, tmp_path, monkeypatch):
+    """Installed dependencies and fake services; no development server is spawned."""
+    monkeypatch.setattr(dev, "check_dependencies_installed", lambda: True)
+    monkeypatch.setattr(dev, "backend_python", lambda: Path(sys.executable))
+    monkeypatch.setattr(dev, "FRONTEND_DEPENDENCIES_DIR", tmp_path)
+    next_entry = tmp_path / "next/dist/bin/next"
+    next_entry.parent.mkdir(parents=True)
+    next_entry.touch()
+    processes = [
+        Mock(pid=pid, stdout=io.StringIO(f"service {pid}\nlast line"))
+        for pid in (101, 102)
+    ]
+    for process in processes:
+        process.poll.return_value = None
+        process.wait.return_value = 0
+    popen = Mock(side_effect=processes)
+    runner = Mock(return_value=SimpleNamespace(returncode=0, stdout="v24.12.0"))
+    job = Mock()
+    monkeypatch.setattr(dev, "WindowsJob", Mock(return_value=job))
+    monkeypatch.setattr(dev.subprocess, "Popen", popen)
+    monkeypatch.setattr(dev.subprocess, "run", Mock())
+    monkeypatch.setattr(dev.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False)
+    monkeypatch.setattr(dev.signal, "CTRL_BREAK_EVENT", 1, raising=False)
+    monkeypatch.setattr(dev.signal, "SIGKILL", 9, raising=False)
+    monkeypatch.setattr(dev.time, "sleep", Mock(side_effect=KeyboardInterrupt))
+    monkeypatch.setattr(dev, "os", SimpleNamespace(name="posix", killpg=Mock()))
+    return SimpleNamespace(
+        processes=processes,
+        popen=popen,
+        runner=runner,
+        job=job,
+        run=lambda: dev.run_dev(which=lambda tool: f"resolved-{tool}", runner=runner),
+    )
+
+
+@pytest.mark.parametrize("platform", ["nt", "posix"])
+def test_dev_starts_both_services_and_ctrl_c_stops_their_trees(
+    dev, dev_runtime, platform, capsys
+):
+    dev.os.name = platform
+    previous_handler = dev.signal.getsignal(dev.signal.SIGINT)
+
+    assert dev_runtime.run() == 130
+
+    calls = dev_runtime.popen.call_args_list
+    assert len(calls) == 2
+    for call, step in zip(calls, dev.BACKEND_STEPS + dev.FRONTEND_STEPS, strict=True):
+        assert call.args[0] == [f"resolved-{step.tool}", *step.arguments]
+        assert call.kwargs["cwd"] == step.cwd
+        assert call.kwargs["shell"] is False
+        assert call.kwargs["stdout"] == subprocess.PIPE
+        assert call.kwargs["stderr"] == subprocess.STDOUT
+        assert call.kwargs["text"] is True
+        if platform == "nt":
+            assert call.kwargs["creationflags"] == subprocess.CREATE_NEW_PROCESS_GROUP
+            assert "start_new_session" not in call.kwargs
+        else:
+            assert call.kwargs["start_new_session"] is True
+            assert "creationflags" not in call.kwargs
+    # Readiness probes are read-only; no sync or install is run.
+    assert dev_runtime.runner.call_args_list[0].args[0] == [
+        "resolved-node",
+        "--version",
+    ]
+    assert dev_runtime.runner.call_args_list[1].args[0] == [
+        sys.executable,
+        "-c",
+        dev.BACKEND_IMPORT_PROBE,
+    ]
+    assert dev_runtime.runner.call_args_list[1].kwargs["cwd"] == dev.BACKEND_DIR
+    for process in dev_runtime.processes:
+        assert process.stdout.closed
+        assert process.wait.called
+        if platform == "nt":
+            process.send_signal.assert_called_once_with(dev.signal.CTRL_BREAK_EVENT)
+        else:
+            assert (process.pid, dev.signal.SIGTERM) in [
+                call.args for call in dev.os.killpg.call_args_list
+            ]
+            assert (process.pid, dev.signal.SIGKILL) in [
+                call.args for call in dev.os.killpg.call_args_list
+            ]
+    if platform == "nt":
+        assert [call.args[0] for call in dev_runtime.job.add.call_args_list] == (
+            dev_runtime.processes
+        )
+        dev_runtime.job.close.assert_called_once()
+    assert dev.signal.getsignal(dev.signal.SIGINT) == previous_handler
+    captured = capsys.readouterr()
+    for url in (
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://localhost:8000/health",
+    ):
+        assert url in captured.out
+    for line in (
+        "[backend] service 101",
+        "[backend] last line",
+        "[frontend] service 102",
+        "[frontend] last line",
+    ):
+        assert line in captured.out.splitlines()
+    assert "stopping both servers" in captured.err
+
+
+@pytest.mark.parametrize("platform", ["nt", "posix"])
+@pytest.mark.parametrize("service_index", [0, 1])
+@pytest.mark.parametrize("exit_code,expected", [(23, 23), (0, 1), (-15, 143)])
+def test_dev_unexpected_exit_stops_both_trees(
+    dev, dev_runtime, platform, service_index, exit_code, expected, capsys
+):
+    dev.os.name = platform
+    exited = dev_runtime.processes[service_index]
+    exited.poll.return_value = exit_code
+
+    assert dev_runtime.run() == expected
+
+    assert dev_runtime.popen.call_count == 2
+    assert all(process.wait.called for process in dev_runtime.processes)
+    if platform == "nt":
+        dev_runtime.job.close.assert_called_once()
+        exited.send_signal.assert_not_called()
+    else:
+        # Include the group whose leader has exited: it can still contain workers.
+        assert (exited.pid, dev.signal.SIGTERM) in [
+            call.args for call in dev.os.killpg.call_args_list
+        ]
+        assert (exited.pid, dev.signal.SIGKILL) in [
+            call.args for call in dev.os.killpg.call_args_list
+        ]
+    name = ("backend", "frontend")[service_index]
+    assert (
+        f"[{name}] development server exited unexpectedly with exit code {exit_code}"
+        in (capsys.readouterr().err)
+    )
+
+
+@pytest.mark.parametrize("failed_index", [0, 1])
+def test_dev_startup_failure_cleans_up_started_service(
+    dev, dev_runtime, failed_index, capsys
+):
+    dev_runtime.popen.side_effect = [
+        *dev_runtime.processes[:failed_index],
+        OSError("could not spawn"),
+    ]
+
+    assert dev_runtime.run() == 1
+
+    assert dev_runtime.popen.call_count == failed_index + 1
+    for process in dev_runtime.processes[:failed_index]:
+        assert process.wait.called
+    for process in dev_runtime.processes[failed_index:]:
+        process.wait.assert_not_called()
+    name = ("backend", "frontend")[failed_index]
+    assert f"[{name}] development server failed: could not spawn" in (
+        capsys.readouterr().err
+    )
+
+
+def test_dev_interrupt_during_startup_cleans_up_first_service(dev_runtime):
+    dev_runtime.popen.side_effect = [dev_runtime.processes[0], KeyboardInterrupt]
+
+    assert dev_runtime.run() == 130
+    assert dev_runtime.processes[0].wait.called
+    dev_runtime.processes[1].wait.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["create", "assign"])
+def test_dev_windows_job_failure_is_reported_and_cleaned_up(
+    dev, dev_runtime, failure, capsys
+):
+    dev.os.name = "nt"
+    if failure == "create":
+        dev.WindowsJob.side_effect = OSError("job failed")
+    else:
+        dev_runtime.job.add.side_effect = OSError("job failed")
+
+    assert dev_runtime.run() == 1
+
+    if failure == "create":
+        dev_runtime.popen.assert_not_called()
+    else:
+        dev_runtime.job.close.assert_called_once()
+        assert dev_runtime.processes[0].wait.called
+        assert dev.subprocess.run.call_args.args[0] == [
+            "taskkill",
+            "/PID",
+            "101",
+            "/T",
+            "/F",
+        ]
+    assert "job failed" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("platform", ["nt", "posix"])
+def test_dev_escalates_shutdown_after_grace_period(dev, dev_runtime, platform):
+    dev.os.name = platform
+    dev_runtime.processes[0].wait.side_effect = [
+        subprocess.TimeoutExpired("server", 5),
+        0,
+    ]
+
+    assert dev_runtime.run() == 130
+
+    assert dev_runtime.processes[0].wait.call_count == 2
+    if platform == "nt":
+        dev_runtime.job.close.assert_called_once()
+    else:
+        assert (101, dev.signal.SIGKILL) in [
+            call.args for call in dev.os.killpg.call_args_list
+        ]
+
+
+@pytest.mark.parametrize("missing", ["backend", "frontend"])
+def test_dev_requires_dependencies_before_spawning(
+    dev, tmp_path, monkeypatch, missing, capsys
+):
+    monkeypatch.setattr(
+        dev,
+        "BACKEND_ENV_DIR",
+        tmp_path / ("missing" if missing == "backend" else "installed"),
+    )
+    monkeypatch.setattr(
+        dev,
+        "FRONTEND_DEPENDENCIES_DIR",
+        tmp_path / ("missing" if missing == "frontend" else "installed"),
+    )
+    (tmp_path / "installed").mkdir()
+    popen = Mock()
+    monkeypatch.setattr(dev.subprocess, "Popen", popen)
+    runner = Mock()
+
+    assert dev.run_dev(which=lambda tool: tool, runner=runner) == 1
+
+    popen.assert_not_called()
+    runner.assert_not_called()
+    assert "python scripts/dev.py setup" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("missing", ["uv", "npm"])
+def test_dev_missing_tool_is_actionable(dev, monkeypatch, missing, capsys):
+    popen = Mock()
+    monkeypatch.setattr(dev.subprocess, "Popen", popen)
+
+    assert dev.run_dev(which=lambda tool: None if tool == missing else tool) == 127
+
+    popen.assert_not_called()
+    captured = capsys.readouterr()
+    assert f"{missing} was not found" in captured.err
+    assert "python scripts/dev.py setup" in captured.err
+
+
+@pytest.mark.parametrize("missing", ["interpreter", "next", "imports", "node"])
+def test_dev_incomplete_dependencies_are_actionable(
+    dev, dev_runtime, tmp_path, monkeypatch, missing, capsys
+):
+    if missing == "interpreter":
+        monkeypatch.setattr(dev, "backend_python", lambda: tmp_path / "missing")
+    elif missing == "next":
+        (dev.FRONTEND_DEPENDENCIES_DIR / "next/dist/bin/next").unlink()
+    elif missing == "imports":
+        dev_runtime.runner.side_effect = [
+            SimpleNamespace(returncode=0, stdout="v24.12.0"),
+            SimpleNamespace(returncode=1),
+        ]
+    else:
+        dev_runtime.runner.return_value.stdout = "v22.0.0"
+
+    assert dev_runtime.run() == (2 if missing == "node" else 1)
+
+    dev_runtime.popen.assert_not_called()
+    message = capsys.readouterr().err
+    assert ("Node" if missing == "node" else "python scripts/dev.py setup") in message
+
+
+def test_dev_main_dispatches_to_concurrent_runner(dev, monkeypatch):
+    run_dev = Mock(return_value=130)
+    monkeypatch.setattr(dev, "run_dev", run_dev)
+
+    assert dev.main(["dev"]) == 130
+    run_dev.assert_called_once_with()
+
+
+@pytest.mark.parametrize("failure", [None, "create", "configure", "assign"])
+def test_windows_job_owns_descendants_and_releases_handle(dev, monkeypatch, failure):
+    import ctypes
+
+    kernel = SimpleNamespace(
+        CreateJobObjectW=Mock(return_value=0 if failure == "create" else 44),
+        SetInformationJobObject=Mock(return_value=failure != "configure"),
+        AssignProcessToJobObject=Mock(return_value=failure != "assign"),
+        CloseHandle=Mock(return_value=True),
+    )
+    monkeypatch.setattr(ctypes, "WinDLL", Mock(return_value=kernel), raising=False)
+    monkeypatch.setattr(ctypes, "get_last_error", lambda: 5, raising=False)
+    monkeypatch.setattr(
+        ctypes, "WinError", lambda code: OSError(code, "job failed"), raising=False
+    )
+
+    if failure in ("create", "configure"):
+        with pytest.raises(OSError, match="job failed"):
+            dev.WindowsJob()
+        if failure == "configure":
+            kernel.CloseHandle.assert_called_once_with(44)
+        else:
+            kernel.CloseHandle.assert_not_called()
+        return
+
+    job = dev.WindowsJob()
+    handle, information_class, pointer, size = (
+        kernel.SetInformationJobObject.call_args.args
+    )
+    assert handle == 44
+    assert information_class == 9  # JobObjectExtendedLimitInformation
+    assert pointer._obj.basic.flags == 0x2000  # KILL_ON_JOB_CLOSE
+    assert size == ctypes.sizeof(pointer._obj)
+    process = SimpleNamespace(_handle=77)
+    try:
+        if failure == "assign":
+            with pytest.raises(OSError, match="job failed"):
+                job.add(process)
+        else:
+            job.add(process)
+        kernel.AssignProcessToJobObject.assert_called_once_with(44, 77)
+    finally:
+        job.close()
+        job.close()
+    kernel.CloseHandle.assert_called_once_with(44)

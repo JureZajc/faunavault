@@ -83,7 +83,20 @@ For custom paths, copy/edit `backend/.env.example` and
 
 ## Starting FaunaVault
 
-Run these in two separate terminals from the repository root:
+The recommended development startup runs both servers in one terminal from the
+repository root:
+
+```sh
+python scripts/dev.py dev
+```
+
+Backend and frontend logs use `[backend]` and `[frontend]` prefixes. Both servers
+keep hot reload enabled. Press Ctrl+C once to stop both servers and their workers.
+If either server exits, the command reports its exit code and stops the other.
+`dev` checks installed dependencies without reinstalling them; if setup is missing
+or incomplete, run `python scripts/dev.py setup` first.
+
+Alternatively, start individual services in two separate terminals:
 
 ```sh
 python scripts/dev.py backend
@@ -96,7 +109,8 @@ python scripts/dev.py frontend
 Open [FaunaVault](http://localhost:3000). The backend listens on localhost and
 initializes the database/directories and applies migrations on startup. Existing
 archives are upgraded without a reset. [Health](http://localhost:8000/health)
-reports status and application version. Stop each server with Ctrl+C.
+reports status and application version. When running services separately, stop
+each server with Ctrl+C.
 
 For an existing archive using old implicit E-drive image storage, explicitly set
 `IMAGE_DIR` to its existing root before upgrading. Startup refuses a populated
