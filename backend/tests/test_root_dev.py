@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -135,6 +137,21 @@ def test_command_steps_match_the_documented_workflows(dev):
     ]
     assert step_values(dev.FRONTEND_STEPS) == [
         ("[frontend] development server", "npm", ("run", "dev"), dev.FRONTEND_DIR)
+    ]
+
+
+@pytest.mark.parametrize("command", ["dev", "start"])
+def test_frontend_servers_default_to_ipv4_loopback(command):
+    package = json.loads(
+        (REPOSITORY_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    )
+    # Root frontend/dev workflows use this script; leave Next's port default and
+    # npm's forwarded --port override available to the isolated browser tests.
+    assert shlex.split(package["scripts"][command]) == [
+        "next",
+        command,
+        "--hostname",
+        "127.0.0.1",
     ]
 
 

@@ -8,6 +8,18 @@ behavior are in the [operations guide](../docs/OPERATIONS.md). The frontend is a
 private package with no independent release version; the backend project
 manifest owns the application version.
 
+The frontend is localhost-only by default. Both `npm run dev` (with hot reload)
+and `npm run start` (after `npm run build`) bind to `127.0.0.1`, on port 3000 by
+default. Open `http://localhost:3000` or `http://127.0.0.1:3000` on this machine.
+Port overrides still work, for example `npm run start -- --port 3001`; browser
+smoke tests use frontend port 3001 and backend port 8001 on loopback.
+
+FaunaVault has no authentication and is not intended for public internet exposure.
+Access from another device requires explicit, deliberate changes to the server
+bind addresses, `NEXT_PUBLIC_API_URL`, and backend CORS origins. Localhost binding
+does not replace authentication or other protections for intentional network
+deployment. See the [root startup instructions](../README.md#starting-faunavault).
+
 ## Architecture
 
 `/imports` is contextual Recent Imports, linked from upload, List, and Culling.
