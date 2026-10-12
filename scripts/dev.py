@@ -6,8 +6,11 @@ import argparse
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +21,12 @@ BACKEND_DIR = REPOSITORY_ROOT / "backend"
 FRONTEND_DIR = REPOSITORY_ROOT / "frontend"
 BACKEND_ENV_DIR = BACKEND_DIR / ".venv"
 FRONTEND_DEPENDENCIES_DIR = FRONTEND_DIR / "node_modules"
+OUTPUT_LOCK = threading.Lock()
+BACKEND_IMPORT_PROBE = (
+    "import sys; "
+    "assert sys.version_info >= (3, 12), 'Backend requires Python 3.12+'; "
+    "import fastapi, httpx, PIL, pillow_heif, pydantic_settings, dotenv, multipart, sqlmodel, uvicorn"
+)
 
 
 @dataclass(frozen=True)
@@ -131,6 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("backend", help="Start the FastAPI development server.")
     subparsers.add_parser("frontend", help="Start the Next.js development server.")
+    subparsers.add_parser("dev", help="Start both development servers in one terminal.")
     benchmark = subparsers.add_parser(
         "benchmark-catalog",
         help="Profile production queries on disposable synthetic data.",
@@ -238,14 +248,9 @@ def run_doctor(
         )
         return 1
     # Probe imports in the installed backend interpreter before invoking maintenance.
-    probe = (
-        "import sys; "
-        "assert sys.version_info >= (3, 12), 'Backend requires Python 3.12+'; "
-        "import fastapi, httpx, PIL, pillow_heif, pydantic_settings, dotenv, multipart, sqlmodel, uvicorn"
-    )
     try:
         result = runner(
-            [str(interpreter), "-c", probe],
+            [str(interpreter), "-c", BACKEND_IMPORT_PROBE],
             cwd=BACKEND_DIR,
             capture_output=True,
             text=True,
@@ -447,6 +452,247 @@ def run_command(
     return result
 
 
+class WindowsJob:
+    """Keep reload workers in a job even when their original parent exits."""
+
+    def __init__(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        class BasicLimits(ctypes.Structure):
+            _fields_ = [
+                ("process_time", ctypes.c_longlong),
+                ("job_time", ctypes.c_longlong),
+                ("flags", wintypes.DWORD),
+                ("min_working_set", ctypes.c_size_t),
+                ("max_working_set", ctypes.c_size_t),
+                ("active_processes", wintypes.DWORD),
+                ("affinity", ctypes.c_size_t),
+                ("priority", wintypes.DWORD),
+                ("scheduling", wintypes.DWORD),
+            ]
+
+        class ExtendedLimits(ctypes.Structure):
+            _fields_ = [
+                ("basic", BasicLimits),
+                ("io_counters", ctypes.c_ulonglong * 6),
+                ("process_memory", ctypes.c_size_t),
+                ("job_memory", ctypes.c_size_t),
+                ("peak_process_memory", ctypes.c_size_t),
+                ("peak_job_memory", ctypes.c_size_t),
+            ]
+
+        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        signatures = {
+            "CreateJobObjectW": ([ctypes.c_void_p, wintypes.LPCWSTR], wintypes.HANDLE),
+            "SetInformationJobObject": (
+                [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
+                wintypes.BOOL,
+            ),
+            "AssignProcessToJobObject": (
+                [wintypes.HANDLE, wintypes.HANDLE],
+                wintypes.BOOL,
+            ),
+            "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
+        }
+        for name, (arguments, result) in signatures.items():
+            function = getattr(self.kernel, name)
+            function.argtypes = arguments
+            function.restype = result
+        self.handle = self.kernel.CreateJobObjectW(None, None)
+        if not self.handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        limits = ExtendedLimits()
+        limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not self.kernel.SetInformationJobObject(
+            self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)
+        ):
+            error = ctypes.WinError(ctypes.get_last_error())
+            self.close()
+            raise error
+
+    def add(self, process: subprocess.Popen[str]) -> None:
+        import ctypes
+
+        if not self.kernel.AssignProcessToJobObject(self.handle, int(process._handle)):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def close(self) -> None:
+        if self.handle:
+            self.kernel.CloseHandle(self.handle)
+            self.handle = None
+
+
+def dev_log(message: str, *, error: bool = False) -> None:
+    # A print can perform multiple writes; serialize complete prefixed lines.
+    with OUTPUT_LOCK:
+        print(message, file=sys.stderr if error else sys.stdout, flush=True)
+
+
+def stream_output(name: str, process: subprocess.Popen[str]) -> None:
+    assert process.stdout is not None
+    with process.stdout:
+        for line in process.stdout:
+            dev_log(f"[{name}] {line.rstrip()}")
+
+
+def stop_dev_processes(
+    processes: Sequence[subprocess.Popen[str]], job: WindowsJob | None
+) -> None:
+    # Ignore additional Ctrl+C presses until both trees have been reaped.
+    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        for process in processes:
+            try:
+                if os.name == "nt":
+                    if process.poll() is None:
+                        process.send_signal(signal.CTRL_BREAK_EVENT)
+                else:
+                    os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            except OSError as error:
+                dev_log(f"[dev] Shutdown signal failed: {error}", error=True)
+
+        deadline = time.monotonic() + 5
+        for process in processes:
+            try:
+                process.wait(timeout=max(0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                pass
+
+        if job is not None:
+            # Also kills descendants of an already-exited uv/npm parent.
+            job.close()
+        for process in processes:
+            if os.name != "nt":
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            elif process.poll() is None:
+                # Fallback if assigning a newly spawned process to the job failed.
+                subprocess.run(
+                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            process.wait()
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+def run_dev(*, which: Which = shutil.which, runner: Runner = subprocess.run) -> int:
+    steps = BACKEND_STEPS + FRONTEND_STEPS
+    try:
+        executables = resolve_tools(steps, which)
+    except ToolNotFoundError as error:
+        print(
+            f"[dev] {error.tool} was not found on PATH. {INSTALL_HINTS[error.tool]}; "
+            "then run python scripts/dev.py setup.",
+            file=sys.stderr,
+        )
+        return 127
+    if not check_dependencies_installed():
+        return 1
+    if (
+        not backend_python().is_file()
+        or not (FRONTEND_DEPENDENCIES_DIR / "next/dist/bin/next").is_file()
+    ):
+        print(
+            "[dev] Incomplete dependencies. Run python scripts/dev.py setup.",
+            file=sys.stderr,
+        )
+        return 1
+
+    processes: list[subprocess.Popen[str]] = []
+    readers: list[threading.Thread] = []
+    job = None
+    label = "[dev]"
+    try:
+        ready, message = node_readiness(which, runner)
+        if not ready:
+            print(f"[frontend] {message}", file=sys.stderr)
+            return 2
+        result = runner(
+            [str(backend_python()), "-c", BACKEND_IMPORT_PROBE],
+            cwd=BACKEND_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            shell=False,
+        )
+        if result.returncode:
+            print(
+                "[backend] Required imports failed. Run python scripts/dev.py setup.",
+                file=sys.stderr,
+            )
+            return 1
+        dev_log("[frontend] Frontend: http://localhost:3000")
+        dev_log("[backend] Backend: http://localhost:8000")
+        dev_log("[backend] API health: http://localhost:8000/health")
+        dev_log("[dev] Press Ctrl+C to stop both servers.")
+        if os.name == "nt":
+            job = WindowsJob()
+        for name, step in zip(("backend", "frontend"), steps, strict=True):
+            label = step.label
+            dev_log(label)
+            options = (
+                {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+                if os.name == "nt"
+                else {"start_new_session": True}
+            )
+            process = subprocess.Popen(
+                [executables[step.tool], *step.arguments],
+                cwd=step.cwd,
+                shell=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                errors="replace",
+                bufsize=1,
+                **options,
+            )
+            processes.append(process)
+            if job is not None:
+                job.add(process)
+            reader = threading.Thread(
+                target=stream_output, args=(name, process), daemon=True
+            )
+            reader.start()
+            readers.append(reader)
+        while True:
+            for step, process in zip(steps, processes, strict=True):
+                code = process.poll()
+                if code is not None:
+                    dev_log(
+                        f"{step.label} exited unexpectedly with exit code {code}; "
+                        "stopping both servers.",
+                        error=True,
+                    )
+                    return code if code > 0 else (128 - code if code < 0 else 1)
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        dev_log("\n[dev] Interrupted; stopping both servers.", error=True)
+        return 130
+    except (OSError, subprocess.TimeoutExpired) as error:
+        dev_log(
+            f"{label} failed: {error}. Run python scripts/dev.py setup "
+            "if dependencies are missing.",
+            error=True,
+        )
+        return 1
+    finally:
+        stop_dev_processes(processes, job)
+        for reader in readers:
+            reader.join(timeout=2)
+        # Assignment to a Windows job can fail before a reader takes ownership.
+        for process in processes[len(readers) :]:
+            if process.stdout is not None:
+                process.stdout.close()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     if sys.version_info < MINIMUM_PYTHON:
         required = ".".join(str(part) for part in MINIMUM_PYTHON)
@@ -454,6 +700,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     arguments = build_parser().parse_args(argv)
+    if arguments.command == "dev":
+        return run_dev()
     if arguments.command == "doctor":
         return run_doctor(arguments)
     if arguments.command == "benchmark-catalog":
