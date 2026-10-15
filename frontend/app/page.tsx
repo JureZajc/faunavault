@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import AlbumBrowser from "./components/album-browser";
 import ArchiveNavigation from "./components/archive-navigation";
 import BulkActionDialog from "./components/catalog/bulk-action-dialog";
+import BulkCaptureDialog from "./components/catalog/bulk-capture-dialog";
 import BulkSelectionToolbar, {
   BulkDialogAction,
 } from "./components/catalog/bulk-selection-toolbar";
@@ -112,6 +113,7 @@ function HomeContent() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [bulkDialog, setBulkDialog] = useState<BulkDialogAction | null>(null);
+  const [capturePhotoIds, setCapturePhotoIds] = useState<number[] | null>(null);
   const [addCollectionIds, setAddCollectionIds] = useState<number[] | null>(null);
   const refreshTimer = useRef<number | null>(null);
   const scheduleCatalogRefresh = useCallback(() => {
@@ -459,7 +461,9 @@ function HomeContent() {
                 onOpenAction={(action) => {
                   bulkActions.clearError();
                   if (eventBusy) return;
-                  if (action === "add_to_event") {
+                  if (action === "edit_capture") {
+                    setCapturePhotoIds([...selection.selectedIds].sort((a, b) => a - b));
+                  } else if (action === "add_to_event") {
                     setAddEventIds([...selection.selectedIds].sort((a, b) => a - b));
                   } else if (action === "add_to_collection") {
                     setAddCollectionIds(
@@ -510,6 +514,13 @@ function HomeContent() {
               isSelectionBusy={bulkActions.isBusy || eventBusy}
               onToggleSelection={selection.toggle}
             />
+            {capturePhotoIds ? <BulkCaptureDialog photoIds={capturePhotoIds} onClose={() => setCapturePhotoIds(null)} onSuccess={(response) => {
+              setCapturePhotoIds(null);
+              selection.reset();
+              setActionError(null);
+              setSuccessNotice(`Updated capture / GPS metadata for ${response.affected_count} ${response.affected_count === 1 ? "photo" : "photos"}.`);
+              void loadPhotos().catch(() => setActionError("Metadata saved, but the catalog could not refresh. Use Retry."));
+            }} /> : null}
             <BulkActionDialog
               rejectedReview={rejectedReview}
               onRefreshRejected={() => {

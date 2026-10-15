@@ -10,7 +10,7 @@ export type BulkDialogAction =
   | "remove_tags"
   | "category"
   | "move_to_trash";
-export type BulkToolbarAction = BulkDialogAction | "add_to_collection" | "add_to_event";
+export type BulkToolbarAction = BulkDialogAction | "add_to_collection" | "add_to_event" | "edit_capture";
 
 type BulkSelectionToolbarProps = {
   selectedIds: ReadonlySet<number>;
@@ -99,6 +99,7 @@ export default function BulkSelectionToolbar({
             <p id="compare-selection-help" className="mt-1 text-xs text-stone-600">{selectedIds.size === 2 ? "Compare the selected pair" : "Select exactly two photos to compare"}</p>
           </div> : null}
           {[
+            ["edit_capture", "Edit capture / GPS"],
             ["add_to_collection", "Add to Collection"],
             ["add_to_event", "Add to Trip/Event"],
             ["favorite", "Favorite / Unfavorite"],

@@ -177,7 +177,7 @@ def on_startup() -> None:
 
 SessionDep = Annotated[Session, Depends(get_session)]
 app.include_router(create_photo_lifecycle_router(lambda: settings))
-app.include_router(create_bulk_photos_router())
+app.include_router(create_bulk_photos_router(lambda: settings))
 app.include_router(create_catalog_router())
 app.include_router(create_collections_router())
 app.include_router(create_events_router())

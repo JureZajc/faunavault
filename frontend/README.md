@@ -20,6 +20,31 @@ bind addresses, `NEXT_PUBLIC_API_URL`, and backend CORS origins. Localhost bindi
 does not replace authentication or other protections for intentional network
 deployment. See the [root startup instructions](../README.md#starting-faunavault).
 
+## Bulk capture and GPS editing
+
+From List, select up to 250 photos and choose **Edit capture / GPS**. Configure
+Shift capture time, Set capture date and time, Set/Remove GPS, Clear capture
+metadata, or Restore original metadata (capture, GPS, or both). Review the
+read-only before/after table and check the confirmation before applying.
+The dialog uses the shared modal keyboard/focus utilities, supports narrow screens,
+disables repeated submissions, and preserves selection on failure. Any failed apply
+invalidates its preview; stale versions require a fresh preview and are never
+retried automatically. A successful write uses the existing catalog refresh.
+
+Times stay camera-local. Shifts preserve individual offsets and relative gaps;
+missing capture timestamps block the whole selection. Set-time offers preserved,
+specific signed `HH:MM`, or explicitly unknown offsets. Clears mark independent
+capture/location overrides while retaining extracted provenance. Restore verifies
+and re-reads original files; unavailable or changed originals block all changes.
+Original bytes and AI decisions remain unchanged. Unlike individual editing,
+every bulk change requires a preview and explicit confirmation. Existing Photo
+fields continue to drive detail, List, Timeline, Map, Smart Collections, Trips &
+Events suggestions, and Wildlife Insights.
+
+Focused coverage: `npm test -- __tests__/bulk-capture-dialog.test.tsx
+__tests__/catalog-bulk-actions.test.tsx` and
+`npm run test:e2e -- bulk-capture.e2e.ts` (disposable storage, desktop and mobile).
+
 ## Architecture
 
 `/insights` is a read-only Wildlife Insights dashboard backed by `GET /insights`.

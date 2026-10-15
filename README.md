@@ -19,6 +19,14 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 - Untouched originals, local previews, capture/camera metadata, and GPS extraction.
 - Individual capture date/time, UTC offset, and GPS corrections, with retained
   extracted values and Restore original metadata. [Editing guide](docs/OPERATIONS.md#editable-capture-metadata-v02).
+- Bulk **Edit capture / GPS** for up to 250 selected photos: shift camera-local
+  time, set date/time with preserved, specific or unknown offsets, set/remove GPS,
+  clear capture time, or independently restore capture/GPS from verified originals.
+  Unlike individual editing, every bulk operation requires a read-only before/after
+  preview and confirmation. Apply is atomic; missing times and stale previews block
+  changes. Intentional clears retain provenance and prevent EXIF backfills from
+  repopulating values. Original bytes and AI decisions are preserved.
+  [Bulk metadata guide](docs/OPERATIONS.md#bulk-capture-and-gps-editing).
 - Search, filters, sorting, Timeline, clustered Map, species Albums, manual
   Collections, and live Smart Collections.
 - Wildlife Insights summarizes active photos, verified species, capture activity,

@@ -404,6 +404,47 @@ export type BulkPhotoActionRequest =
 
 export type BulkPhotoRequest = BulkPhotoActionRequest & { photo_ids: number[] };
 
+export type BulkCaptureOperation =
+  | { operation: "shift_time"; minutes: number }
+  | { operation: "set_capture"; captured_at: string; offset_mode: "preserve" }
+  | { operation: "set_capture"; captured_at: string; offset_mode: "assign"; captured_at_offset_minutes: number | null }
+  | { operation: "set_gps"; latitude: number; longitude: number }
+  | { operation: "remove_gps" }
+  | { operation: "clear_capture" }
+  | { operation: "restore_original"; group: "capture" | "location" | "both" };
+
+export type CaptureMetadataValues = Pick<Photo, "captured_at" | "captured_at_offset_minutes" | "latitude" | "longitude" | "capture_metadata_overridden" | "location_metadata_overridden">;
+export type CapturePhotoVersion = { photo_id: number; updated_at: string; original_sha256: string | null };
+export type BulkCaptureRequest = { photo_ids: number[]; change: BulkCaptureOperation };
+export type CapturePreviewPhoto = CapturePhotoVersion & {
+  filename: string;
+  before: CaptureMetadataValues;
+  after: CaptureMetadataValues | null;
+  changed: boolean;
+  issue: { code: string; message: string } | null;
+};
+export type BulkCapturePreview = {
+  change: BulkCaptureOperation;
+  selected_count: number;
+  affected_count: number;
+  blocked_count: number;
+  can_apply: boolean;
+  photos: CapturePreviewPhoto[];
+};
+export type BulkCaptureResult = { status: "completed"; photo_ids: number[]; affected_count: number };
+
+export function previewBulkCapture(body: BulkCaptureRequest) {
+  return request<BulkCapturePreview>("/photos/bulk/capture-preview", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+}
+
+export function applyBulkCapture(body: BulkCaptureRequest & { expected_versions: CapturePhotoVersion[] }) {
+  return request<BulkCaptureResult>("/photos/bulk/capture-apply", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+}
+
 export type BulkPhotoMutationResponse = {
   status: "completed";
   operation: BulkPhotoOperation;
