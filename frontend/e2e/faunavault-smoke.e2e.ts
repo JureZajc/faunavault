@@ -61,6 +61,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
     await page.getByRole("button", { name: "Select Photos to add" }).click();
     for (const id of ids) await page.getByRole("checkbox", { name: new RegExp(`Select photo ${id}:`) }).check();
     await page.getByRole("button", { name: "Add selected to this Trip" }).click();
+    await page.getByRole("button", { name: "Confirm add photos" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Added 2 Photos" })).toBeVisible();
     await page.getByRole("link", { name: "Back to Trip/Event" }).click();
     await expect(page).toHaveURL(new RegExp(`/events/${eventId}$`));

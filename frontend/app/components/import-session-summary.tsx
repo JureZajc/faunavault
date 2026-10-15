@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getImportSession, ImportSession } from "../lib/api";
 import { importCullHref, importDate, importListHref, importSourceLabel } from "../lib/import-sessions";
+import ImportEventCreateButton from "./events/import-event-create-button";
 
 export function ImportSessionCard({ item }: { item: ImportSession }) {
   return <section aria-label="Import Session" className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
@@ -12,10 +13,11 @@ export function ImportSessionCard({ item }: { item: ImportSession }) {
     <p className="mt-3 text-sm">{item.imported_count} imported originally · {item.active_count} active / {item.trash_count} in Trash</p>
     <p className="mt-1 text-sm text-stone-700">Active photos: {item.undecided_count} undecided · {item.pick_count} Pick · {item.reject_count} Reject</p>
     {item.completed_at ? <p className="mt-1 text-xs text-stone-500">Reported outcomes: {item.duplicate_count} exact duplicates · {item.visual_duplicate_skipped_count} visual duplicates skipped · {item.unsupported_count} unsupported · {item.failed_count} failed</p> : <p className="mt-1 text-xs text-stone-500">The operation has not finalized its outcome summary. Saved photos remain available.</p>}
-    {item.active_count === 0 ? <p className="mt-2 text-sm text-stone-600">{item.imported_count === 0 ? "No photos have been imported in this session." : "No active photos remain in this import."}</p> : <div className="mt-3 flex flex-wrap gap-3">
+    {item.active_count === 0 ? <p className="mt-2 text-sm text-stone-600">This session has no available photos for assignment. {item.imported_count === 0 ? "No photos have been imported in this session." : "No active photos remain in this import."}</p> : <div className="mt-3 flex flex-wrap gap-3">
       <Link href={importListHref(item.id)} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 px-3 text-sm font-semibold text-emerald-900">View imported photos</Link>
       <Link href={importCullHref(item.id)} className="inline-flex min-h-11 items-center rounded-md bg-emerald-800 px-3 text-sm font-semibold text-white">Cull this import</Link>
     </div>}
+    <ImportEventCreateButton item={item} />
   </section>;
 }
 

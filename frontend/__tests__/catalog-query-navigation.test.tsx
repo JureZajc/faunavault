@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import Home from "../app/page";
 import { CatalogQuery, Photo } from "../app/lib/api";
+import { importSessionFixture } from "./fixtures/import-sessions";
 
 const api = vi.hoisted(() => ({
   getCatalogPhotos: vi.fn(),
@@ -15,6 +16,7 @@ const api = vi.hoisted(() => ({
   updateSmartCollection: vi.fn(),
   getEvent: vi.fn(),
   addEventPhotos: vi.fn(),
+  getImportSession: vi.fn(),
 }));
 
 vi.mock("../app/lib/api", async (importOriginal) => ({
@@ -303,6 +305,8 @@ test("List suggestion target does not scope membership; successful addition clea
   await userEvent.click(screen.getByRole("button", { name: "Select Photos to add" }));
   await userEvent.click(screen.getByRole("checkbox", { name: /Select photo 1:/ }));
   await userEvent.click(screen.getByRole("button", { name: "Add selected to this Trip" }));
+  expect(api.addEventPhotos).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Confirm add photos" }));
   await waitFor(() => expect(api.addEventPhotos).toHaveBeenCalledWith(7, [1]));
   await waitFor(() => expect(screen.queryByText("1 selected", { exact: true })).toBeNull());
   expect(window.location.pathname).toBe("/");
@@ -324,4 +328,29 @@ test("changing addition target clears selection; current dates preserve visible 
   expect(window.location.search).toContain("catalog_taken_to=2026-08-17");
   expect(window.location.search).toContain("catalog_search=fox");
   expect(window.location.search).toContain("add_to_event=8");
+});
+
+test("import-scoped target preserves cross-page selection and confirms only selected photos", async () => {
+  const id = "b0ed3764-5211-4b54-9952-e3f29027dc21";
+  api.getImportSession.mockResolvedValue(importSessionFixture(id, { active_count: 96 }));
+  api.getCatalogPhotos.mockImplementation(async (query: CatalogQuery) => ({
+    items: [{ ...photo(`Page ${query.page}`), id: query.page }], total: 96, page: query.page, page_size: 48, total_pages: 2,
+    facets: { active_total: 96, status_counts: { pending: 0, classified: 96, needs_review: 0 }, categories: [], uncategorized_count: 0 },
+  }));
+  window.history.replaceState(null, "", `/?catalog_import_session_id=${id}&add_to_event=7`);
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Page 1" });
+  await userEvent.click(screen.getByRole("button", { name: "Select Photos to add" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: /Select photo 1:/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  await screen.findByRole("heading", { name: "Page 2" });
+  await userEvent.click(screen.getByRole("checkbox", { name: /Select photo 2:/ }));
+  expect(screen.getByText(/2 selected/)).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Add selected to this Trip" }));
+  expect(api.addEventPhotos).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Confirm add photos" }));
+  await waitFor(() => expect(api.addEventPhotos).toHaveBeenCalledWith(7, [1, 2]));
+  expect(api.getCatalogPhotos.mock.calls.every(([query]) => query.import_session_id === id && query.event_id === undefined)).toBe(true);
+  expect(window.location.search).toContain(`catalog_import_session_id=${id}`);
+  expect(window.location.search).toContain("add_to_event=7");
 });

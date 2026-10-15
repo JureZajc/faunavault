@@ -412,6 +412,133 @@ def test_history_bounded_grouped_counts_order_and_index(lifecycle):
     assert "ix_photo_import_session_id" in str(plan)
 
 
+@pytest.mark.parametrize("completed", [False, True])
+def test_capture_suggestions_effective_local_dates_and_read_only(lifecycle, completed):
+    client, engine, settings = lifecycle
+    identity, other, empty = (start(client) for _ in range(3))
+    first = upload(client, identity).json()
+    second = upload(client, identity, "blue").json()
+    undated = upload(client, identity, "green").json()
+    trashed = upload(client, identity, "yellow").json()
+    outsider = upload(client, other, "purple").json()
+
+    def capture(photo, value, offset):
+        response = client.patch(
+            f"/photos/{photo['id']}",
+            params={"expected_updated_at": photo["updated_at"]},
+            json={"captured_at": value, "captured_at_offset_minutes": offset},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    first = capture(first, "2026-01-02T00:15:00", 840)
+    second = capture(second, "2026-01-03T23:45:00", -720)
+    capture(trashed, "1999-01-01T00:00:00", None)
+    capture(outsider, "2030-01-01T00:00:00", None)
+    client.delete(f"/photos/{trashed['id']}")
+    if completed:
+        finish(client, identity)
+    original_bytes = {
+        path.name: path.read_bytes()
+        for path in settings.image_dirs["original"].iterdir()
+    }
+    before = settings.database_path.read_bytes()
+    detail = client.get(f"/import-sessions/{identity}").json()
+    assert (detail["earliest_capture_date"], detail["latest_capture_date"]) == (
+        "2026-01-02",
+        "2026-01-03",
+    )
+    assert (detail["dated_count"], detail["undated_count"], detail["active_count"]) == (
+        2,
+        1,
+        3,
+    )
+    statements = []
+
+    def record(_connection, _cursor, statement, *_args):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        page = client.get("/import-sessions").json()
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    assert len(statements) == 3
+    assert all(
+        "GROUP BY" in statement for statement in statements if "FROM photo" in statement
+    )
+    assert "substr(photo.captured_at" in statements[-1]
+    items = {item["id"]: item for item in page["items"]}
+    assert items[identity] == detail
+    assert items[other]["earliest_capture_date"] == "2030-01-01"
+    assert items[empty]["earliest_capture_date"] is None
+    assert items[empty]["latest_capture_date"] is None
+    assert items[empty]["dated_count"] == items[empty]["undated_count"] == 0
+    assert settings.database_path.read_bytes() == before
+    assert original_bytes == {
+        path.name: path.read_bytes()
+        for path in settings.image_dirs["original"].iterdir()
+    }
+    # Corrections change effective suggestions, independently of extracted EXIF.
+    first = capture(first, "2026-02-10T10:00:00", None)
+    detail = client.get(f"/import-sessions/{identity}").json()
+    assert detail["earliest_capture_date"] == "2026-01-03"
+    assert detail["latest_capture_date"] == "2026-02-10"
+    capture(first, None, None)
+    detail = client.get(f"/import-sessions/{identity}").json()
+    assert (
+        detail["earliest_capture_date"] == detail["latest_capture_date"] == "2026-01-03"
+    )
+    capture(second, None, None)
+    detail = client.get(f"/import-sessions/{identity}").json()
+    assert detail["earliest_capture_date"] is detail["latest_capture_date"] is None
+    assert (detail["dated_count"], detail["undated_count"]) == (0, 3)
+    with Session(engine) as session:
+        assert session.get(Photo, undated["id"]).import_session_id == identity
+
+
+def test_import_event_membership_is_separate_explicit_and_validated(lifecycle):
+    client, _, _ = lifecycle
+    identity = start(client)
+    selected = upload(client, identity).json()
+    unselected = upload(client, identity, "blue").json()
+    item = client.post(
+        "/events",
+        json={
+            "kind": "trip",
+            "title": "Imported trip",
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-02",
+        },
+    ).json()
+    assert item["active_photo_count"] == 0
+    client.delete(f"/photos/{unselected['id']}")
+    endpoint = f"/events/{item['id']}/photos"
+    assert (
+        client.post(
+            endpoint, json={"photo_ids": [selected["id"], unselected["id"]]}
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(endpoint, json={"photo_ids": [selected["id"], 999999]}).status_code
+        == 404
+    )
+    assert client.get(f"/events/{item['id']}").json()["active_photo_count"] == 0
+    assert (
+        client.post(endpoint, json={"photo_ids": [selected["id"]]}).json()[
+            "added_count"
+        ]
+        == 1
+    )
+    assert (
+        client.get("/catalog/photos", params={"event_id": item["id"]}).json()["items"][
+            0
+        ]["id"]
+        == selected["id"]
+    )
+
+
 def test_folder_history_dry_run_privacy_partial_and_jobs(archive, monkeypatch):
     settings, source = archive
     (source / "good.jpg").write_bytes(jpeg(1))

@@ -1072,6 +1072,34 @@ still apply. **View date range in List** shows every date-matching archive Photo
 including nonmembers, using the existing Timeline date-navigation behavior.
 Recent Imports reaches the same addition action through its scoped List.
 
+From a card in **Recent Imports**, or the contextual Import Session card in List,
+choose **Create Trip/Event**. Trip is the default; a safe import label may suggest
+the title, while location and notes start empty. The refreshed Import Session
+supplies the earliest/latest effective camera-local capture dates and counts of
+active photos with/without dates. These are recommendations: review and accept
+the proposed range or edit it before creation. Partially dated imports show the
+unknown count; completely undated imports require both dates manually. Import
+timestamps never replace missing capture dates, and Trash never contributes.
+Sessions with no available photos explain why assignment is unavailable.
+
+After creation, List retains `catalog_import_session_id=<session UUID>` and
+`add_to_event=<new Event ID>` without filtering by the empty Event's membership.
+Existing valid List criteria are retained; the old Event scope and page are reset.
+Choose **Select Photos to add**, select across pages (at most 250), choose
+**Add selected to this Trip/Event**, then **Confirm add photos**. Only the selected
+active photos are added; missing or trashed selections reject the whole request.
+Success clears selection and provides an Event link. **Recent Imports** returns
+to import history; browser Back restores the originating history URL/page.
+
+Creation and membership are separate actions. Canceling the form creates nothing;
+canceling selection or its confirmation preserves the created Event. Failed saves
+retain edited input. A successful creation stores its ID before navigation and
+offers continuation/Event links if navigation fails, preventing navigation or
+membership failures from submitting creation again. Dates are read-only grouped
+SQLite suggestions on the existing session API (`earliest_capture_date`,
+`latest_capture_date`, `dated_count`, `undated_count`); no table, migration, job,
+automatic memberships, original-file changes, or backup/export format changes.
+
 Dates never assign Photos or change existing memberships. A Photo can belong to
 several Trips, Events and Collections. Metadata/membership edits update only the
 Event timestamp; Photo timestamps, classification, AI review and duplicate

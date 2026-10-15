@@ -1,10 +1,12 @@
 "use client";
 import { FormEvent, useRef, useState } from "react";
 import { useModalAccessibility } from "../../hooks/use-modal-accessibility";
-import { EventMetadata } from "../../lib/api";
+import { EventMetadata, ImportSession } from "../../lib/api";
+import { importDate, importSourceLabel, importSuggestedTitle } from "../../lib/import-sessions";
 
-export default function EventFormDialog({ initial, onClose, onSave }: { initial?: EventMetadata; onClose: () => void; onSave: (metadata: EventMetadata) => Promise<unknown> }) {
-  const [values, setValues] = useState<EventMetadata>(initial ? { kind: initial.kind, title: initial.title, start_date: initial.start_date, end_date: initial.end_date, location_label: initial.location_label, notes: initial.notes } : { kind: "trip", title: "", start_date: "", end_date: "", location_label: null, notes: null });
+export default function EventFormDialog({ initial, importSession, onClose, onSave }: { initial?: EventMetadata; importSession?: ImportSession; onClose: () => void; onSave: (metadata: EventMetadata) => Promise<unknown> }) {
+  const [values, setValues] = useState<EventMetadata>(initial ? { kind: initial.kind, title: initial.title, start_date: initial.start_date, end_date: initial.end_date, location_label: initial.location_label, notes: initial.notes } : { kind: "trip", title: importSession ? importSuggestedTitle(importSession) : "", start_date: importSession?.earliest_capture_date ?? "", end_date: importSession?.latest_capture_date ?? "", location_label: null, notes: null });
+  const [datesReviewed, setDatesReviewed] = useState(false);
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,6 +17,7 @@ export default function EventFormDialog({ initial, onClose, onSave }: { initial?
     event.preventDefault();
     if (saving.current) return;
     if (!values.title.trim() || !values.start_date || !values.end_date || values.start_date > values.end_date) { setError("Enter a title and a valid date range with start on or before end."); return; }
+    if (importSession?.earliest_capture_date && !datesReviewed) { setError("Review and accept the dates above before creating the Trip/Event."); return; }
     saving.current = true; setBusy(true); setError(null);
     try { await onSave(values); onClose(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "Could not save Trip/Event."); }
@@ -25,10 +28,16 @@ export default function EventFormDialog({ initial, onClose, onSave }: { initial?
     <form ref={root} onSubmit={submit} onKeyDown={handleKeyDown} role="dialog" aria-modal="true" aria-labelledby="event-form-title" className="my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
       <h2 id="event-form-title" className="text-xl font-semibold">{initial ? "Edit" : "Create"} Trip/Event</h2>
       <fieldset disabled={busy} className="mt-4 space-y-3">
+        {importSession ? <div className="rounded-md bg-emerald-50 p-3 text-sm">
+          <p>From Import Session: {importSourceLabel(importSession)}{importSuggestedTitle(importSession) ? ` · ${importSuggestedTitle(importSession)}` : ""} · {importDate(importSession.started_at)}</p>
+          <p className="mt-2">{importSession.earliest_capture_date ? `${importSession.dated_count ?? 0} active photos have capture dates; ${importSession.undated_count ?? 0} have unknown dates. The proposed range uses camera-local capture dates and is a recommendation, not verified Trip/Event dates.` : "No capture dates are available. Enter both dates manually; import timestamps are not used."}</p>
+          <p className="mt-2">Create the Trip/Event first, then explicitly select and confirm photos to add in the List. No photos are assigned automatically.</p>
+        </div> : null}
         <label className="block text-sm font-medium">Type<select className={inputClass} value={values.kind} onChange={(event) => setValues({ ...values, kind: event.target.value as EventMetadata["kind"] })}><option value="trip">Trip</option><option value="event">Event</option></select></label>
         <label className="block text-sm font-medium">Title<input ref={titleInput} className={inputClass} required maxLength={100} value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} /></label>
         <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium">Start date<input className={inputClass} type="date" required value={values.start_date} onChange={(event) => setValues({ ...values, start_date: event.target.value })} /></label><label className="block text-sm font-medium">End date<input className={inputClass} type="date" required value={values.end_date} onChange={(event) => setValues({ ...values, end_date: event.target.value })} /></label></div>
         <p className="text-xs text-stone-600">Both types may span one or several days. Dates describe the experience; they do not assign Photos.</p>
+        {importSession?.earliest_capture_date ? <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" required checked={datesReviewed} onChange={(event) => setDatesReviewed(event.target.checked)} />I reviewed and accept the dates above.</label> : null}
         <label className="block text-sm font-medium">Location (optional)<input className={inputClass} maxLength={200} value={values.location_label ?? ""} onChange={(event) => setValues({ ...values, location_label: event.target.value || null })} /></label>
         <label className="block text-sm font-medium">Notes (optional)<textarea className={inputClass} rows={4} maxLength={2000} value={values.notes ?? ""} onChange={(event) => setValues({ ...values, notes: event.target.value || null })} /></label>
       </fieldset>
