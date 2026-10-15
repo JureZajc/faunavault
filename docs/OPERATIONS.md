@@ -4,6 +4,60 @@ Detailed workflows and API behavior for the source-based application. Start with
 [Quick Start](../README.md#quick-start). Backend commands below run from `backend`;
 root developer commands run from the repository root.
 
+## Bulk capture and GPS editing
+
+In List, select up to 250 active photos, choose **Edit capture / GPS**, configure
+an operation, and click **Preview changes**. Review each photo's effective values,
+override markers and any blockers, check the explicit confirmation, then apply.
+Unlike the individual metadata editor, bulk editing always uses this two-step
+preview/apply workflow and can restore capture and GPS independently.
+
+- **Shift capture time** adds signed whole minutes to camera-local timestamps,
+  preserving relative differences, subsecond precision and each existing offset.
+  No timezone conversion occurs. Missing capture timestamps and date overflow
+  block the whole operation; deselect those photos or set their capture times first.
+  Import timestamps never substitute for unknown capture times.
+- **Set capture date and time** validates calendar/leap dates and offers preserved
+  offsets, a specific signed offset from `-23:59` to `+23:59`, or explicitly unknown.
+  Unknown offsets never silently become UTC.
+- **Set GPS** requires both finite coordinates: latitude `[-90,90]`, longitude
+  `[-180,180]`. **Remove GPS** clears both; **Clear capture metadata** clears both
+  capture timestamp and offset. These intentional clears set independent override
+  flags, retain extracted values and prevent EXIF backfills from repopulating them.
+- **Restore original metadata** verifies and re-reads original files using the same
+  integrity checks as individual restore. Choose capture only, GPS only, or both.
+  Only the chosen groups' effective/extracted values and override flags change.
+  Retained extracted values are not treated as verified originals. Missing, unsafe,
+  corrupted or changed originals block the entire operation. Original metadata may
+  itself be empty; restoring an empty group clears its manual override.
+
+`POST /photos/bulk/capture-preview` accepts `photo_ids` and a discriminated `change`:
+`{"operation":"shift_time","minutes":120}`,
+`{"operation":"set_capture","captured_at":"2024-02-29T12:30:00","offset_mode":"preserve"}`,
+`{"operation":"set_capture","captured_at":"2024-02-29T12:30:00","offset_mode":"assign","captured_at_offset_minutes":null}`,
+`{"operation":"set_gps","latitude":46,"longitude":14}`,
+`{"operation":"remove_gps"}`, `{"operation":"clear_capture"}`, or
+`{"operation":"restore_original","group":"capture"}` (`location`/`both` also allowed).
+Preview returns the selected, affected and blocked counts, `can_apply`, and ordered
+`photos` rows containing before/after values, errors, `updated_at`, and (for restore)
+`original_sha256`. It does not write database fields, provenance, or image files.
+
+`POST /photos/bulk/capture-apply` accepts the same IDs/change plus
+`expected_versions`, exactly one `{photo_id,updated_at,original_sha256}` from each
+preview row. SQLite `BEGIN IMMEDIATE` serializes version validation, calculation,
+original verification and mutation with other writers through commit. Missing,
+trashed, duplicate or excessive IDs are rejected. Every row must pass; any failure
+rolls back the transaction. Structured errors identify affected IDs or row issues.
+Stale photo/original conflicts return HTTP 409; resolve issues and preview again.
+Failed writes are never automatically retried. Only actually changed photos get
+a new `updated_at`; original bytes, AI classification/review, curation, and all
+memberships are preserved. No migration or reclassification is involved.
+
+The effective Photo fields continue to drive detail, List filters/sorting, Timeline,
+Map, Smart Collections, Trips & Events date suggestions and Wildlife Insights.
+The List uses its existing refresh after success; other views read these fields
+through their existing queries and refresh behavior.
+
 ## Configuration and initialization
 
 Backend settings load process environment values before `backend/.env`, then

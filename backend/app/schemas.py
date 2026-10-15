@@ -9,7 +9,9 @@ from fastapi import HTTPException
 from pydantic import (
     ConfigDict,
     StrictBool,
+    StrictInt,
     field_validator,
+    model_serializer,
     model_validator,
 )
 from pydantic import Field as PydanticField
@@ -378,6 +380,135 @@ class BulkPhotoRequestBase(SQLModel):
     model_config = ConfigDict(extra="forbid")
 
     photo_ids: list[int]
+
+
+class CaptureOperationBase(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ShiftCaptureTime(CaptureOperationBase):
+    operation: Literal["shift_time"]
+    minutes: StrictInt
+
+
+class SetCaptureTime(CaptureOperationBase):
+    operation: Literal["set_capture"]
+    captured_at: datetime
+    offset_mode: Literal["preserve", "assign"]
+    captured_at_offset_minutes: int | None = None
+
+    _timestamp = field_validator("captured_at", mode="before")(
+        PhotoUpdate.validate_capture_timestamp.__func__
+    )
+    _offset = field_validator("captured_at_offset_minutes", mode="before")(
+        PhotoUpdate.validate_capture_offset.__func__
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_offset_mode(self, handler):
+        values = handler(self)
+        if self.offset_mode == "preserve":
+            values.pop("captured_at_offset_minutes", None)
+        return values
+
+    @model_validator(mode="after")
+    def validate_offset_mode(self) -> SetCaptureTime:
+        supplied = "captured_at_offset_minutes" in self.model_fields_set
+        if supplied != (self.offset_mode == "assign"):
+            raise ValueError(
+                "Assign requires an explicit offset (null means unknown); preserve must omit it"
+            )
+        return self
+
+
+class SetCaptureGPS(CaptureOperationBase):
+    operation: Literal["set_gps"]
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+    _coordinates = field_validator("latitude", "longitude", mode="before")(
+        PhotoUpdate.validate_coordinate.__func__
+    )
+
+
+class RemoveCaptureGPS(CaptureOperationBase):
+    operation: Literal["remove_gps"]
+
+
+class ClearCaptureTime(CaptureOperationBase):
+    operation: Literal["clear_capture"]
+
+
+class RestoreCaptureMetadata(CaptureOperationBase):
+    operation: Literal["restore_original"]
+    group: Literal["capture", "location", "both"]
+
+
+BulkCaptureOperation = Annotated[
+    ShiftCaptureTime
+    | SetCaptureTime
+    | SetCaptureGPS
+    | RemoveCaptureGPS
+    | ClearCaptureTime
+    | RestoreCaptureMetadata,
+    PydanticField(discriminator="operation"),
+]
+
+
+class BulkCapturePreviewRequest(BulkPhotoRequestBase):
+    photo_ids: list[Annotated[StrictInt, PydanticField(le=2**63 - 1)]]
+    change: BulkCaptureOperation
+
+
+class CapturePhotoVersion(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+    photo_id: StrictInt
+    updated_at: str
+    original_sha256: str | None = None
+
+
+class BulkCaptureApplyRequest(BulkCapturePreviewRequest):
+    expected_versions: list[CapturePhotoVersion]
+
+
+class CaptureMetadataValues(SQLModel):
+    captured_at: datetime | None
+    captured_at_offset_minutes: int | None
+    latitude: float | None
+    longitude: float | None
+    capture_metadata_overridden: bool
+    location_metadata_overridden: bool
+
+
+class CapturePreviewIssue(SQLModel):
+    code: str
+    message: str
+
+
+class CapturePreviewPhoto(SQLModel):
+    photo_id: int
+    filename: str
+    updated_at: str
+    original_sha256: str | None = None
+    before: CaptureMetadataValues
+    after: CaptureMetadataValues | None
+    changed: bool
+    issue: CapturePreviewIssue | None = None
+
+
+class BulkCapturePreviewResponse(SQLModel):
+    change: BulkCaptureOperation
+    selected_count: int
+    affected_count: int
+    blocked_count: int
+    can_apply: bool
+    photos: list[CapturePreviewPhoto]
+
+
+class BulkCaptureApplyResponse(SQLModel):
+    status: Literal["completed"] = "completed"
+    photo_ids: list[int]
+    affected_count: int
 
 
 class BulkAddTagsRequest(BulkPhotoRequestBase):

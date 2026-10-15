@@ -29,6 +29,12 @@ PROVENANCE_FIELDS = tuple(f"extracted_{name}" for name in CAPTURE_FIELDS) + (
 def read_original_capture_metadata(
     photo: Photo, settings: Settings
 ) -> ExtractedPhotoMetadata:
+    return read_verified_original_capture_metadata(photo, settings)[0]
+
+
+def read_verified_original_capture_metadata(
+    photo: Photo, settings: Settings
+) -> tuple[ExtractedPhotoMetadata, str]:
     """Re-extract supported fields without creating derivatives or changing originals."""
     try:
         validate_flat_filename(photo.stored_filename)
@@ -66,7 +72,7 @@ def read_original_capture_metadata(
                 metadata = extract_photo_metadata(image)
         if contains_link_or_junction(raw_path) or file_identity(raw_path) != identity:
             raise ValueError("Original changed while metadata was being read")
-        return metadata
+        return metadata, digest
     except (
         ArchiveIntegrityError,
         OSError,

@@ -12,6 +12,8 @@ import {
 const api = vi.hoisted(() => ({
   addPhotosToCollection: vi.fn(),
   bulkUpdatePhotos: vi.fn(),
+  previewBulkCapture: vi.fn(),
+  applyBulkCapture: vi.fn(),
   getCatalogPhotos: vi.fn(),
   getCatalogTaxa: vi.fn(),
   getClassificationJobs: vi.fn(),
@@ -126,6 +128,31 @@ async function enterAndSelectPage() {
   await userEvent.click(screen.getByRole("checkbox", { name: "Select page" }));
   expect(screen.getByText("2 selected")).toBeTruthy();
 }
+
+test("capture dialog opens from toolbar; failed writes preserve selection and success refreshes catalog", async () => {
+  const values = { captured_at: null, captured_at_offset_minutes: null, latitude: null, longitude: null, capture_metadata_overridden: false, location_metadata_overridden: false };
+  api.previewBulkCapture.mockImplementation(async ({ change }) => ({ change, selected_count: 2, affected_count: 2, blocked_count: 0, can_apply: true, photos: [1, 2].map((photo_id) => ({ photo_id, filename: `photo-${photo_id}.jpg`, updated_at: "preview-version", original_sha256: null, before: values, after: values, changed: true, issue: null })) }));
+  api.applyBulkCapture.mockRejectedValueOnce(new Error("Photo changed since preview")).mockResolvedValueOnce({ status: "completed", photo_ids: [1, 2], affected_count: 2 });
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  await userEvent.click(screen.getByRole("button", { name: "Edit capture / GPS" }));
+  await userEvent.selectOptions(screen.getByLabelText("Operation"), "remove_gps");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await userEvent.click(screen.getByRole("button", { name: "Preview changes" }));
+    await screen.findByRole("table");
+    await userEvent.click(screen.getByRole("checkbox", { name: /I reviewed/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply changes" }));
+    if (attempt === 0) {
+      await screen.findByRole("alert");
+      expect(screen.getByText("2 selected")).toBeTruthy();
+      expect(screen.getByRole("checkbox", { name: "Select photo 1: First fox" })).toHaveProperty("checked", true);
+    }
+  }
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.getByText("Updated capture / GPS metadata for 2 photos.")).toBeTruthy();
+  expect(api.getCatalogPhotos.mock.calls.length).toBeGreaterThan(1);
+});
 
 test.each([
   ["favorite", "favorite", { operation: "set_favorite", is_favorite: true }, "Favorite selected"],

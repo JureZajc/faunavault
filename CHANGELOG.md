@@ -6,6 +6,13 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Bulk **Edit capture / GPS** in List for up to 250 selected photos: shift
+  camera-local times, set times with explicit offset handling, set/remove GPS,
+  clear capture metadata, and independently restore original capture or GPS.
+  Read-only per-photo previews require confirmation; apply is atomic and rejects
+  stale versions, missing capture times, and unavailable or changed originals.
+  Intentional clears retain provenance and prevent EXIF backfills from undoing them.
+
 - Wildlife Insights at `/insights`: active-photo summaries, distinct verified
   species, yearly/monthly capture activity, top species, category/classification
   charts, and GPS coverage. URL-restorable year selection and List/Map drill-downs
