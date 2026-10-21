@@ -117,9 +117,12 @@ function catalogCard(page: Page, text: string) {
 }
 
 async function uploadFile(page: Page, filename: string) {
-  await page
-    .getByLabel("Add to collection", { exact: false })
-    .setInputFiles(fixturePath(filename));
+  const input = page.getByLabel("Add to collection", { exact: false });
+  // A row's outcome appears before import-session finalization unlocks the
+  // picker. setInputFiles does not wait for enabled inputs, so selecting early
+  // loses the change event while the upload hook is still guarded.
+  await expect(input).toBeEnabled();
+  await input.setInputFiles(fixturePath(filename));
   await page.getByRole("button", { name: "Upload photo" }).click();
 }
 
