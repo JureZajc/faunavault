@@ -138,9 +138,11 @@ test("List addition is explicit, idempotent, retains errors, and refreshes curre
   await userEvent.click(screen.getByRole("button", { name: "Use current Trip/Event dates" }));
   expect(dates).toHaveBeenCalledWith("2026-08-12", "2026-08-17");
   await userEvent.click(screen.getByRole("button", { name: "Add selected to this Trip" }));
+  expect(api.addEventPhotos).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Confirm add photos" }));
   expect((await screen.findByRole("alert")).textContent).toContain("Photo moved to Trash");
   expect(added).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole("button", { name: "Add selected to this Trip" }));
+  await userEvent.click(screen.getByRole("button", { name: "Confirm add photos" }));
   expect(api.addEventPhotos).toHaveBeenLastCalledWith(7, [11, 12]);
   expect(added).toHaveBeenCalledWith(expect.stringContaining("1 already present"));
 });
@@ -153,6 +155,33 @@ test("invalid/deleted addition targets cannot add", async () => {
   view.unmount(); api.getEvent.mockRejectedValueOnce(new Error("Not found"));
   render(<EventListContext id="99" adding selectedIds={new Set([11])} />);
   expect((await screen.findByRole("alert")).textContent).toContain("Not found");
+});
+
+test("membership confirmation cancels safely, snapshots IDs, and blocks duplicate submissions", async () => {
+  let resolve!: (value: unknown) => void;
+  api.addEventPhotos.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+  const view = render(<EventListContext id="7" adding selectedIds={new Set([11])} />);
+  await screen.findByRole("heading", { name: "Add Photos to Trip: Valencia" });
+  await userEvent.click(screen.getByRole("button", { name: "Add selected to this Trip" }));
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(api.addEventPhotos).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Add selected to this Trip" }));
+  view.rerender(<EventListContext id="7" adding selectedIds={new Set([12])} />);
+  await userEvent.dblClick(screen.getByRole("button", { name: "Confirm add photos" }));
+  expect(api.addEventPhotos).toHaveBeenCalledExactlyOnceWith(7, [11]);
+  await userEvent.keyboard("{Escape}"); expect(screen.getByRole("dialog")).toBeTruthy();
+  api.getEvent.mockRejectedValueOnce(new Error("Refresh failed"));
+  await act(async () => resolve({ added_count: 1, already_present_count: 0 }));
+  expect(await screen.findByRole("link", { name: "Open Trip/Event" })).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toContain("Added 1 Photos");
+  expect((await screen.findByRole("alert")).textContent).toContain("Refresh failed");
+  expect(api.addEventPhotos).toHaveBeenCalledTimes(1);
+});
+
+test("List target enforces the existing 250-photo operation limit", async () => {
+  render(<EventListContext id="7" adding selectedIds={new Set(Array.from({ length: 251 }, (_, index) => index + 1))} />);
+  await screen.findByRole("heading", { name: "Add Photos to Trip: Valencia" });
+  expect((screen.getByRole("button", { name: "Add selected to this Trip" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test("target choice paginates and clears a previous target before submitting", async () => {

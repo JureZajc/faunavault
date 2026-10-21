@@ -6,6 +6,15 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Create Trip/Event from Recent Imports or the contextual List Import Session
+  card, using the existing Event form and APIs. Editable effective camera-local
+  capture-date recommendations exclude Trash and show dated/undated counts;
+  undated sessions require manual dates. Creation opens an import-scoped List
+  with the new Event target, followed by explicit selection and confirmation
+  for up to 250 photos. Canceling selection preserves the Event; successful
+  creation retains continuation links. Grouped session statistics need no schema
+  migration and never modify originals or automatically assign photos.
+
 - Bulk **Edit capture / GPS** in List for up to 250 selected photos: shift
   camera-local times, set times with explicit offset handling, set/remove GPS,
   clear capture metadata, and independently restore original capture or GPS.

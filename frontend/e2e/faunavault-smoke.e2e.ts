@@ -61,6 +61,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
     await page.getByRole("button", { name: "Select Photos to add" }).click();
     for (const id of ids) await page.getByRole("checkbox", { name: new RegExp(`Select photo ${id}:`) }).check();
     await page.getByRole("button", { name: "Add selected to this Trip" }).click();
+    await page.getByRole("button", { name: "Confirm add photos" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Added 2 Photos" })).toBeVisible();
     await page.getByRole("link", { name: "Back to Trip/Event" }).click();
     await expect(page).toHaveURL(new RegExp(`/events/${eventId}$`));
@@ -116,9 +117,12 @@ function catalogCard(page: Page, text: string) {
 }
 
 async function uploadFile(page: Page, filename: string) {
-  await page
-    .getByLabel("Add to collection", { exact: false })
-    .setInputFiles(fixturePath(filename));
+  const input = page.getByLabel("Add to collection", { exact: false });
+  // A row's outcome appears before import-session finalization unlocks the
+  // picker. setInputFiles does not wait for enabled inputs, so selecting early
+  // loses the change event while the upload hook is still guarded.
+  await expect(input).toBeEnabled();
+  await input.setInputFiles(fixturePath(filename));
   await page.getByRole("button", { name: "Upload photo" }).click();
 }
 

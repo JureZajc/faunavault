@@ -893,6 +893,10 @@ export type ImportSession = {
   undecided_count: number;
   pick_count: number;
   reject_count: number;
+  earliest_capture_date?: string | null;
+  latest_capture_date?: string | null;
+  dated_count?: number;
+  undated_count?: number;
 };
 
 export function startImportSession(id: string) {

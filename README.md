@@ -14,7 +14,10 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 
 - JPEG, PNG, WebP, HEIC, and HEIF uploads; recursive local folder import.
 - Recent Imports groups each browser selection or folder invocation, with live
-  progress and View imported photos / Cull this import actions.
+  progress and View imported photos / Cull this import actions. **Create Trip/Event**
+  offers editable camera-local capture-date recommendations, then opens the scoped
+  List for explicit photo selection and confirmation (up to 250 per request).
+  Unknown dates require manual entry; creating an Event never assigns photos.
   [Import Sessions guide](docs/OPERATIONS.md#import-sessions-and-recent-imports-v03).
 - Untouched originals, local previews, capture/camera metadata, and GPS extraction.
 - Individual capture date/time, UTC offset, and GPS corrections, with retained

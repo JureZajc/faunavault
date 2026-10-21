@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from datetime import date
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
@@ -47,6 +48,10 @@ class ImportSessionRead(ImportSession):
     undecided_count: int = 0
     pick_count: int = 0
     reject_count: int = 0
+    earliest_capture_date: date | None = None
+    latest_capture_date: date | None = None
+    dated_count: int = 0
+    undated_count: int = 0
 
 
 class ImportSessionPage(BaseModel):
@@ -134,7 +139,7 @@ def record_imported_photo(session: Session, session_id: str) -> None:
 
 def session_counts(
     session: Session, identities: list[str]
-) -> dict[str, dict[str, int]]:
+) -> dict[str, dict[str, int | date | None]]:
     if not identities:
         return {}
     active = Photo.deleted_at.is_(None)
@@ -146,6 +151,12 @@ def session_counts(
             func.sum(case((active & Photo.culling_state.is_(None), 1), else_=0)),
             func.sum(case((active & (Photo.culling_state == "pick"), 1), else_=0)),
             func.sum(case((active & (Photo.culling_state == "reject"), 1), else_=0)),
+            # ISO camera-local timestamps: take the date directly, without SQLite
+            # date()/UTC conversion or a fallback to ingestion timestamps.
+            func.min(case((active, func.substr(Photo.captured_at, 1, 10)))),
+            func.max(case((active, func.substr(Photo.captured_at, 1, 10)))),
+            func.sum(case((active & Photo.captured_at.is_not(None), 1), else_=0)),
+            func.sum(case((active & Photo.captured_at.is_(None), 1), else_=0)),
         )
         .where(Photo.import_session_id.in_(identities))
         .group_by(Photo.import_session_id)
@@ -156,8 +167,20 @@ def session_counts(
         "undecided_count",
         "pick_count",
         "reject_count",
+        "earliest_capture_date",
+        "latest_capture_date",
+        "dated_count",
+        "undated_count",
     )
-    return {row[0]: dict(zip(keys, row[1:], strict=True)) for row in rows}
+    return {
+        row[0]: {
+            key: date.fromisoformat(value)
+            if key in {"earliest_capture_date", "latest_capture_date"} and value
+            else value
+            for key, value in zip(keys, row[1:], strict=True)
+        }
+        for row in rows
+    }
 
 
 def read_import_session(session: Session, session_id: str) -> ImportSessionRead:

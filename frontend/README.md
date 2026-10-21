@@ -70,6 +70,21 @@ the ordinary List/Culling and version-1 Smart Collection query paths. No new
 permanent archive navigation item is added. See the
 [Import Sessions guide](../docs/OPERATIONS.md#import-sessions-and-recent-imports-v03).
 
+Both Recent Imports and the contextual List session card offer **Create Trip/Event**.
+The existing Event dialog refreshes the session, defaults to Trip, suggests only a
+safe label, and prepopulates effective camera-local capture-date recommendations.
+Users review/accept or edit the range; completely undated imports require manual
+dates. The extended session read model supplies `earliest_capture_date`,
+`latest_capture_date`, `dated_count`, and `undated_count` through grouped SQL.
+Trash is excluded. No timezone conversion or import-date fallback is used.
+Creation navigates to List with `catalog_import_session_id` and `add_to_event`,
+preserving valid List criteria and clearing obsolete Event scope and page.
+Selection remains explicit across pages, with a separate confirmation and a
+250-photo limit. Creation errors retain input; successful creation retains its ID
+and continuation links so navigation failure does not trigger another creation.
+Canceling selection leaves the Event intact. Membership success links to the Event.
+The `import-event.e2e.ts` journey exercises desktop/mobile with disposable data.
+
 The catalog route in `app/page.tsx` remains the route-level orchestrator. Its
 focused hooks own URL query state, paginated photo loading, lazy verified-taxon
 options, classification-job polling, and upload state. Components under
