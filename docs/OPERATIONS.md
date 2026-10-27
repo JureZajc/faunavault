@@ -4,6 +4,71 @@ Detailed workflows and API behavior for the source-based application. Start with
 [Quick Start](../README.md#quick-start). Backend commands below run from `backend`;
 root developer commands run from the repository root.
 
+## Selected photo ZIP export
+
+In List, enter **Select photos**, select individual photos or a page, and choose
+**Export selected**. Explicit selection can span pages (maximum 250 photos).
+Collection, Trip/Event, Favorites, Rating and Culling filters help curate the
+selection; matching a filter never selects or exports every matching photo.
+Review the count and estimated size, optionally enable **Include metadata JSON
+manifest**, then **Confirm and download ZIP**. Selection and URL filters remain
+in place after success or failure. Cancel/Escape closes the dialog before preparation.
+
+The browser downloads `FaunaVault-Export.zip` containing `photos/<id>-<name>.<ext>`
+and, when enabled, `metadata.json`. ID prefixes resolve duplicate filenames;
+Unicode letters are retained and unsafe member characters are replaced. JPEG
+(`.jpg`/`.jpeg`), PNG, WebP, HEIC and HEIF original extensions and bytes are preserved.
+No recompression or filesystem paths are included. The manifest uses a separate
+`faunavault-selected-photos` version 1 format and contains effective camera-local
+capture time, nullable UTC offset in minutes (unknown stays unknown), nullable
+GPS, category, classification status, linked verified taxonomy, tags, Favorite,
+Rating, Culling state, original filename, ZIP member path and original SHA-256.
+Both the manifest and original embedded EXIF can contain GPS. This is a curated
+download, **not** the complete archive metadata export or verified backup format.
+
+API (localhost defaults and existing CORS policy are unchanged):
+
+- `POST /exports/selected/estimate` accepts
+  `{"photo_ids":[123,124],"mode":"originals","include_metadata":false}`.
+  It checks active membership, supported formats, safe regular original paths and
+  sizes; returns `selected_count`, `original_bytes`, `estimated_download_bytes`
+  and `max_original_bytes`. The estimate includes an allowance for ZIP/JSON overhead;
+  preparation validates actual bytes and returns the exact download size.
+- `POST /exports/selected` accepts the same body. IDs must be positive, unique
+  integers, 1–250 entries; unknown fields and other modes are rejected. All original
+  bytes are copied in bounded chunks, checked against recorded sizes/checksums
+  when present, and the finished ZIP is read back for CRC/SHA-256 verification.
+  A joined metadata snapshot is compared again after preparation; concurrent
+  metadata/taxonomy changes or deletion fail the whole export. Once prepared, the
+  archive is an immutable snapshot, including if photos change before download.
+  Returns `download_path`, `download_bytes`, `expires_in_seconds` (300).
+- `GET /exports/selected/<unguessable-token>` consumes that one-use link and streams
+  the verified file with an attachment header and known Content-Length. No large
+  JavaScript Blob is created. Tokens are local process memory; no table or persistent
+  job is created. Keep deployment to the existing single backend worker.
+- Structured errors include `export_photo_unavailable`/`export_original_changed`
+  or `export_photo_changed` (409), unsafe/missing/unsupported originals (422),
+  excessive size (413), export capacity (429), and used/expired tokens (410).
+  Refresh/reselect stale photos, fix unavailable originals, or reduce the selection
+  and retry. Errors shown before download retain the dialog configuration.
+
+`MAX_SELECTED_EXPORT_BYTES` defaults to **2 GiB of original bytes per export**.
+Optional JSON metadata is limited to 8 MiB; an excessive manifest fails with 413.
+At most two exports may be preparing, waiting, or downloading per process. ZIPs
+use uncompressed storage because the images are already compressed; allow roughly
+twice the configured byte limit in OS temporary storage for two concurrent exports,
+plus small ZIP/manifest overhead. Files use OS-managed temporary handles and are
+deleted on close, after success, failure, interrupted transfer, unused-link expiry,
+or backend shutdown. A lost preparation response can retain its unused handle for
+up to five minutes. Sequential copying and full verification trade preparation time
+and disk IO for a validated archive before the download starts.
+
+The dialog reports **Download requested**, not download completion: browser-native
+save/transfer completion is managed by the browser. Check its Downloads list. Links
+cannot resume or be reused; prepare another export after an interruption, expiry,
+or backend restart. Existing files in the user's download directory are handled by
+the browser's normal naming/save prompt; the server never writes to that directory.
+
 ## Bulk capture and GPS editing
 
 In List, select up to 250 active photos, choose **Edit capture / GPS**, configure

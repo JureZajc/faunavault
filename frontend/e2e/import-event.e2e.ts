@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-const backend = "http://127.0.0.1:8001";
+import { backend } from "./urls";
 
 for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "mobile", width: 360, height: 760 }]) {
   test(`Import Session to Trip/Event ${viewport.name}: review, create, select and confirm`, async ({ page, request }) => {

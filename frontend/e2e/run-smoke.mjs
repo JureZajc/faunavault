@@ -4,9 +4,10 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { testPort } from "./ports.mjs";
 
 const E2E_ROOT_PREFIX = "faunavault-e2e-";
-const BACKEND_URL = "http://127.0.0.1:8001";
+const BACKEND_URL = `http://127.0.0.1:${testPort("FAUNAVAULT_E2E_BACKEND_PORT", 8001)}`;
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const frontendDirectory = path.resolve(scriptDirectory, "..");
 const backendDirectory = path.resolve(frontendDirectory, "../backend");

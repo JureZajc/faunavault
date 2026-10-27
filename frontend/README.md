@@ -289,6 +289,21 @@ contract. Tile requests are fulfilled inside Playwright, so the smoke has no
 external map dependency. It makes no Ollama or GBIF request. Playwright traces and screenshots
 are retained only for failures; they are ignored by Git.
 
+To run the selected-original export journeys (desktop/mobile native downloads,
+ZIP/manifest/checksum validation, error recovery and preserved selection), use
+`npm run test:e2e -- selected-export.e2e.ts`. When default ports are occupied,
+choose free loopback ports without stopping unrelated servers:
+
+```powershell
+$env:FAUNAVAULT_E2E_FRONTEND_PORT = "3002"
+$env:FAUNAVAULT_E2E_BACKEND_PORT = "8002"
+npm run test:e2e -- selected-export.e2e.ts localhost.e2e.ts
+```
+
+All smoke tests use the configured backend URL. The E2E-only backend launcher
+verifies disposable database/image paths and allows only the configured loopback
+frontend origins for alternate ports. Production CORS defaults stay unchanged.
+
 ## Photo curation
 
 Photo detail offers an accessible Favorite toggle, native five-star radio group,

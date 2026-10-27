@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-const backend = "http://127.0.0.1:8001";
+import { backend } from "./urls";
 
 for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "mobile", width: 360, height: 760 }]) {
   test(`bulk capture metadata ${viewport.name}: preview, confirmation, conflict and refresh`, async ({ page, request }) => {

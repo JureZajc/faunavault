@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { backend } from "./urls";
 
 const ORIGINAL_FILENAME = "faunavault-e2e-original.jpg";
 const RECOMPRESSED_FILENAME = "faunavault-e2e-recompressed.jpg";
@@ -34,7 +35,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
   let eventId: number | undefined;
   try {
     for (let index = 0; index < filenames.length; index++) {
-      const upload = await request.post("http://127.0.0.1:8001/photos/upload", {
+      const upload = await request.post(`${backend}/photos/upload`, {
         multipart: {
           allow_visual_duplicate: "true",
           file: { name: filenames[index], mimeType: "image/jpeg", buffer: Buffer.concat([await readFile(fixturePath(index === 0 ? "faunavault-e2e-culling-reject.jpg" : "faunavault-e2e-culling-pick.jpg")), Buffer.from(`trip-fixture-${index}`)]) },
@@ -80,7 +81,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
     await confirmation.getByRole("button", { name: "Remove memberships" }).click();
     await expect(catalogCard(page, filenames[0])).toHaveCount(0);
     await expect(catalogCard(page, filenames[1])).toHaveCount(1);
-    const retained = await request.get(`http://127.0.0.1:8001/photos/${ids[0]}`);
+    const retained = await request.get(`${backend}/photos/${ids[0]}`);
     expect(retained.ok()).toBe(true);
     expect(await retained.json()).toMatchObject({ deleted_at: null });
     await page.screenshot({ path: test.info().outputPath("event-desktop.png"), fullPage: true });
@@ -92,10 +93,10 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
     await expect(page.getByRole("heading", { name: "E2E Valencia Trip" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   } finally {
-    if (eventId) await request.delete(`http://127.0.0.1:8001/events/${eventId}`);
+    if (eventId) await request.delete(`${backend}/events/${eventId}`);
     for (const id of ids) {
-      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
-      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+      await request.delete(`${backend}/photos/${id}`);
+      await request.delete(`${backend}/trash/photos/${id}`);
     }
   }
 });
@@ -510,10 +511,10 @@ test("Recent Imports preserves one batch through reload and scoped Culling", asy
     await page.screenshot({ path: test.info().outputPath("imports-mobile.png"), fullPage: true });
   } finally {
     if (sessionId) {
-      const result = await request.get(`http://127.0.0.1:8001/catalog/photos?import_session_id=${sessionId}`);
+      const result = await request.get(`${backend}/catalog/photos?import_session_id=${sessionId}`);
       for (const photo of (await result.json()).items) {
-        await request.delete(`http://127.0.0.1:8001/photos/${photo.id}`);
-        await request.delete(`http://127.0.0.1:8001/trash/photos/${photo.id}`);
+        await request.delete(`${backend}/photos/${photo.id}`);
+        await request.delete(`${backend}/trash/photos/${photo.id}`);
       }
     }
   }
@@ -524,7 +525,7 @@ test("Photo Culling saves independent decisions and filters Picks", async ({ pag
   const ids: number[] = [];
   try {
     for (const filename of filenames) {
-      const uploaded = await request.post("http://127.0.0.1:8001/photos/upload", {
+      const uploaded = await request.post(`${backend}/photos/upload`, {
         multipart: { file: { name: filename, mimeType: "image/jpeg", buffer: await readFile(fixturePath(filename)) }, allow_visual_duplicate: "true" },
       });
       expect(uploaded.ok()).toBe(true);
@@ -554,12 +555,12 @@ test("Photo Culling saves independent decisions and filters Picks", async ({ pag
     await expect(catalogCard(page, filenames[0])).toHaveCount(0);
     await page.reload();
     await expect(catalogCard(page, filenames[1])).toHaveCount(1);
-    const rejected = await request.get(`http://127.0.0.1:8001/photos/${ids[0]}`);
+    const rejected = await request.get(`${backend}/photos/${ids[0]}`);
     expect(await rejected.json()).toMatchObject({ culling_state: "reject", deleted_at: null, is_favorite: false, rating: null, reviewed_at: null });
   } finally {
     for (const id of ids) {
-      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
-      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+      await request.delete(`${backend}/photos/${id}`);
+      await request.delete(`${backend}/trash/photos/${id}`);
     }
   }
 });
@@ -569,7 +570,7 @@ test("rejected review moves explicit selection to recoverable Trash and Compare 
   const ids: number[] = [];
   try {
     for (let index = 0; index < 2; index++) {
-      const uploaded = await request.post("http://127.0.0.1:8001/photos/upload", {
+      const uploaded = await request.post(`${backend}/photos/upload`, {
         multipart: { file: { name: filenames[index], mimeType: "image/jpeg", buffer: await readFile(fixturePath(index === 0 ? "faunavault-e2e-culling-reject.jpg" : "faunavault-e2e-culling-pick.jpg")) }, allow_visual_duplicate: "true" },
       });
       expect(uploaded.ok()).toBe(true);
@@ -630,8 +631,8 @@ test("rejected review moves explicit selection to recoverable Trash and Compare 
     await page.screenshot({ path: testInfo.outputPath("rejected-review-mobile.png"), fullPage: true });
   } finally {
     for (const id of ids) {
-      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
-      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+      await request.delete(`${backend}/photos/${id}`);
+      await request.delete(`${backend}/trash/photos/${id}`);
     }
   }
 });
@@ -731,7 +732,7 @@ test("two-photo Compare saves curation, restores URLs, zooms independently and s
   const ids: number[] = [];
   try {
     for (let index = 0; index < 2; index++) {
-      const uploaded = await request.post("http://127.0.0.1:8001/photos/upload", {
+      const uploaded = await request.post(`${backend}/photos/upload`, {
         multipart: { file: { name: filenames[index], mimeType: "image/jpeg", buffer: await readFile(fixturePath(index === 0 ? "faunavault-e2e-culling-reject.jpg" : "faunavault-e2e-culling-pick.jpg")) }, allow_visual_duplicate: "true" },
       });
       expect(uploaded.ok()).toBe(true); ids.push((await uploaded.json()).id);
@@ -785,12 +786,12 @@ test("two-photo Compare saves curation, restores URLs, zooms independently and s
     await expect(catalogCard(page, filenames[1]).getByLabel("Rated 4 out of 5 stars")).toBeVisible();
     await page.goBack(); await expect(page).toHaveURL(pairUrl);
     await page.goForward(); await expect(page).toHaveURL(/catalog_search=faunavault-e2e-compare/);
-    const savedLeft = await request.get(`http://127.0.0.1:8001/photos/${ids[0]}`);
-    const savedRight = await request.get(`http://127.0.0.1:8001/photos/${ids[1]}`);
+    const savedLeft = await request.get(`${backend}/photos/${ids[0]}`);
+    const savedRight = await request.get(`${backend}/photos/${ids[1]}`);
     expect(await savedLeft.json()).toMatchObject({ culling_state: "pick", is_favorite: false, rating: null });
     expect(await savedRight.json()).toMatchObject({ culling_state: null, is_favorite: true, rating: 4 });
   } finally {
-    for (const id of ids) { await request.delete(`http://127.0.0.1:8001/photos/${id}`); await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`); }
+    for (const id of ids) { await request.delete(`${backend}/photos/${id}`); await request.delete(`${backend}/trash/photos/${id}`); }
   }
 });
 
@@ -798,7 +799,7 @@ test("persistent visual duplicate review", async ({ page, request }) => {
   const ids: number[] = [];
   try {
     for (const filename of [ORIGINAL_FILENAME, RECOMPRESSED_FILENAME]) {
-      const uploaded = await request.post("http://127.0.0.1:8001/photos/upload", {
+      const uploaded = await request.post(`${backend}/photos/upload`, {
         multipart: { file: { name: filename, mimeType: "image/jpeg", buffer: await readFile(fixturePath(filename)) }, allow_visual_duplicate: "true" },
       });
       expect(uploaded.ok()).toBe(true);
@@ -817,12 +818,12 @@ test("persistent visual duplicate review", async ({ page, request }) => {
     await expect(page.getByRole("heading", { name: "No possible duplicates need review." })).toBeVisible();
     await page.reload();
     await expect(page.getByRole("heading", { name: "No possible duplicates need review." })).toBeVisible();
-    const summary = await request.get("http://127.0.0.1:8001/duplicates/summary");
+    const summary = await request.get(`${backend}/duplicates/summary`);
     expect((await summary.json()).dismissed).toBe(1);
   } finally {
     for (const id of ids) {
-      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
-      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+      await request.delete(`${backend}/photos/${id}`);
+      await request.delete(`${backend}/trash/photos/${id}`);
     }
   }
 });
@@ -864,8 +865,8 @@ test("manual capture and GPS correction drives Timeline and Map", async ({ page,
     await expect(page.getByLabel("Longitude", { exact: true })).toHaveValue("14.987654321");
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
   } finally {
-    await request.delete(`http://127.0.0.1:8001/photos/${id}`);
-    await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+    await request.delete(`${backend}/photos/${id}`);
+    await request.delete(`${backend}/trash/photos/${id}`);
   }
 });
 
@@ -876,13 +877,13 @@ test("Map filters restore and open equivalent List including missing-GPS photos"
   const names = [TIMELINE_JANUARY_FILENAME, TIMELINE_FEBRUARY_FILENAME, CAPTURE_EDIT_FILENAME];
   try {
     for (const [index, filename] of names.entries()) {
-      const upload = await request.post("http://127.0.0.1:8001/photos/upload", {
+      const upload = await request.post(`${backend}/photos/upload`, {
         multipart: { allow_visual_duplicate: "true", file: { name: `map-filter-${index}.jpg`, mimeType: "image/jpeg", buffer: Buffer.concat([await readFile(fixturePath(filename)), Buffer.from(`map-filter-fixture-${index}`)]) } },
       });
       expect(upload.ok()).toBe(true);
       const photo = await upload.json();
       photoIds.push(photo.id);
-      const update = await request.patch(`http://127.0.0.1:8001/photos/${photo.id}?expected_updated_at=${encodeURIComponent(photo.updated_at)}`, {
+      const update = await request.patch(`${backend}/photos/${photo.id}?expected_updated_at=${encodeURIComponent(photo.updated_at)}`, {
         data: { category: index === 1 ? "mammal" : "bird", captured_at: index === 1 ? "2025-01-01T12:00:00" : "2026-01-01T12:00:00",
           captured_at_offset_minutes: -600, latitude: index === 2 ? null : 46 + index, longitude: index === 2 ? null : 14 + index },
       });
@@ -917,7 +918,7 @@ test("Map filters restore and open equivalent List including missing-GPS photos"
     await page.getByRole("link", { name: "Back to catalog", exact: true }).click();
     await expect(page).toHaveURL(/catalog_category=bird/);
     await expect(page.getByText("1 mapped photo", { exact: true })).toBeVisible();
-    const points = await request.get("http://127.0.0.1:8001/catalog/map?category=bird&taken_from=2026-01-01&taken_to=2026-01-31");
+    const points = await request.get(`${backend}/catalog/map?category=bird&taken_from=2026-01-01&taken_to=2026-01-31`);
     expect((await points.json()).map((point: { latitude: number }) => point.latitude)).toEqual([45]);
     await page.getByRole("link", { name: "View in List", exact: true }).click();
     await expect(page).toHaveURL(/\/\?catalog_category=bird&catalog_taken_from=2026-01-01&catalog_taken_to=2026-01-31$/);
@@ -928,8 +929,8 @@ test("Map filters restore and open equivalent List including missing-GPS photos"
     await expect(page.getByText("1 mapped photo", { exact: true })).toBeVisible();
   } finally {
     for (const id of photoIds) {
-      await request.delete(`http://127.0.0.1:8001/photos/${id}`);
-      await request.delete(`http://127.0.0.1:8001/trash/photos/${id}`);
+      await request.delete(`${backend}/photos/${id}`);
+      await request.delete(`${backend}/trash/photos/${id}`);
     }
   }
 });

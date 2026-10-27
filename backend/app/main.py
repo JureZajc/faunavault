@@ -28,6 +28,7 @@ from app.routers.import_sessions import create_import_sessions_router
 from app.routers.insights import create_insights_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
 from app.routers.review import create_review_router
+from app.routers.selected_photo_export import create_selected_export_router
 from app.routers.smart_collections import create_smart_collections_router
 from app.routers.taxonomy import create_taxonomy_router
 from app.schemas import PhotoUpdate
@@ -52,6 +53,7 @@ from app.services.image_variants import encoding_for_filename
 from app.services.perceptual_duplicates import run_perceptual_hash_backfill
 from app.services.photo_lifecycle import active_photo_or_404
 from app.services.review import record_manual_photo_change
+from app.services.selected_photo_export import exports
 from app.storage_startup import initialize_archive_storage
 from app.version import APP_VERSION
 
@@ -120,6 +122,7 @@ async def lifespan(application: FastAPI):
         worker_started = True
         yield
     finally:
+        exports.close()
         try:
             if backfill_task is not None:
                 backfill_task.cancel()
@@ -178,6 +181,7 @@ def on_startup() -> None:
 SessionDep = Annotated[Session, Depends(get_session)]
 app.include_router(create_photo_lifecycle_router(lambda: settings))
 app.include_router(create_bulk_photos_router(lambda: settings))
+app.include_router(create_selected_export_router(lambda: settings))
 app.include_router(create_catalog_router())
 app.include_router(create_collections_router())
 app.include_router(create_events_router())

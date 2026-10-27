@@ -10,6 +10,9 @@ import {
 } from "../app/lib/api";
 
 const api = vi.hoisted(() => ({
+  estimateSelectedExport: vi.fn(),
+  prepareSelectedExport: vi.fn(),
+  downloadSelectedExport: vi.fn(),
   addPhotosToCollection: vi.fn(),
   bulkUpdatePhotos: vi.fn(),
   previewBulkCapture: vi.fn(),
@@ -84,6 +87,8 @@ function catalogPage(query: CatalogQuery) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.estimateSelectedExport.mockResolvedValue({ selected_count: 2, original_bytes: 1000, estimated_download_bytes: 2024, max_original_bytes: 2147483648 });
+  api.prepareSelectedExport.mockResolvedValue({ download_path: "/exports/selected/secret", download_bytes: 2024, expires_in_seconds: 300 });
   window.history.replaceState(null, "", "/");
   api.getCatalogPhotos.mockImplementation(async (query: CatalogQuery) =>
     catalogPage(query),
@@ -128,6 +133,29 @@ async function enterAndSelectPage() {
   await userEvent.click(screen.getByRole("checkbox", { name: "Select page" }));
   expect(screen.getByText("2 selected")).toBeTruthy();
 }
+
+test("export uses explicit cross-page selection and preserves filters and selection after download", async () => {
+  window.history.replaceState(null, "", "/?catalog_search=fox");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "First fox" });
+  await enterAndSelectPage();
+  await userEvent.click(screen.getByRole("button", { name: "Next" }));
+  await screen.findByRole("heading", { name: "Third fox" });
+  await userEvent.click(screen.getByRole("checkbox", { name: "Select photo 3: Third fox" }));
+  await userEvent.click(screen.getByRole("button", { name: "Export selected" }));
+  const dialog = screen.getByRole("dialog");
+  await within(dialog).findByText(/Estimated total download size/);
+  expect(api.prepareSelectedExport).not.toHaveBeenCalled();
+  await userEvent.click(within(dialog).getByRole("checkbox", { name: "Include metadata JSON manifest" }));
+  await within(dialog).findByText(/Estimated total download size/);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Confirm and download ZIP" }));
+  await within(dialog).findByText(/Download requested/);
+  expect(api.prepareSelectedExport).toHaveBeenCalledWith({ photo_ids: [1, 2, 3], mode: "originals", include_metadata: true }, expect.any(AbortSignal));
+  expect(api.downloadSelectedExport).toHaveBeenCalledWith("/exports/selected/secret");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+  expect(screen.getByText(/3 selected/)).toBeTruthy();
+  expect(window.location.search).toContain("catalog_search=fox");
+});
 
 test("capture dialog opens from toolbar; failed writes preserve selection and success refreshes catalog", async () => {
   const values = { captured_at: null, captured_at_offset_minutes: null, latitude: null, longitude: null, capture_metadata_overridden: false, location_metadata_overridden: false };
