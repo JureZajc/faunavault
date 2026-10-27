@@ -1,10 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { testPort } from "./e2e/ports.mjs";
 
 const E2E_ROOT_PREFIX = "faunavault-e2e-";
-const FRONTEND_URL = "http://127.0.0.1:3001";
-const BACKEND_URL = "http://127.0.0.1:8001";
+const frontendPort = testPort("FAUNAVAULT_E2E_FRONTEND_PORT", 3001);
+const FRONTEND_URL = `http://127.0.0.1:${frontendPort}`;
+const BACKEND_URL = `http://127.0.0.1:${testPort("FAUNAVAULT_E2E_BACKEND_PORT", 8001)}`;
 const configDirectory = __dirname;
 const backendDirectory = path.resolve(configDirectory, "../backend");
 
@@ -83,7 +85,7 @@ export default defineConfig({
     {
       name: "Backend",
       command:
-        "uv run --no-sync uvicorn app.main:app --host 127.0.0.1 --port 8001",
+        "uv run --no-sync python ../frontend/e2e/serve-backend.py",
       cwd: backendDirectory,
       env: backendEnvironment,
       url: `${BACKEND_URL}/health`,
@@ -94,7 +96,7 @@ export default defineConfig({
     },
     {
       name: "Frontend",
-      command: "npm run start -- --hostname 127.0.0.1 --port 3001",
+      command: `npm run start -- --hostname 127.0.0.1 --port ${frontendPort}`,
       cwd: configDirectory,
       url: FRONTEND_URL,
       reuseExistingServer: false,

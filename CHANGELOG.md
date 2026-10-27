@@ -6,6 +6,13 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- **Export selected** in the catalog selection toolbar: original-byte ZIP downloads
+  for up to 250 explicit photo IDs, optional metadata JSON, size estimates,
+  accessible confirmation and recoverable errors. Temporary archives are verified
+  before download; unsafe, missing, changed, unsupported and trashed originals
+  fail safely. Downloads use native browser handling without JavaScript ZIP Blobs.
+  No schema migration, persistent jobs, or changes to archive export/backup formats.
+
 - Create Trip/Event from Recent Imports or the contextual List Import Session
   card, using the existing Event form and APIs. Editable effective camera-local
   capture-date recommendations exclude Trash and show dated/undated counts;

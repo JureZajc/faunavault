@@ -20,6 +20,9 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   Unknown dates require manual entry; creating an Event never assigns photos.
   [Import Sessions guide](docs/OPERATIONS.md#import-sessions-and-recent-imports-v03).
 - Untouched originals, local previews, capture/camera metadata, and GPS extraction.
+- **Export selected** downloads up to 250 explicitly selected originals as a
+  verified ZIP, with an optional JSON metadata manifest and size estimate.
+  Selection and URL filters stay intact. [Selected export guide](docs/OPERATIONS.md#selected-photo-zip-export).
 - Individual capture date/time, UTC offset, and GPS corrections, with retained
   extracted values and Restore original metadata. [Editing guide](docs/OPERATIONS.md#editable-capture-metadata-v02).
 - Bulk **Edit capture / GPS** for up to 250 selected photos: shift camera-local

@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     gbif_base_url: str = "https://api.gbif.org/v1"
     max_upload_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=80_000_000, ge=1)
+    max_selected_export_bytes: int = Field(default=2 * 1024**3, ge=1)
 
     @field_validator("data_dir", "image_dir", mode="after")
     @classmethod

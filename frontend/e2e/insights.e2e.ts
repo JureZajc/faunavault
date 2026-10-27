@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 test("Insights aggregates, period drill-down, restore and mobile charts", async ({ page, request }) => {
-  const backend = "http://127.0.0.1:8001";
+  const backend = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
   const root = process.env.FAUNAVAULT_E2E_ROOT;
   if (!root) throw new Error("Disposable E2E root is required");
   let id: number | undefined;

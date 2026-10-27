@@ -549,6 +549,34 @@ export type ClassificationJobCollection = {
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+export type SelectedExportRequest = { photo_ids: number[]; mode: "originals"; include_metadata: boolean };
+export type SelectedExportEstimate = { selected_count: number; original_bytes: number; estimated_download_bytes: number; max_original_bytes: number };
+export type PreparedSelectedExport = { download_path: string; download_bytes: number; expires_in_seconds: number };
+
+export function estimateSelectedExport(body: SelectedExportRequest, signal?: AbortSignal) {
+  return request<SelectedExportEstimate>("/exports/selected/estimate", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal,
+  });
+}
+
+export function prepareSelectedExport(body: SelectedExportRequest, signal?: AbortSignal) {
+  return request<PreparedSelectedExport>("/exports/selected", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal,
+  });
+}
+
+export function downloadSelectedExport(downloadPath: string) {
+  if (!/^\/exports\/selected\/[A-Za-z0-9_-]+$/.test(downloadPath)) {
+    throw new Error("Invalid export download link. Prepare the export again.");
+  }
+  const link = document.createElement("a");
+  link.href = `${API_BASE_URL}${downloadPath}`;
+  link.download = "FaunaVault-Export.zip";
+  link.referrerPolicy = "no-referrer";
+  document.body.appendChild(link);
+  try { link.click(); } finally { link.remove(); }
+}
+
 export type ApiErrorDetails = {
   import_session_id?: string;
   code?: string;
