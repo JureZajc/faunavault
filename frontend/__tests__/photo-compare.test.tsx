@@ -114,15 +114,16 @@ test("a URL pair change aborts old requests and resets pane state; remount resto
 });
 
 test("keyboard focus, independent actions and typing/native shortcut exclusions", async () => {
+  const user = userEvent.setup();
   render(<CompareBrowser />);
   await screen.findByRole("heading", { name: "Fox 2" });
-  fireEvent.keyDown(window, { key: "ArrowRight" });
+  await user.keyboard("{ArrowRight}");
   expect(screen.getByRole("button", { name: "Focus right photo", pressed: true })).toBeTruthy();
-  fireEvent.keyDown(window, { key: "p" });
+  await user.keyboard("p");
   await waitFor(() => expect(screen.getByRole("button", { name: "Pick right photo", pressed: true })).toBeTruthy());
-  fireEvent.keyDown(window, { key: "4" });
+  await user.keyboard("4");
   await waitFor(() => expect(screen.getByRole<HTMLInputElement>("radio", { name: "Rate right photo 4 stars" }).checked).toBe(true));
-  fireEvent.keyDown(window, { key: "f" });
+  await user.keyboard("f");
   await waitFor(() => expect(screen.getByRole("button", { name: "Favorite right photo", pressed: true })).toBeTruthy());
   const calls = api.updatePhoto.mock.calls.length;
   const input = document.createElement("input"); document.body.append(input); fireEvent.keyDown(input, { key: "x" }); input.remove();
@@ -133,10 +134,12 @@ test("keyboard focus, independent actions and typing/native shortcut exclusions"
   fireEvent.keyDown(screen.getByRole("region", { name: "right photo image viewport" }), { key: "ArrowLeft" });
   expect(screen.getByRole("button", { name: "Focus right photo", pressed: true })).toBeTruthy();
   expect(api.updatePhoto).toHaveBeenCalledTimes(calls);
-  fireEvent.keyDown(window, { key: "u" });
+  await user.keyboard("u");
   await waitFor(() => expect(screen.getByRole("button", { name: "Pick right photo", pressed: false })).toBeTruthy());
-  fireEvent.keyDown(window, { key: "0" });
-  await waitFor(() => expect(photos[1].rating).toBeNull());
+  await user.keyboard("0");
+  expect(api.updatePhoto).toHaveBeenLastCalledWith(2, { rating: null }, "2026-09-01T12:01:00");
+  await waitFor(() => expect(screen.getByRole<HTMLInputElement>("radio", { name: "Rate right photo 4 stars" }).checked).toBe(false));
+  expect(photos[1].rating).toBeNull();
 });
 
 test("refresh clears externally deleted data and failed refresh disables saves until retried", async () => {
