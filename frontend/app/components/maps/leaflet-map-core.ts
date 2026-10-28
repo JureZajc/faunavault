@@ -12,10 +12,15 @@ export function createLeafletMap(
     keyboard: true,
     scrollWheelZoom: options.scrollWheelZoom,
   });
-  L.tileLayer(MAP_TILE_CONFIG.url, {
-    attribution: MAP_TILE_CONFIG.attribution,
-    maxZoom: MAP_TILE_CONFIG.maxZoom,
-  }).addTo(map);
+  try {
+    L.tileLayer(MAP_TILE_CONFIG.url, {
+      attribution: MAP_TILE_CONFIG.attribution,
+      maxZoom: MAP_TILE_CONFIG.maxZoom,
+    }).addTo(map);
+  } catch (error) {
+    destroyLeafletMap(map);
+    throw error;
+  }
   return map;
 }
 

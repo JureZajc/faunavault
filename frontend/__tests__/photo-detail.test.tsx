@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import PhotoDetail from "../app/photos/[id]/photo-detail";
@@ -216,6 +216,33 @@ test("adds capture/GPS values with the editing version and refreshes the detail 
   await waitFor(() => expect(api.updatePhoto).toHaveBeenCalledWith(44, expect.objectContaining({ captured_at: "2026-01-02T23:59:59.123", captured_at_offset_minutes: 150, latitude: 46.123456789, longitude: 14.987654321 }), "2026-08-12T08:00:00Z"));
   expect(screen.getByRole("region", { name: "Test map for Lion" }).getAttribute("data-latitude")).toBe("46.123456789");
   expect(screen.getAllByText(/Manually edited/)).toHaveLength(2);
+});
+
+test("map picker stages GPS only, keeps the editing version on conflict, and editor Cancel discards it", async () => {
+  api.getPhoto.mockResolvedValue(photo({ captured_at: "2024-05-24T18:42:00.123456", captured_at_offset_minutes: -330, latitude: 46, longitude: 14 }));
+  render(<PhotoDetail id="44" />);
+  await screen.findByRole("heading", { name: "Lion" });
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  await userEvent.click(screen.getByRole("button", { name: "Choose on map" }));
+  let picker = within(screen.getByRole("dialog", { name: "Choose GPS location" }));
+  expect(picker.getByLabelText<HTMLInputElement>("Latitude").value).toBe("46");
+  fireEvent.change(picker.getByLabelText("Latitude"), { target: { value: "-46.123456789" } });
+  await userEvent.click(picker.getByRole("button", { name: "Cancel" }));
+  expect(screen.getByLabelText<HTMLInputElement>("Latitude").value).toBe("46");
+  await userEvent.click(screen.getByRole("button", { name: "Choose on map" }));
+  picker = within(screen.getByRole("dialog", { name: "Choose GPS location" }));
+  fireEvent.change(picker.getByLabelText("Latitude"), { target: { value: "0" } });
+  fireEvent.change(picker.getByLabelText("Longitude"), { target: { value: "0" } });
+  await userEvent.click(picker.getByRole("button", { name: "Use this location" }));
+  expect(api.updatePhoto).not.toHaveBeenCalled();
+  api.updatePhoto.mockRejectedValueOnce(new Error("Photo changed. Refresh before saving."));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText(/Refresh before saving/)).toBeTruthy();
+  expect(api.updatePhoto).toHaveBeenCalledExactlyOnceWith(44, { latitude: 0, longitude: 0 }, "2026-08-12T08:00:00Z");
+  expect(screen.getByLabelText<HTMLInputElement>("Latitude").value).toBe("0");
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  expect(screen.getByLabelText<HTMLInputElement>("Latitude").value).toBe("46");
 });
 
 test("clears date/offset and location and removes the detail map", async () => {

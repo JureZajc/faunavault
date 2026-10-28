@@ -6,6 +6,12 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Interactive Leaflet GPS picker for single-photo metadata drafts and bulk Set GPS:
+  click/tap, drag a marker, or edit full-precision coordinates. Accessible keyboard
+  entry, Cancel/focus restoration, loading/error fallback, and responsive layouts.
+  Existing Save concurrency and bulk preview/confirmation/atomic apply remain in
+  place. Tiles use the existing external provider; no geolocation or geocoding.
+
 - **Export selected** in the catalog selection toolbar: original-byte ZIP downloads
   for up to 250 explicit photo IDs, optional metadata JSON, size estimates,
   accessible confirmation and recoverable errors. Temporary archives are verified
