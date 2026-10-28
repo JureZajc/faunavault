@@ -371,3 +371,26 @@ and components are reused; originals are never requested for covers.
 Coverage: `npm test -- __tests__/events-ui.test.tsx __tests__/events-api.test.ts`
 and `npm run test:e2e -- event-cover.e2e.ts` (disposable archive; desktop/mobile,
 reload persistence, keyboard access, overflow, Trash/Restore and removal).
+
+## Fullscreen gallery and slideshow
+
+Manual Collection headers offer **Open gallery**, Trip/Event headers offer **View gallery**,
+and member cards offer **View in gallery**. Header actions start at the first active Photo,
+or the active custom Event cover. The shared ImageLightbox retains existing single-photo
+and Species Album consumers; Album playback covers the currently loaded Album page.
+
+Use Previous/Next or Left/Right arrows when the viewer has focus; Escape closes and restores
+focus. Tab stays inside the viewer. Controls retain their native keyboard behavior. Play/Pause
+is keyboard accessible, with selectable 3, 5 (default), and 10 second intervals. Playback is
+always opt-in, waits for image loading, stops at the final image, pauses on errors or a hidden
+tab, and does not resume when returning to the tab. Reduced motion disables image transitions.
+
+The paginated adapter requests existing active-member APIs in their existing order, 48 Photos
+per page, retaining at most three pages. It fetches no originals or adjacent images in advance,
+uses resized derivatives, aborts obsolete requests, and leaves grid pagination/selection/URL
+untouched. The existing ranked catalog endpoint locates distant Event covers in one request.
+Retry image/page and Skip image/page controls recover from unavailable media or membership changes.
+Cached pages are a session snapshot; close/reopen to fully refresh concurrent archive edits.
+
+Coverage: `__tests__/gallery-slideshow.test.tsx`, existing Album modal tests, and disposable
+browser journeys in `e2e/gallery.e2e.ts`. Run `npm run test:e2e -- gallery.e2e.ts` for focused journeys.
