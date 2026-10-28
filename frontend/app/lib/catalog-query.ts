@@ -54,6 +54,7 @@ export function mapListHref(state: CatalogState) {
     favorites_only: state.favorites_only, rating: state.rating, rating_min: state.rating_min, unrated: state.unrated,
     culling_state: state.culling_state,
     import_session_id: state.import_session_id,
+    tags: state.tags, untagged: state.untagged,
   }).toString();
   return query ? `/?${query}` : "/";
 }
@@ -70,7 +71,7 @@ export const REJECTED_PHOTOS_HREF = "/?catalog_culling_state=reject";
 
 export function hasAdditionalRejectedFilters(state: CatalogQuery) {
   return Boolean(
-    state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
+    hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
     state.taxon_id || state.taken_from || state.taken_to || state.favorites_only ||
     state.rating || state.rating_min || state.unrated,
   );
@@ -135,6 +136,18 @@ function isoDate(value: string | null) {
     : undefined;
 }
 
+function trimTag(value: string) {
+  // Python str.strip() is the storage contract. JS trim() also removes BOM,
+  // which can be a meaningful part of a legacy tag, and misses some controls.
+  const whitespace = new Set([9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 133, 160, 5760,
+    8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288]);
+  let start = 0;
+  let end = value.length;
+  while (start < end && whitespace.has(value.charCodeAt(start))) start++;
+  while (end > start && whitespace.has(value.charCodeAt(end - 1))) end--;
+  return value.slice(start, end);
+}
+
 export function parseCatalogState(params: URLSearchParams): CatalogState {
   const status = params.get("catalog_status");
   const sort = params.get("catalog_sort");
@@ -149,6 +162,8 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   const unrated = params.get("catalog_unrated") === "1";
   const culling = params.get("catalog_culling_state");
   return {
+    tags: params.has("catalog_tag") ? Array.from(new Set(params.getAll("catalog_tag").map(trimTag).filter(Boolean))) : undefined,
+    untagged: params.get("catalog_untagged") === "1" || undefined,
     event_id: params.has("catalog_event_id") ? positiveInteger(params.get("catalog_event_id")) ?? 0 : undefined,
     import_session_id: params.get("catalog_import_session_id") || undefined,
     culling_state: culling && ["pick", "reject", "undecided"].includes(culling) ? culling as CullingFilter : undefined,
@@ -180,6 +195,9 @@ export function writeCatalogState(
     if (value) params.set(key, value);
     else params.delete(key);
   };
+  params.delete("catalog_tag");
+  for (const tag of state.tags ?? []) params.append("catalog_tag", tag);
+  setOrDelete("catalog_untagged", state.untagged ? "1" : undefined);
   setOrDelete("catalog_event_id", state.event_id !== undefined ? String(state.event_id) : undefined);
   setOrDelete("catalog_import_session_id", state.import_session_id);
   setOrDelete("catalog_favorites_only", state.favorites_only ? "1" : undefined);
@@ -243,4 +261,17 @@ export function applyCatalogSortOption(
   option: CatalogSortOption,
 ): CatalogState {
   return { ...state, ...sortOptionMap[option], page: 1 };
+}
+
+export function hasTagFilters(state: Pick<CatalogQuery, "tags" | "untagged">) {
+  return Boolean(state.tags?.length || state.untagged);
+}
+
+export function catalogListHref(state: CatalogState) {
+  const params = writeCatalogState(new URLSearchParams(), state);
+  return params.size ? `/?${params}` : "/";
+}
+
+export function tagListHref(tag?: string) {
+  return catalogListHref({ ...DEFAULT_CATALOG_STATE, tags: tag === undefined ? [] : [tag], untagged: tag === undefined });
 }

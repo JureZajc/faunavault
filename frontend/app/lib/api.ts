@@ -177,6 +177,8 @@ export type CatalogSort =
 export type CatalogOrder = "asc" | "desc";
 
 export type CatalogQuery = {
+  tags?: string[];
+  untagged?: boolean;
   event_id?: number;
   import_session_id?: string;
   culling_state?: CullingFilter;
@@ -305,7 +307,7 @@ export type CollectionDetail = CollectionSummary & {
   photos: CollectionPhotoPage;
 };
 
-export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id">;
+export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id" | "tags" | "untagged">;
 export type SmartCollectionSummary = {
   id: number;
   name: string;
@@ -962,6 +964,8 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
 
 function catalogQueryParams(query: CatalogQuery) {
   const params = new URLSearchParams();
+  for (const tag of query.tags ?? []) params.append("tags", tag);
+  if (query.untagged) params.set("untagged", "true");
   if (query.event_id !== undefined) params.set("event_id", String(query.event_id));
   params.set("page", String(query.page));
   params.set("page_size", String(query.page_size));
@@ -1233,4 +1237,9 @@ export function retryClassificationJob(id: number) {
   return request<ClassificationJob>(`/classification-jobs/${id}/retry`, {
     method: "POST",
   });
+}
+
+export type CatalogTags = { tags: { name: string; count: number }[]; total_tags: number; untagged_count: number };
+export function getCatalogTags(signal?: AbortSignal) {
+  return request<CatalogTags>("/catalog/tags", { signal });
 }

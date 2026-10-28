@@ -6,6 +6,14 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Tag Explorer at `/tags`, with active-photo counts, search, alphabetical/usage
+  sorting, distinct and untagged totals. Exact case-sensitive List and Culling tag
+  filters use AND semantics and support untagged photos, URL/history restoration,
+  removable chips and existing bulk tag suggestions. Safe SQLite JSON aggregation
+  handles malformed and duplicate legacy tags without new tables or migrations.
+  Version-1 Smart Collection saves are blocked for live tag criteria; unsupported
+  views explain their limitation and retain a link to the filtered List.
+
 - Fullscreen galleries for manual Collections and Trips & Events, sharing the existing
   Species Album/Photo lightbox. Accessible navigation, captions/counts, image/page recovery,
   and opt-in 3/5/10-second slideshow with loading-aware timers, hidden-tab pausing,

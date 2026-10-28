@@ -102,6 +102,19 @@ beforeEach(() => {
   api.addEventPhotos.mockResolvedValue({ event_id: 7, requested_count: 1, added_count: 1, already_present_count: 0 });
 });
 
+test("active tags visibly block creating and updating version-one Smart Collections", async () => {
+  window.history.replaceState(null, "", "/?catalog_tag=birds&smart_edit=7");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+  expect(screen.getByText(/Version-1 Smart Collections cannot save them/)).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Save as Smart Collection" })).toBeNull();
+  expect(api.createSmartCollection).not.toHaveBeenCalled();
+  expect(api.updateSmartCollection).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Clear tag filters" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(false));
+});
+
 test("saves current List criteria without page or layout and includes pending search text", async () => {
   window.history.replaceState(null, "", "/?catalog_page=2&catalog_status=classified&catalog_layout=grouped&catalog_sort=name&catalog_order=asc");
   render(<Home />);
@@ -260,7 +273,7 @@ test("preserves catalog parameters while switching collection views", async () =
   const navigation = screen.getByRole("navigation", { name: "Archive views" });
   expect(
     Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash"]);
+  ).toEqual(["List", "Tags", "Timeline", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash"]);
   expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("href"))
     .toBe("/timeline");
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))
@@ -275,7 +288,7 @@ test("List opens Map with supported membership filters and disables pending text
   expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toBe("/map?catalog_status=classified&catalog_category=bird&catalog_taxon=7&catalog_taken_from=2026-01-01");
   await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "f");
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
-  expect(screen.getByText("Clear Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.")).toBeTruthy();
+  expect(screen.getByText("Clear exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.")).toBeTruthy();
 });
 
 test("List Event membership survives filters and prevents saving Smart criteria", async () => {

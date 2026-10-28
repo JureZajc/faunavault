@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 from datetime import UTC, date, datetime
 
@@ -16,10 +17,35 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
 )
+from sqlalchemy.types import TypeDecorator
 from sqlmodel import Field, SQLModel
 
 from app.album_identity import normalize_legacy_species_group
 from app.metadata_types import PhotoCullingState
+from app.tag_values import normalize_tags
+
+
+class PhotoTagsJSON(TypeDecorator):
+    """Keep JSON storage, but safely read malformed legacy tag values."""
+
+    impl = JSON
+    cache_ok = True
+
+    def result_processor(self, dialect, coltype):
+        processor = self.impl_instance.result_processor(dialect, coltype)
+
+        def process(value):
+            try:
+                decoded = processor(value) if processor else value
+            except (ValueError, TypeError, json.JSONDecodeError):
+                return []
+            return (
+                normalize_tags([tag for tag in decoded if isinstance(tag, str)])
+                if isinstance(decoded, list)
+                else []
+            )
+
+        return process
 
 
 def utc_now() -> datetime:
@@ -155,7 +181,7 @@ class Photo(SQLModel, table=True):
     category: str | None = None
     confidence: float | None = None
     description: str | None = None
-    tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    tags: list[str] = Field(default_factory=list, sa_column=Column(PhotoTagsJSON))
     status: str = "pending"
     animal_id: int | None = Field(default=None, foreign_key="animal.id", index=True)
     content_sha256: str | None = Field(default=None, index=True)

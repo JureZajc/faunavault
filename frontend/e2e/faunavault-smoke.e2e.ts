@@ -45,7 +45,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
       ids.push((await upload.json()).id);
     }
     await page.goto("/events");
-    await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveCount(11);
+    await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveCount(12);
     await page.getByRole("button", { name: "Create Trip/Event" }).click();
     const form = page.getByRole("dialog");
     await form.getByLabel("Title", { exact: true }).fill("E2E Valencia Trip");
@@ -586,10 +586,10 @@ test("rejected review moves explicit selection to recoverable Trash and Compare 
     await expect(page).toHaveURL(/\/\?catalog_culling_state=reject$/);
     await expect(page.getByText("2 rejected photos", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Move to Trash", exact: true })).toHaveCount(0);
-    await page.getByRole("searchbox").fill("no-cleanup-match");
+    await page.getByRole("searchbox", { name: "Search", exact: true }).fill("no-cleanup-match");
     await expect(page.getByRole("heading", { name: "No rejected photos match these filters" })).toBeVisible();
     // A pending debounced search must not overwrite the all-Reject entry URL.
-    await page.getByRole("searchbox").fill("another-cleanup-miss");
+    await page.getByRole("searchbox", { name: "Search", exact: true }).fill("another-cleanup-miss");
     await page.getByRole("link", { name: "Review all rejected photos", exact: true }).click();
     await expect(page).toHaveURL(/\/\?catalog_culling_state=reject$/);
     await expect(page.getByText("2 rejected photos", { exact: true })).toBeVisible();

@@ -293,7 +293,7 @@ its display label, scientific name, and active-photo count. The legacy
 `GET /photos` endpoint remains unchanged and still returns the complete active
 Photo array for compatible consumers.
 
-The eight peer archive destinations are List (`/`), Timeline (`/timeline`), Map
+The peer archive destinations include List (`/`), Tags (`/tags`), Timeline (`/timeline`), Map
 (`/map`), Albums (`/?view=album`), Collections (`/collections`), Review (`/review`),
 Duplicates (`/duplicates`), and Trash (`/?view=trash`). Timeline reads a compact,
 deterministic `GET /catalog/timeline` projection of active Photos grouped by the
@@ -1395,3 +1395,68 @@ and, when a later page exists, **Skip page**. Recovery is explicit so disappeari
 cause endless automatic requests. Pages already visited are a bounded session snapshot; concurrent
 membership edits can shift positions. Close and reopen for a fully refreshed order and count.
 No slideshow settings are persisted and no database changes are needed.
+
+## Tag Explorer and exact tag filtering
+
+Use **Tags** (`/tags`) for active-photo tag counts, alphabetical or most-used sorting,
+search, distinct totals and a link to untagged photos. Trash is excluded; edits,
+bulk tag operations, Trash and Restore are reflected by fresh aggregation requests.
+The page reloads data when opened or the window regains focus. No new tables,
+indexes, migrations, external services or image-file modifications are involved.
+
+List **Exact tags** supports one or up to 20 tags with AND semantics. `bird` does
+not match `birds`, and `Birds` remains distinct from `birds`. The shared existing
+normalizer trims Python whitespace and removes duplicates while preserving case.
+General text Search remains a separate broader filter; all existing List criteria,
+sorting, pagination and global facets continue to work in combination. Individual
+chips and Clear tag filters remove criteria. Photos without tags clears selected
+tags and is mutually exclusive with them. Browser history and copied URLs preserve
+filters: `/?catalog_tag=birds&catalog_tag=sunset` or `/?catalog_untagged=1`.
+
+`GET /catalog/tags` returns `{ "tags": [{ "name": "birds", "count": 12 }],
+"total_tags": 1, "untagged_count": 3 }`. Counts are distinct active photos per tag,
+including only non-empty string entries in JSON arrays. Aggregation uses SQLite
+`json_each` with guarded JSON validation in two SQL statements and hydrates no
+Photo objects. SQL trims the same whitespace set as the shared Python normalizer.
+Duplicate legacy array entries count once per photo. Invalid JSON, JSON null,
+non-array values, non-string entries, and empty strings are ignored for tagging;
+arrays with no valid strings are untagged. Photo reads safely normalize these
+legacy values without rewriting stored data.
+
+`GET /catalog/photos` and `GET /catalog/culling` accept repeated `tags=birds&tags=sunset`
+or `untagged=true`. Exact membership uses correlated JSON EXISTS, never textual
+LIKE. The request limit is 20 tag expressions, at most 1000 characters per tag;
+conflicting or excessive criteria return HTTP 422. Existing stored tags are not
+length-limited or rewritten, so an unusually long legacy tag can appear in Explorer
+but cannot be used as a live filter. JSON membership is a scan without a new
+materialized index; cost grows with active photos, tag entries and selected tags.
+The aggregation response contains one row per distinct tag, with local UI search
+and sorting rather than server pagination.
+
+Culling retains tag criteria. Map rejects exact tags/untagged with HTTP 422 and
+provides an explicit UI explanation with a filtered-List link. Archive navigation
+warns before opening another view without exact filters. Version-1 Smart Collections
+reject dedicated tags at the API schema boundary; the UI blocks create/update and
+explains how to clear tag filters. Dedicated tags are currently **live catalog
+filters**, not persisted Smart Collection criteria. Query version 1 and the separate
+`feature/smart-collections-v2` work remain independent.
+
+Bulk add/remove retains the 250-photo cap, explicit submission, validation,
+transactional changes, review/audit behavior and active-photo restrictions. Suggestions
+only fill the existing comma-delimited input; tags containing commas are omitted
+from suggestions because that input cannot represent them as one tag.
+
+Tag-query measurement on 2026-10-28 used the existing deterministic disposable
+archive benchmark generator, one warm-up and five measured runs (Windows, local
+SQLite; medians, concurrent validation active). These are local observations,
+not latency guarantees:
+
+| Photos (active) | Tag aggregation | One tag, page 1 | Two AND tags, page 1 | Untagged | Ordinary browse |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10,000 (9,500) | 74.91 ms | 42.18 ms | 72.82 ms | 30.61 ms | 3.20 ms |
+| 100,000 (95,000) | 925.57 ms | 492.70 ms | 549.91 ms | 356.30 ms | 21.21 ms |
+
+The dataset has six distinct tags and 1–4 entries per photo, with no untagged
+photos. Catalog measurements include counts, a maximum 48-photo page and global
+facets. Untagged therefore measures a zero-result count plus facets. Aggregation
+always runs two statements; existing browse query shapes remain unchanged.
