@@ -299,3 +299,12 @@ Tag filters also work in Culling. Map explains its limitation and links back to
 the filtered List. Exact tags and untagged are live catalog criteria: version-1
 Smart Collections cannot save them. Clear tag filters before creating or updating
 a Smart Collection. No database migration or new tagging storage is required.
+
+Each tag has **Rename**, **Merge**, and **Delete** actions. These operations affect
+the **entire archive, including Trash**, even though Explorer counts show active
+photos. Preview active/Trashed counts, destination overlap and sample before/after
+values before confirming. Delete additionally requires an explicit checkbox.
+`Birds` and `birds` remain distinct: merge them explicitly when desired. Renaming
+to an existing tag merges into it, without duplicate destination tags. Other tags,
+photo order, review decisions and original images are preserved. Corrected tags
+remain on restored photos. Concurrent changes require **Retry Preview**.

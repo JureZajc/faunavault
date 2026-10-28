@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 from fastapi import HTTPException
 from pydantic import (
     ConfigDict,
+    JsonValue,
     StrictBool,
     StrictInt,
     field_validator,
@@ -31,6 +32,69 @@ class CatalogTags(SQLModel):
     tags: list[CatalogTag]
     total_tags: int
     untagged_count: int
+
+
+class TagOperationRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    operation: Literal["rename", "merge", "delete"]
+    source: str
+    destination: str | None = None
+
+    @field_validator("source", "destination")
+    @classmethod
+    def validate_tag_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from app.tag_values import normalize_tags
+
+        names = normalize_tags([value])
+        if not names or len(names[0]) > 1000 or any(ord(c) < 32 for c in names[0]):
+            raise ValueError(
+                "Enter a non-empty tag of at most 1000 characters without control characters"
+            )
+        return names[0]
+
+    @model_validator(mode="after")
+    def validate_operation(self) -> TagOperationRequest:
+        if self.operation == "delete":
+            if self.destination is not None:
+                raise ValueError("Delete has no destination")
+        elif self.destination is None or self.source == self.destination:
+            raise ValueError("Choose a destination different from the source")
+        return self
+
+
+class TagOperationApplyRequest(TagOperationRequest):
+    preview_token: str = Field(min_length=1, max_length=4000)
+    confirm_delete: StrictBool = False
+
+
+class TagOperationExample(SQLModel):
+    photo_id: int
+    filename: str
+    trashed: bool
+    before: list[JsonValue]
+    after: list[JsonValue]
+
+
+class TagOperationPreview(TagOperationRequest):
+    active_photos: int
+    trashed_photos: int
+    destination_overlap: int
+    total_photos: int
+    destination_exists: bool
+    examples: list[TagOperationExample]
+    preview_token: str
+
+
+class TagOperationResult(SQLModel):
+    operation: Literal["rename", "merge", "delete"]
+    source: str
+    destination: str | None
+    updated_photos: int
+    active_photos: int
+    trashed_photos: int
 
 
 ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}

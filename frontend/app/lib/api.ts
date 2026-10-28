@@ -1240,6 +1240,19 @@ export function retryClassificationJob(id: number) {
 }
 
 export type CatalogTags = { tags: { name: string; count: number }[]; total_tags: number; untagged_count: number };
+export type TagOperationRequest = { operation: "rename" | "merge" | "delete"; source: string; destination?: string | null };
+export type TagOperationPreview = TagOperationRequest & {
+  active_photos: number; trashed_photos: number; destination_overlap: number;
+  total_photos: number; destination_exists: boolean; preview_token: string;
+  examples: { photo_id: number; filename: string; trashed: boolean; before: unknown[]; after: unknown[] }[];
+};
+export type TagOperationResult = TagOperationRequest & { updated_photos: number; active_photos: number; trashed_photos: number };
+export function previewTagOperation(operation: TagOperationRequest) {
+  return request<TagOperationPreview>("/tags/operations/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(operation) });
+}
+export function applyTagOperation(operation: TagOperationRequest & { preview_token: string; confirm_delete: boolean }) {
+  return request<TagOperationResult>("/tags/operations/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(operation) });
+}
 export function getCatalogTags(signal?: AbortSignal) {
   return request<CatalogTags>("/catalog/tags", { signal });
 }

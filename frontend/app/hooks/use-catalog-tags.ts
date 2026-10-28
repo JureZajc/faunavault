@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { CatalogTags, getCatalogTags } from "../lib/api";
 
+export function notifyTagsChanged() {
+  window.dispatchEvent(new Event("catalog-tags-changed"));
+}
+
 export function useCatalogTags(enabled = true) {
   const [data, setData] = useState<CatalogTags | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +27,8 @@ export function useCatalogTags(enabled = true) {
     }, 0);
     const refresh = () => retry();
     window.addEventListener("focus", refresh);
-    return () => { window.clearTimeout(timer); controller.abort(); window.removeEventListener("focus", refresh); };
+    window.addEventListener("catalog-tags-changed", refresh);
+    return () => { window.clearTimeout(timer); controller.abort(); window.removeEventListener("focus", refresh); window.removeEventListener("catalog-tags-changed", refresh); };
   }, [enabled, revision, retry]);
   return { data, error, loading, retry };
 }

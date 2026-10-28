@@ -30,6 +30,7 @@ from app.routers.photo_lifecycle import create_photo_lifecycle_router
 from app.routers.review import create_review_router
 from app.routers.selected_photo_export import create_selected_export_router
 from app.routers.smart_collections import create_smart_collections_router
+from app.routers.tags import create_tags_router
 from app.routers.taxonomy import create_taxonomy_router
 from app.schemas import PhotoUpdate
 from app.services.capture_metadata import (
@@ -183,6 +184,7 @@ app.include_router(create_photo_lifecycle_router(lambda: settings))
 app.include_router(create_bulk_photos_router(lambda: settings))
 app.include_router(create_selected_export_router(lambda: settings))
 app.include_router(create_catalog_router())
+app.include_router(create_tags_router())
 app.include_router(create_collections_router())
 app.include_router(create_events_router())
 app.include_router(create_smart_collections_router())
