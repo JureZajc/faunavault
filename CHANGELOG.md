@@ -6,6 +6,13 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Custom cover Photos for manual Collections, with responsive cards/headers,
+  immediate accessible selection, clearing, and deterministic automatic fallback.
+  Trash preserves the choice for Restore; membership removal clears it atomically
+  and permanent deletion safely clears the reference. Append-only schema 21,
+  backup-v1 verification/rehearsal for schemas 9–21, and deterministic metadata
+  export v12 preserve covers, including trashed member references.
+
 - Custom Trip/Event cover Photos with immediate member selection, removal,
   responsive thumbnail cards/headers, and deterministic automatic fallback.
   Trash retains the custom choice for Restore; membership removal and permanent

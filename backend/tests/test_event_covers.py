@@ -128,7 +128,7 @@ def test_cover_trash_restore_remove_purge_and_event_deletion(lifecycle):
     assert client.delete(f"/photos/{ids[0]}").status_code == 200
     hidden = client.get(url).json()
     assert hidden["cover_photo_id"] == ids[0] and hidden["cover_photo"]["id"] == ids[1]
-    assert inspect_database(settings.database_path, 20).archive_events == 1
+    assert inspect_database(settings.database_path, 21).archive_events == 1
     client.post(f"/trash/photos/{ids[0]}/restore")
     assert client.get(url).json()["cover_photo"]["id"] == ids[0]
     assert (
@@ -147,7 +147,7 @@ def test_cover_trash_restore_remove_purge_and_event_deletion(lifecycle):
     client.patch(url + "/cover", json={"photo_id": ids[1]})
     assert client.delete(url).status_code == 200
     assert client.get(f"/photos/{ids[1]}").status_code == 200
-    assert inspect_database(settings.database_path, 20).archive_events == 0
+    assert inspect_database(settings.database_path, 21).archive_events == 0
 
 
 def test_empty_and_all_trashed_covers_and_order_ties(collections_app):
@@ -232,7 +232,7 @@ def test_cover_foreign_key_nulls_on_direct_photo_deletion(collections_app):
     with engine.begin() as connection:
         connection.exec_driver_sql("DELETE FROM photo WHERE id=?", (ids[0],))
     assert client.get(url).json()["cover_photo_id"] is None
-    assert inspect_database(settings.database_path, 20).archive_event_memberships == 0
+    assert inspect_database(settings.database_path, 21).archive_event_memberships == 0
 
 
 def test_cover_busy_writer_returns_retryable_error(collections_app):
@@ -328,12 +328,12 @@ def test_migration20_from_actual_schema19_is_retryable(collections_app):
             created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL
         )""")
         connection.execute("INSERT INTO archive_event SELECT * FROM saved_events")
-        connection.execute("DELETE FROM schema_migration WHERE version=20")
+        connection.execute("DELETE FROM schema_migration WHERE version IN (20, 21)")
     assert inspect_database(settings.database_path, 19).archive_event_memberships == 1
     before = read_event_signature(settings.database_path)
-    assert run_migrations(engine, settings) == [20]
+    assert run_migrations(engine, settings) == [20, 21]
     assert run_migrations(engine, settings) == []
-    assert inspect_database(settings.database_path, 20).archive_event_memberships == 1
+    assert inspect_database(settings.database_path, 21).archive_event_memberships == 1
     assert read_event_signature(settings.database_path) == before
     assert client.get(url).json()["cover_photo_id"] is None
     # A partially applied migration must recreate its missing index on retry.
@@ -341,7 +341,7 @@ def test_migration20_from_actual_schema19_is_retryable(collections_app):
         connection.exec_driver_sql("DROP INDEX ix_archive_event_cover_photo_id")
         connection.exec_driver_sql("DELETE FROM schema_migration WHERE version=20")
     assert run_migrations(engine, settings) == [20]
-    inspect_database(settings.database_path, 20)
+    inspect_database(settings.database_path, 21)
 
 
 def test_cover_backup_restore_export_and_change_detection(lifecycle, tmp_path_factory):
@@ -356,7 +356,7 @@ def test_cover_backup_restore_export_and_change_detection(lifecycle, tmp_path_fa
     exported = create_metadata_export(root / "export", settings)
     payload = json.loads(exported.json_path.read_text())
     assert (
-        payload["format_version"] == 11
+        payload["format_version"] == 12
         and payload["archive_events"][0]["cover_photo_id"] == photo["id"]
     )
     payload["archive_events"][0]["cover_photo_id"] = 99999
@@ -364,7 +364,7 @@ def test_cover_backup_restore_export_and_change_detection(lifecycle, tmp_path_fa
         ArchiveMetadataExport.model_validate(payload)
     (root / "backups").mkdir()
     backup, verification = create_backup(root / "backups", settings)
-    assert verification.valid and verification.manifest.database.schema_version == 20
+    assert verification.valid and verification.manifest.database.schema_version == 21
     assert rehearse_backup(backup, root / "restored").doctor_status == "HEALTHY"
     assert read_event_signature(settings.database_path) == read_event_signature(
         root / "restored/data/faunavault.db"

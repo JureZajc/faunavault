@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.archive_integrity import (
+    read_collection_signature,
     read_duplicate_signature,
     read_event_signature,
     read_import_session_signature,
@@ -174,6 +175,7 @@ def create_backup(
         expected_duplicates = read_duplicate_signature(snapshot)
         expected_imports = read_import_session_signature(snapshot)
         expected_events = read_event_signature(snapshot)
+        expected_collections = read_collection_signature(snapshot)
         source_paths = _source_paths(inventory, variants)
 
         warnings: list[SourceWarning] = []
@@ -186,6 +188,10 @@ def create_backup(
             warnings.extend(scan_orphans(directory, expected, role))
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed after the SQLite snapshot")
+        if read_collection_signature(database) != expected_collections:
+            raise BackupError(
+                "Live Collection metadata or memberships changed during backup creation"
+            )
         if read_event_signature(database) != expected_events:
             raise BackupError(
                 "Live Trip/Event metadata or memberships changed during backup creation"
@@ -266,6 +272,10 @@ def create_backup(
             )
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed while files were copied")
+        if read_collection_signature(database) != expected_collections:
+            raise BackupError(
+                "Live Collection metadata or memberships changed during backup creation"
+            )
         if read_event_signature(database) != expected_events:
             raise BackupError(
                 "Live Trip/Event metadata or memberships changed during backup creation"
@@ -325,6 +335,10 @@ def create_backup(
         _ensure_lifecycle_quiet(settings)
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed before publication")
+        if read_collection_signature(database) != expected_collections:
+            raise BackupError(
+                "Live Collection metadata or memberships changed during backup creation"
+            )
         if read_event_signature(database) != expected_events:
             raise BackupError(
                 "Live Trip/Event metadata or memberships changed during backup creation"

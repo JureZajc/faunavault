@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import * as navigation from "next/navigation";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import CollectionsBrowser from "../app/collections/collections-browser";
@@ -7,6 +8,7 @@ import type { CollectionDetail, CollectionSummary, Photo } from "../app/lib/api"
 
 const api = vi.hoisted(() => ({
   getCollections: vi.fn(),
+  updateCollectionCover: vi.fn(),
   getSmartCollections: vi.fn(),
   createCollection: vi.fn(),
   renameCollection: vi.fn(),
@@ -20,6 +22,9 @@ vi.mock("../app/lib/api", async (importOriginal) => ({
   ...api,
 }));
 
+// Match Next.js: the router object stays stable across component renders.
+const router = navigation.useRouter();
+
 const now = "2026-08-23T08:00:00Z";
 
 function summary(overrides: Partial<CollectionSummary> = {}): CollectionSummary {
@@ -27,6 +32,8 @@ function summary(overrides: Partial<CollectionSummary> = {}): CollectionSummary 
     id: 7,
     name: "Field notes",
     active_photo_count: 1,
+    cover_photo_id: null,
+    cover_photo: null,
     created_at: now,
     updated_at: now,
     ...overrides,
@@ -82,6 +89,7 @@ function detail(items = [photo()]): CollectionDetail {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(navigation, "useRouter").mockReturnValue(router);
   window.history.replaceState(null, "", "/collections");
   api.getCollections.mockResolvedValue([summary()]);
   api.getSmartCollections.mockResolvedValue([]);
@@ -197,4 +205,104 @@ test("failed selected removal keeps the dialog and Collection-local selection", 
   await userEvent.click(within(dialog).getByRole("button", { name: "Remove from Collection" }));
   expect((await within(dialog).findByRole("alert")).textContent).toContain("Membership unavailable");
   expect(screen.getByText("1 selected")).toBeTruthy();
+});
+
+const cover = { id: 11, original_filename: "fox-11.jpg", display_title: "Chosen cover", thumbnail_filename: "cover-thumb.jpg" };
+
+test("index renders large covers, empty placeholders and unavailable thumbnails", async () => {
+  api.getCollections.mockResolvedValue([summary({ cover_photo_id: 11, cover_photo: cover }), summary({ id: 8, name: "Empty", active_photo_count: 0 })]);
+  render(<CollectionsBrowser />);
+  const image = await screen.findByRole("img", { name: "Chosen cover" });
+  expect(image.getAttribute("src")).toContain("/images/thumbs/cover-thumb.jpg");
+  expect(image.parentElement?.className).toContain("aspect-[16/9]");
+  expect(screen.getByText("No active Photos for a cover")).toBeTruthy();
+  fireEvent.error(image);
+  expect(screen.getByText("Image unavailable")).toBeTruthy();
+});
+
+test("cover saves immediately with keyboard controls, blocks duplicate writes and preserves pagination", async () => {
+  let resolve!: (value: CollectionSummary) => void;
+  api.updateCollectionCover.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+  window.history.replaceState(null, "", "/collections/7?page=2");
+  const current = detail([photo(11), photo(12)]);
+  current.photos = { ...current.photos, page: 2, total: 50, total_pages: 2 };
+  api.getCollection.mockResolvedValue(current);
+  render(<CollectionDetailView collectionId={7} />);
+  const set = await screen.findByRole("button", { name: "Set as cover: Fox 11" });
+  expect(set.getAttribute("aria-pressed")).toBe("false");
+  set.focus();
+  await userEvent.keyboard("{Enter}{Enter}");
+  expect(api.updateCollectionCover).toHaveBeenCalledExactlyOnceWith(7, 11);
+  expect((set as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getAllByRole("button", { name: "Remove from Collection" })[0] as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Rename" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Previous" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole("status").textContent).toBe("Saving cover…");
+  await act(async () => resolve(summary({ cover_photo_id: 11, cover_photo: cover })));
+  const selected = screen.getByRole("button", { name: "Current cover: Fox 11" });
+  expect(selected.getAttribute("aria-pressed")).toBe("true");
+  expect((selected as HTMLButtonElement).disabled).toBe(true);
+  expect(within(screen.getByRole("region", { name: "Collection cover" })).getByRole("img").getAttribute("src")).toContain("cover-thumb.jpg");
+  expect(screen.getByRole("status").textContent).toBe("Custom cover saved.");
+  expect(screen.getByText("Page 2 of 2")).toBeTruthy();
+  expect(window.location.search).toBe("?page=2");
+  expect(api.getCollection).toHaveBeenCalledTimes(1);
+  expect(api.removePhotosFromCollection).not.toHaveBeenCalled();
+});
+
+test("clearing a custom cover preserves selection and displays the automatic fallback", async () => {
+  api.getCollection.mockResolvedValue({ ...detail(), cover_photo_id: 11, cover_photo: cover });
+  let resolve!: (value: CollectionSummary) => void;
+  api.updateCollectionCover.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+  render(<CollectionDetailView collectionId={7} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Select photos" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "Select page" }));
+  expect(screen.queryByRole("button", { name: "Current cover: Fox 11" })).toBeNull();
+  const remove = screen.getByRole("button", { name: "Remove custom cover" });
+  await userEvent.dblClick(remove);
+  expect(api.updateCollectionCover).toHaveBeenCalledExactlyOnceWith(7, null);
+  expect((remove as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole("button", { name: "Remove from Collection" }).closest("fieldset")?.disabled).toBe(true);
+  await act(async () => resolve(summary({ cover_photo: { ...cover, id: 12, display_title: "Automatic fallback" } })));
+  expect(screen.getByText("Automatic cover")).toBeTruthy();
+  expect(within(screen.getByRole("region", { name: "Collection cover" })).getByRole("img", { name: "Automatic fallback" })).toBeTruthy();
+  expect(screen.getByText("1 selected")).toBeTruthy();
+  expect((remove as HTMLButtonElement).disabled).toBe(true);
+  await userEvent.click(screen.getByRole("button", { name: "Exit selection" }));
+  expect(screen.getByRole("button", { name: "Set as cover: Fox 11" })).toBeTruthy();
+});
+
+test("cover API errors refresh stale membership and permit retry", async () => {
+  api.getCollection.mockResolvedValue(detail([photo(11), photo(12)]));
+  api.updateCollectionCover.mockRejectedValueOnce(new Error("Cover must be a member Photo. Refresh the Collection."));
+  api.updateCollectionCover.mockResolvedValueOnce(summary({ cover_photo_id: 12, cover_photo: { ...cover, id: 12 } }));
+  render(<CollectionDetailView collectionId={7} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Set as cover: Fox 11" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("member Photo");
+  await waitFor(() => expect(api.getCollection).toHaveBeenCalledTimes(2));
+  await userEvent.click(screen.getByRole("button", { name: "Set as cover: Fox 12" }));
+  expect(await screen.findByRole("button", { name: "Current cover: Fox 12" })).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("retained Trash covers explain fallback and responsive previews recover after an image failure", async () => {
+  api.getCollection.mockResolvedValue({ ...detail([photo(11), photo(12)]), cover_photo_id: 99, cover_photo: cover });
+  api.updateCollectionCover.mockResolvedValue(summary({ cover_photo_id: 12, cover_photo: { ...cover, id: 12, thumbnail_filename: "next-thumb.jpg" } }));
+  render(<CollectionDetailView collectionId={7} />);
+  expect(await screen.findByText(/Custom cover is in Trash/)).toBeTruthy();
+  const header = screen.getByRole("region", { name: "Collection cover" });
+  const image = within(header).getByRole("img");
+  expect(image.parentElement?.className).toContain("sm:aspect-[3/1]");
+  fireEvent.error(image);
+  expect(within(header).getByText("Image unavailable")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Set as cover: Fox 12" }));
+  expect(within(header).getByRole("img").getAttribute("src")).toContain("next-thumb.jpg");
+});
+
+test("empty Collection detail displays an accessible cover placeholder", async () => {
+  api.getCollection.mockResolvedValue(detail([]));
+  render(<CollectionDetailView collectionId={7} />);
+  const header = await screen.findByRole("region", { name: "Collection cover" });
+  expect(within(header).getByText("No active Photos for a cover")).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Remove custom cover" }) as HTMLButtonElement).disabled).toBe(true);
 });

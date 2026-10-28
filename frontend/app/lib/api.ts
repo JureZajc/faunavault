@@ -289,6 +289,8 @@ export type AlbumTaxonSelectionResponse = {
 
 export type CollectionSummary = {
   id: number;
+  cover_photo_id: number | null;
+  cover_photo: TimelinePhotoPreview | null;
   name: string;
   active_photo_count: number;
   created_at: string;
@@ -802,6 +804,14 @@ export function renameCollection(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(requestBody),
+  });
+}
+
+export function updateCollectionCover(id: number, photoId: number | null) {
+  return request<CollectionSummary>(`/collections/${id}/cover`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ photo_id: photoId }),
   });
 }
 

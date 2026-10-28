@@ -934,10 +934,82 @@ def validate_event_covers(connection) -> None:
         )
 
 
+def validate_collection_covers(connection) -> None:
+    column = next(
+        (
+            row
+            for row in connection.execute("PRAGMA table_info(collection)")
+            if row[1] == "cover_photo_id"
+        ),
+        None,
+    )
+    if column is None or (column[2].upper(), column[3], column[4], column[5]) != (
+        "INTEGER",
+        0,
+        None,
+        0,
+    ):
+        raise ArchiveIntegrityError("Invalid Collection cover column structure")
+    if not any(
+        row[2:5] == ("photo", "cover_photo_id", "id") and row[6] == "SET NULL"
+        for row in connection.execute("PRAGMA foreign_key_list(collection)")
+    ):
+        raise ArchiveIntegrityError("Missing Collection cover SET NULL foreign key")
+    if not any(
+        row[1] == "ix_collection_cover_photo_id" and row[4] == 0
+        for row in connection.execute("PRAGMA index_list(collection)")
+    ) or [
+        row[2]
+        for row in connection.execute("PRAGMA index_info(ix_collection_cover_photo_id)")
+    ] != ["cover_photo_id"]:
+        raise ArchiveIntegrityError("Missing Collection cover index")
+    invalid = connection.execute(
+        "SELECT e.id FROM collection e WHERE e.cover_photo_id IS NOT NULL AND "
+        "(NOT EXISTS (SELECT 1 FROM photo p WHERE p.id=e.cover_photo_id) OR "
+        "NOT EXISTS (SELECT 1 FROM collection_photo m WHERE m.collection_id=e.id AND m.photo_id=e.cover_photo_id)) LIMIT 1"
+    ).fetchone()
+    if invalid:
+        raise ArchiveIntegrityError(
+            "Collection cover must reference an existing member Photo"
+        )
+
+
 def _inspect_schema_20(connection, migrations: list[int]) -> DatabaseInventory:
     base = _inspect_schema_19(connection, migrations)
     validate_event_covers(connection)
     return base
+
+
+def _inspect_schema_21(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_20(connection, migrations)
+    validate_collection_covers(connection)
+    return base
+
+
+def read_collection_signature(path: Path) -> tuple[tuple, tuple]:
+    connection = open_read_only_database(path)
+    try:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(collection)")
+        }
+        cover = "cover_photo_id" if "cover_photo_id" in columns else "NULL"
+        records = tuple(
+            connection.execute(
+                f"SELECT id, name, name_key, created_at, updated_at, {cover} FROM collection ORDER BY id"
+            )
+        )
+        memberships = tuple(
+            connection.execute(
+                "SELECT collection_id, photo_id FROM collection_photo ORDER BY collection_id, photo_id"
+            )
+        )
+        return records, memberships
+    except sqlite3.Error as exc:
+        raise ArchiveIntegrityError(
+            f"Could not read Collection metadata: {exc}"
+        ) from exc
+    finally:
+        connection.close()
 
 
 SCHEMA_INVENTORY_READERS = {
@@ -953,6 +1025,7 @@ SCHEMA_INVENTORY_READERS = {
     18: _inspect_schema_18,
     19: _inspect_schema_19,
     20: _inspect_schema_20,
+    21: _inspect_schema_21,
 }
 
 
