@@ -87,6 +87,8 @@ class EventSummary(BaseModel):
     created_at: datetime
     updated_at: datetime
     active_photo_count: int = 0
+    cover_photo_id: int | None = None
+    cover_photo: TimelinePhotoPreview | None = None
     previews: list[TimelinePhotoPreview] = Field(default_factory=list)
 
 
@@ -109,6 +111,11 @@ class EventPage(BaseModel):
 class EventMembershipRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     photo_ids: list[Annotated[int, Field(ge=1, le=2**63 - 1)]]
+
+
+class EventCoverRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    photo_id: Annotated[int, Field(ge=1, le=2**63 - 1)] | None
 
 
 class EventAddResponse(BaseModel):

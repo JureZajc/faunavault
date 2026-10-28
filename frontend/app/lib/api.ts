@@ -210,6 +210,8 @@ export type ArchiveEventSummary = Omit<EventMetadata, "notes"> & {
   created_at: string;
   updated_at: string;
   active_photo_count: number;
+  cover_photo_id: number | null;
+  cover_photo: TimelinePhotoPreview | null;
   previews: TimelinePhotoPreview[];
 };
 export type ArchiveEventDetail = ArchiveEventSummary & {
@@ -231,6 +233,7 @@ export function getEvents(page = 1, kind?: EventMetadata["kind"], signal?: Abort
 export function getEvent(id: number, signal?: AbortSignal) { return request<ArchiveEventDetail>(`/events/${id}`, { signal }); }
 export function createEvent(metadata: EventMetadata) { return request<ArchiveEventDetail>("/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(metadata) }); }
 export function updateEvent(id: number, metadata: Partial<EventMetadata>) { return request<ArchiveEventDetail>(`/events/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(metadata) }); }
+export function updateEventCover(id: number, photoId: number | null) { return request<ArchiveEventDetail>(`/events/${id}/cover`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_id: photoId }) }); }
 export function deleteEvent(id: number) { return request<{ event_id: number; status: "deleted" }>(`/events/${id}`, { method: "DELETE" }); }
 export function addEventPhotos(id: number, photoIds: number[]) { return request<EventAddResponse>(`/events/${id}/photos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_ids: photoIds }) }); }
 export function removeEventPhotos(id: number, photoIds: number[]) { return request<EventRemoveResponse>(`/events/${id}/photos`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_ids: photoIds }) }); }

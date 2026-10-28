@@ -11,11 +11,11 @@ import { parseCatalogState, DEFAULT_CATALOG_STATE, mapCatalogQuery, writeCatalog
 import { savedQueryFromState } from "../app/lib/smart-collections";
 import { compareReturnLocation } from "../app/lib/photo-compare";
 
-const api = vi.hoisted(() => ({ getEvents: vi.fn(), getEvent: vi.fn(), createEvent: vi.fn(), updateEvent: vi.fn(), deleteEvent: vi.fn(), addEventPhotos: vi.fn(), removeEventPhotos: vi.fn(), getCatalogPhotos: vi.fn() }));
+const api = vi.hoisted(() => ({ getEvents: vi.fn(), getEvent: vi.fn(), updateEventCover: vi.fn(), createEvent: vi.fn(), updateEvent: vi.fn(), deleteEvent: vi.fn(), addEventPhotos: vi.fn(), removeEventPhotos: vi.fn(), getCatalogPhotos: vi.fn() }));
 vi.mock("../app/lib/api", async (original) => ({ ...(await original<typeof import("../app/lib/api")>()), ...api }));
 const now = "2026-10-01T08:00:00Z";
 function event(overrides: Partial<ArchiveEventDetail> = {}): ArchiveEventDetail {
-  return { id: 7, previews: [], kind: "trip", title: "Valencia", start_date: "2026-08-12", end_date: "2026-08-17", location_label: "Spain", notes: "First line\n<script>plain text</script>", created_at: now, updated_at: now, active_photo_count: 2, trash_photo_count: 1, undecided_count: 1, pick_count: 1, reject_count: 0, ...overrides };
+  return { id: 7, cover_photo_id: null, cover_photo: null, previews: [], kind: "trip", title: "Valencia", start_date: "2026-08-12", end_date: "2026-08-17", location_label: "Spain", notes: "First line\n<script>plain text</script>", created_at: now, updated_at: now, active_photo_count: 2, trash_photo_count: 1, undecided_count: 1, pick_count: 1, reject_count: 0, ...overrides };
 }
 function page(items = [event()], overrides: Partial<ArchiveEventPage> = {}): ArchiveEventPage {
   return { items: items.map((item) => ({ ...item, previews: [] })), total: items.length, page: 1, page_size: 24, total_pages: items.length ? 1 : 0, ...overrides };
@@ -214,4 +214,89 @@ test("copied suggestion URLs expose dates; Event scope composes with Map/Culling
   expect(parseCatalogState(new URLSearchParams("catalog_event_id=bad")).event_id).toBe(0);
   expect(compareReturnLocation("/events/7?page=2")).toBe("/events/7?page=2");
   expect(compareReturnLocation("/events/deleted")).toBe("/");
+});
+
+const cover = { id: 11, original_filename: "cover.jpg", display_title: "Chosen cover", thumbnail_filename: "cover-thumb.jpg" };
+
+test("cover saves immediately, announces success, blocks duplicate submissions and preserves page", async () => {
+  let resolve!: (value: ArchiveEventDetail) => void;
+  api.updateEventCover.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+  window.history.replaceState(null, "", "/events/7?page=2");
+  api.getCatalogPhotos.mockResolvedValue({ items: [photo(11), photo(12)], total: 50, page: 2, page_size: 48, total_pages: 2 });
+  render(<EventDetail eventId={7} />);
+  const set = await screen.findByRole("button", { name: "Set as cover: Photo 11" });
+  expect(set.getAttribute("aria-pressed")).toBe("false");
+  await userEvent.dblClick(set);
+  expect(api.updateEventCover).toHaveBeenCalledExactlyOnceWith(7, 11);
+  expect((set as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getAllByRole("button", { name: "Remove from Trip" })[0] as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => resolve(event({ cover_photo_id: 11, cover_photo: cover })));
+  const current = screen.getByRole("button", { name: "Current cover: Photo 11" });
+  expect(current.getAttribute("aria-pressed")).toBe("true");
+  expect((current as HTMLButtonElement).disabled).toBe(true);
+  expect(within(screen.getByRole("region", { name: "Trip/Event cover" })).getByRole("img").getAttribute("src")).toContain("cover-thumb.jpg");
+  expect(screen.getByRole("status").textContent).toBe("Custom cover saved.");
+  expect(window.location.search).toBe("?page=2");
+  expect(api.removeEventPhotos).not.toHaveBeenCalled();
+});
+
+test("remove custom cover restores the API fallback and has a pending disabled state", async () => {
+  api.getEvent.mockResolvedValue(event({ cover_photo_id: 11, cover_photo: cover }));
+  let resolve!: (value: ArchiveEventDetail) => void;
+  api.updateEventCover.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+  render(<EventDetail eventId={7} />);
+  const remove = await screen.findByRole("button", { name: "Remove custom cover" });
+  await userEvent.dblClick(remove);
+  expect(api.updateEventCover).toHaveBeenCalledExactlyOnceWith(7, null);
+  expect((remove as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => resolve(event({ cover_photo_id: null, cover_photo: { ...cover, id: 12, display_title: "Automatic fallback" } })));
+  expect(screen.getByText("Automatic cover")).toBeTruthy();
+  expect(within(screen.getByRole("region", { name: "Trip/Event cover" })).getByRole("img", { name: "Automatic fallback" })).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toContain("Automatic cover restored");
+  expect((screen.getByRole("button", { name: "Remove custom cover" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("cover conflict displays accessible feedback, refreshes stale membership, and permits retry", async () => {
+  api.updateEventCover.mockRejectedValueOnce(new Error("Cover must be a member Photo. Refresh the Trip/Event."));
+  api.updateEventCover.mockResolvedValueOnce(event({ cover_photo_id: 12, cover_photo: { ...cover, id: 12 } }));
+  render(<EventDetail eventId={7} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Set as cover: Photo 11" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("member Photo");
+  await waitFor(() => expect(api.getEvent).toHaveBeenCalledTimes(2));
+  await userEvent.click(await screen.findByRole("button", { name: "Set as cover: Photo 12" }));
+  expect(await screen.findByRole("button", { name: "Current cover: Photo 12" })).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("membership selection hides cover actions, leaving them separate from membership removal", async () => {
+  render(<EventDetail eventId={7} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Select photos" }));
+  expect(screen.queryByRole("button", { name: "Set as cover: Photo 11" })).toBeNull();
+  await userEvent.click(screen.getAllByRole("checkbox")[0]);
+  expect(api.updateEventCover).not.toHaveBeenCalled();
+});
+
+test("index displays the selected cover prominently with a wide thumbnail and empty placeholder", async () => {
+  api.getEvents.mockResolvedValue({ ...page(), items: [event({ cover_photo_id: 11, cover_photo: cover }), event({ id: 8, title: "Empty event", active_photo_count: 0 })] });
+  render(<EventsBrowser />);
+  const image = await screen.findByRole("img", { name: "Chosen cover" });
+  expect(image.getAttribute("src")).toContain("/images/thumbs/cover-thumb.jpg");
+  expect(image.parentElement?.className).toContain("aspect-[16/9]");
+  expect(screen.getByText("No active Photos for a cover")).toBeTruthy();
+  fireEvent.error(image);
+  expect(screen.getByText("Image unavailable")).toBeTruthy();
+});
+
+test("detail explains retained Trash covers, supports responsive header, and updates the preview after a change", async () => {
+  api.getEvent.mockResolvedValue(event({ cover_photo_id: 99, cover_photo: cover }));
+  api.updateEventCover.mockResolvedValue(event({ cover_photo_id: 12, cover_photo: { ...cover, id: 12, thumbnail_filename: "next-thumb.jpg" } }));
+  render(<EventDetail eventId={7} />);
+  expect(await screen.findByText(/Custom cover is in Trash/)).toBeTruthy();
+  const header = screen.getByRole("region", { name: "Trip/Event cover" });
+  const image = within(header).getByRole("img");
+  expect(image.parentElement?.className).toContain("sm:aspect-[3/1]");
+  fireEvent.error(image);
+  expect(within(header).getByText("Image unavailable")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Set as cover: Photo 12" }));
+  expect(within(header).getByRole("img").getAttribute("src")).toContain("next-thumb.jpg");
 });

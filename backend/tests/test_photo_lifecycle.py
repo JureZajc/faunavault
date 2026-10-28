@@ -439,6 +439,7 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
         17,
         18,
         19,
+        20,
     ]
     with engine.connect() as connection:
         indexes = {
@@ -507,6 +508,7 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         17,
         18,
         19,
+        20,
     ]
     assert migration_versions(engine) == [
         1,
@@ -528,6 +530,7 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         17,
         18,
         19,
+        20,
     ]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
@@ -565,7 +568,7 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
 
     assert run_migrations(
         engine, settings, main.normalize_existing_domestic_metadata
-    ) == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    ) == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     assert migration_versions(engine) == [
         1,
         2,
@@ -586,6 +589,7 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
         17,
         18,
         19,
+        20,
     ]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
@@ -636,6 +640,7 @@ def test_migration_8_backfills_normalized_album_group_and_is_idempotent(tmp_path
         17,
         18,
         19,
+        20,
     ]
     with engine.connect() as connection:
         rows = connection.exec_driver_sql(
@@ -685,6 +690,7 @@ def test_migration_9_adds_nullable_perceptual_hash_without_backfill(tmp_path):
         17,
         18,
         19,
+        20,
     ]
     with engine.connect() as connection:
         columns = {
@@ -722,7 +728,7 @@ def test_migration_12_adds_nullable_review_timestamp_without_backfill(tmp_path):
                 (version,),
             )
 
-    assert run_migrations(engine, settings) == [12, 13, 14, 15, 16, 17, 18, 19]
+    assert run_migrations(engine, settings) == [12, 13, 14, 15, 16, 17, 18, 19, 20]
     with engine.connect() as connection:
         columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(photo)")
@@ -759,7 +765,19 @@ def test_migration_10_creates_collection_relations_with_cascades(tmp_path):
                 (version,),
             )
 
-    assert run_migrations(engine, settings) == [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    assert run_migrations(engine, settings) == [
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+    ]
     with engine.begin() as connection:
         connection.exec_driver_sql(
             "INSERT INTO collection(name, name_key, created_at, updated_at) "

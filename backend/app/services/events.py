@@ -6,7 +6,7 @@ import math
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import case, delete, func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlmodel import Session, select
 
 from app.event_schemas import (
@@ -82,6 +82,7 @@ def _summary(item: ArchiveEvent, count: int = 0, previews=None) -> EventSummary:
         **item.model_dump(exclude={"notes"}),
         active_photo_count=count,
         previews=previews or [],
+        cover_photo=previews[0] if previews else None,
     )
 
 
@@ -101,6 +102,26 @@ def list_events(
     ).all()
     identities = [item.id for item in items]
     counts = _counts(session, identities)
+    previews = _previews(session, identities)
+    return EventPage(
+        items=[
+            _summary(
+                item,
+                counts.get(item.id, {}).get("active_photo_count", 0),
+                previews.get(item.id),
+            )
+            for item in items
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=math.ceil(total / page_size),
+    )
+
+
+def _previews(
+    session: Session, identities: list[int]
+) -> dict[int, list[TimelinePhotoPreview]]:
     previews: dict[int, list[TimelinePhotoPreview]] = {}
     if identities:
         ranked = (
@@ -113,11 +134,16 @@ def list_events(
                 func.row_number()
                 .over(
                     partition_by=ArchiveEventPhoto.event_id,
-                    order_by=(Photo.created_at.desc(), Photo.id.desc()),
+                    order_by=(
+                        case((Photo.id == ArchiveEvent.cover_photo_id, 0), else_=1),
+                        Photo.created_at.desc(),
+                        Photo.id.desc(),
+                    ),
                 )
                 .label("rank"),
             )
             .join(Photo, Photo.id == ArchiveEventPhoto.photo_id)
+            .join(ArchiveEvent, ArchiveEvent.id == ArchiveEventPhoto.event_id)
             .where(
                 ArchiveEventPhoto.event_id.in_(identities), Photo.deleted_at.is_(None)
             )
@@ -136,27 +162,70 @@ def list_events(
                     display_title=row.display_title,
                 )
             )
-    return EventPage(
-        items=[
-            _summary(
-                item,
-                counts.get(item.id, {}).get("active_photo_count", 0),
-                previews.get(item.id),
-            )
-            for item in items
-        ],
-        total=total,
-        page=page,
-        page_size=page_size,
-        total_pages=math.ceil(total / page_size),
-    )
+    return previews
 
 
 def get_event(event_id: int, session: Session) -> EventDetail:
     item = event_or_404(event_id, session)
+    previews = _previews(session, [event_id]).get(event_id, [])
     return EventDetail(
-        **item.model_dump(), **_counts(session, [event_id]).get(event_id, {})
+        **item.model_dump(),
+        **_counts(session, [event_id]).get(event_id, {}),
+        previews=previews,
+        cover_photo=previews[0] if previews else None,
     )
+
+
+def _lock_event_write(session: Session) -> None:
+    # Acquire SQLite's writer lock before validation so membership, lifecycle,
+    # and cover mutations cannot interleave between checks and commit.
+    try:
+        session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        session.expire_all()
+    except OperationalError as exc:
+        session.rollback()
+        raise HTTPException(
+            409,
+            detail={
+                "code": "event_busy",
+                "message": "The archive is busy. Refresh and try again.",
+            },
+        ) from exc
+
+
+def update_cover(event_id: int, photo_id: int | None, session: Session) -> EventDetail:
+    _lock_event_write(session)
+    item = event_or_404(event_id, session)
+    if photo_id is not None:
+        photo = session.get(Photo, photo_id)
+        if photo is None:
+            raise HTTPException(
+                404, detail={"code": "photo_not_found", "message": "Photo not found."}
+            )
+        if photo.deleted_at is not None:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "photo_not_active",
+                    "message": "A Photo in Trash cannot be selected as cover. Refresh the Trip/Event.",
+                },
+            )
+        if session.get(ArchiveEventPhoto, (event_id, photo_id)) is None:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "photo_not_event_member",
+                    "message": "Cover must be a member Photo. Refresh the Trip/Event.",
+                },
+            )
+    if item.cover_photo_id != photo_id:
+        item.cover_photo_id = photo_id
+        item.updated_at = utc_now()
+        session.add(item)
+        _commit(session)
+    else:
+        session.rollback()  # Release the writer lock without a redundant write.
+    return get_event(event_id, session)
 
 
 def create_event(request: EventFields, session: Session) -> EventDetail:
@@ -202,6 +271,7 @@ def delete_event(event_id: int, session: Session) -> EventDeleteResponse:
 def change_membership(
     event_id: int, photo_ids: list[int], session: Session, *, adding: bool
 ):
+    _lock_event_write(session)
     item = event_or_404(event_id, session)
     _validate_photo_ids(photo_ids)
     photos = _load_photos(photo_ids, session)
@@ -233,6 +303,8 @@ def change_membership(
                 for identity in sorted(changed)
             )
         else:
+            if item.cover_photo_id in changed:
+                item.cover_photo_id = None
             session.exec(
                 delete(ArchiveEventPhoto).where(
                     ArchiveEventPhoto.event_id == event_id,
@@ -242,6 +314,8 @@ def change_membership(
         item.updated_at = utc_now()
         session.add(item)
         _commit(session)
+    else:
+        session.rollback()
     if adding:
         return EventAddResponse(
             event_id=event_id,

@@ -38,6 +38,7 @@ from app.archive_integrity import (
     open_read_only_database,
     snapshot_database,
     validate_database_connection,
+    validate_event_covers,
     validate_event_tables,
     validate_flat_filename,
 )
@@ -661,6 +662,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             for row in connection.execute("SELECT * FROM import_session ORDER BY id")
         ]
         validate_event_tables(connection)
+        validate_event_covers(connection)
         archive_events = [
             ArchiveEventExport(
                 **{
@@ -673,6 +675,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                         "end_date",
                         "location_label",
                         "notes",
+                        "cover_photo_id",
                     )
                 },
                 created_at=_timestamp(row["created_at"], "archive_event.created_at"),

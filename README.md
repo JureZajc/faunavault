@@ -44,7 +44,10 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   categories, classification, curation, and GPS coverage, with year filters and
   direct List/Map navigation. [Metric definitions and limits](docs/OPERATIONS.md#wildlife-insights).
 - Trips & Events group explicitly selected Photos around dated experiences, with
-  date suggestions, List/Map/Culling entry, and safe membership removal.
+  date suggestions, List/Map/Culling entry, custom cover Photos, and safe membership removal.
+  Choose **Set as cover** on a member Photo or **Remove custom cover** to use
+  the newest active member. Trash temporarily hides a custom cover; Restore
+  reactivates it. Membership removal and permanent deletion clear the choice.
   [Trips & Events guide](docs/OPERATIONS.md#trips--events-v03).
 - URL-restorable Map filters and compatible List navigation.
   [Map guide](docs/OPERATIONS.md#map-filters-and-list-navigation).
@@ -213,7 +216,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–19. Production restore remains manual.
+schemas 9–20. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)

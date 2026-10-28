@@ -354,7 +354,7 @@ def test_event_lifecycle_and_artifacts(lifecycle, tmp_path_factory):
     assert first.csv_path.read_bytes() == second.csv_path.read_bytes()
     payload = json.loads(first.json_path.read_text())
     assert (
-        payload["format_version"] == 10
+        payload["format_version"] == 11
         and payload["archive_events"][0]["id"] == trip["id"]
     )
     assert payload["archive_event_photos"] == [
@@ -417,7 +417,7 @@ def test_schema19_structural_and_data_validation(collections_app, damage):
         else:
             connection.execute("INSERT INTO archive_event_photo VALUES (9999, 9999)")
     with pytest.raises(ArchiveIntegrityError):
-        inspect_database(settings.database_path, 19)
+        inspect_database(settings.database_path, 20)
 
 
 def test_event_composes_with_taxon_import_sort_and_culling_neighbors(collections_app):
@@ -496,7 +496,7 @@ def test_schema19_retry_preserves_photos_and_empty_events(lifecycle, monkeypatch
     with engine.begin() as connection:
         connection.exec_driver_sql("DROP TABLE archive_event_photo")
         connection.exec_driver_sql("DROP TABLE archive_event")
-        connection.exec_driver_sql("DELETE FROM schema_migration WHERE version=19")
+        connection.exec_driver_sql("DELETE FROM schema_migration WHERE version>=19")
     assert inspect_database(settings.database_path, 18).migrations[-1] == 18
 
     def partial_failure(connection):
@@ -509,9 +509,9 @@ def test_schema19_retry_preserves_photos_and_empty_events(lifecycle, monkeypatch
         patch.setattr(migrations, "_migration_19", partial_failure)
         with pytest.raises(RuntimeError, match="interrupted"):
             run_migrations(engine, settings)
-    assert run_migrations(engine, settings) == [19]
+    assert run_migrations(engine, settings) == [19, 20]
     assert run_migrations(engine, settings) == []
-    inventory = inspect_database(settings.database_path, 19)
+    inventory = inspect_database(settings.database_path, 20)
     assert inventory.archive_events == inventory.archive_event_memberships == 0
     assert client.get(f"/photos/{photo['id']}").json() == photo
 
