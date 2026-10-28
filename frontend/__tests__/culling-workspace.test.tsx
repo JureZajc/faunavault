@@ -49,6 +49,18 @@ beforeEach(() => {
   });
 });
 
+test("direct exact-tag Culling keeps criteria in its workspace and return links", async () => {
+  window.history.replaceState(null, "", "/cull?source=list&catalog_tag=birds&catalog_tag=sunset");
+  render(<CullingBrowser />);
+  await screen.findByRole("heading", { name: "Photo 3" });
+  expect(api.getCullingWorkspace).toHaveBeenCalledWith(expect.objectContaining({ tags: ["birds", "sunset"] }), undefined, expect.any(AbortSignal));
+  for (const label of ["Back to List", "Review rejected"]) {
+    const href = screen.getByRole("link", { name: label }).getAttribute("href");
+    expect(href).toContain("catalog_tag=birds");
+    expect(href).toContain("catalog_tag=sunset");
+  }
+});
+
 test("Review rejected opens the all-Reject List even from an empty filtered source", async () => {
   window.history.replaceState(null, "", "/cull?source=list&catalog_search=missing&catalog_category=missing&catalog_sort=rating&returnTo=%2F%3Fsmart_edit%3D7");
   render(<CullingBrowser />);

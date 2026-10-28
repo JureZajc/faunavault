@@ -1,7 +1,8 @@
 import { SmartCollectionQuery } from "./api";
-import { CatalogState, DEFAULT_CATALOG_STATE, writeCatalogState } from "./catalog-query";
+import { CatalogState, DEFAULT_CATALOG_STATE, hasTagFilters, writeCatalogState } from "./catalog-query";
 
 export function savedQueryFromState(state: CatalogState, searchInput: string): SmartCollectionQuery {
+  if (hasTagFilters(state)) throw new Error("Exact tag and untagged filters are live catalog filters and cannot be saved in version-1 Smart Collections. Clear the tag filters before saving.");
   if (state.event_id !== undefined) throw new Error("Trip/Event membership cannot be saved as Smart Collection criteria. Clear the Trip/Event filter first.");
   return {
     import_session_id: state.import_session_id,

@@ -25,6 +25,7 @@ from app.services.image_variants import (
     normalized_extension,
     source_format_for_extension,
 )
+from app.tag_values import normalize_tags as normalize_tags
 
 DOMESTIC_SPECIES_BY_COMMON_NAME = {
     "dog": "Canis lupus familiaris",
@@ -70,19 +71,6 @@ class ClassificationServiceError(RuntimeError):
 class ClassificationOutcome:
     result: ClassificationResult
     fallback_attempted: bool
-
-
-def normalize_tags(tags: list[str] | None) -> list[str]:
-    if tags is None:
-        return []
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for tag in tags:
-        value = tag.strip()
-        if value and value not in seen:
-            normalized.append(value)
-            seen.add(value)
-    return normalized
 
 
 def normalize_metadata_text(value: str | None) -> str | None:

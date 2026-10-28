@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import Integer, String, and_, case, cast, func, or_
+from sqlalchemy import Integer, String, and_, case, cast, func, or_, true
 from sqlmodel import Session, select
 
 from app.catalog_query import CatalogQuery, CatalogSavedQuery
@@ -26,6 +26,60 @@ from app.schemas import (
 from app.services.events import event_or_404
 
 TIMELINE_PREVIEW_LIMIT = 4
+
+# Match Python str.strip(), including Unicode whitespace in legacy arrays.
+_TAG_WHITESPACE = "".join(chr(i) for i in range(0x3100) if chr(i).isspace())
+
+
+def _tag_entries():
+    # CASE guards json_type and json_each against invalid JSON and scalar/object
+    # legacy values. Only non-empty strings are tags; no Photo is hydrated.
+    valid = case((func.json_valid(Photo.tags), Photo.tags), else_="[]")
+    array = case((func.json_type(valid) == "array", valid), else_="[]")
+    return func.json_each(array).table_valued("value", "type")
+
+
+def _tag_name(entries):
+    return func.trim(entries.c.value, _TAG_WHITESPACE)
+
+
+def _tag_conditions(criteria: CatalogQuery) -> list:
+    entries = _tag_entries()
+    membership = (
+        select(1)
+        .select_from(entries)
+        .where(entries.c.type == "text", _tag_name(entries) != "")
+        .correlate(Photo)
+    )
+    if criteria.untagged:
+        return [~membership.exists()]
+    return [
+        membership.where(_tag_name(entries) == tag).exists() for tag in criteria.tags
+    ]
+
+
+def get_catalog_tags(session: Session) -> dict:
+    entries = _tag_entries()
+    name = _tag_name(entries)
+    rows = session.exec(
+        select(name, func.count(func.distinct(Photo.id)))
+        .select_from(Photo)
+        .join(entries, true())
+        .where(Photo.deleted_at.is_(None), entries.c.type == "text", name != "")
+        .group_by(name)
+        .order_by(name.collate("NOCASE"), name)
+    ).all()
+    untagged = session.exec(
+        select(func.count(Photo.id)).where(
+            Photo.deleted_at.is_(None), *_tag_conditions(CatalogQuery(untagged=True))
+        )
+    ).one()
+    return {
+        "tags": [{"name": name, "count": count} for name, count in rows],
+        "total_tags": len(rows),
+        "untagged_count": untagged,
+    }
+
 
 _PHOTO_SEARCH_FIELDS = (
     Photo.display_title,
@@ -243,6 +297,8 @@ def _catalog_joins(query, criteria: CatalogSavedQuery):
 
 def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
     conditions = [Photo.deleted_at.is_(None)]
+    if isinstance(criteria, CatalogQuery):
+        conditions.extend(_tag_conditions(criteria))
     if isinstance(criteria, CatalogQuery) and criteria.event_id is not None:
         conditions.append(
             Photo.id.in_(
@@ -312,10 +368,14 @@ def list_catalog_photos(
     culling_state: CullingFilter | None = None,
     import_session_id: str | None = None,
     event_id: int | None = None,
+    tags: list[str] | None = None,
+    untagged: bool = False,
 ) -> CatalogPhotoPage:
     if event_id is not None:
         event_or_404(event_id, session)
     criteria = CatalogQuery(
+        tags=tags or [],
+        untagged=untagged,
         event_id=event_id,
         search=search,
         status=status,
@@ -342,7 +402,9 @@ def list_catalog_photos(
     conditions = _catalog_conditions(criteria)
 
     selective_photo_filters = bool(
-        event_id is not None
+        criteria.tags
+        or criteria.untagged
+        or event_id is not None
         or import_session_id is not None
         or culling_state is not None
         or favorites_only

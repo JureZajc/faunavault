@@ -11,6 +11,16 @@ import {
   photoMapPointTitle,
 } from "../app/lib/photo-map";
 
+test("Map explains exact tag limitation and links back to the full filtered List", async () => {
+  window.history.replaceState(null, "", "/map?catalog_tag=birds&catalog_tag=sunset");
+  render(<MapBrowser focusPhotoId={null} />);
+  await screen.findByText(/Exact tag filters are not supported on Map/);
+  const href = screen.getByRole("link", { name: "View in List" }).getAttribute("href");
+  expect(href).toContain("catalog_tag=birds");
+  expect(href).toContain("catalog_tag=sunset");
+  expect(api.getPhotoMapPoints).not.toHaveBeenCalled();
+});
+
 const api = vi.hoisted(() => ({
   getPhotoMapPoints: vi.fn(),
   getCatalogFacets: vi.fn(),
@@ -141,7 +151,7 @@ test("shows loading and then passes points plus focus to the map boundary", asyn
   expect(screen.getByText("2 mapped photos")).toBeTruthy();
   expect(
     screen.getAllByRole("link").map((link) => link.textContent),
-  ).toEqual(["List", "Timeline", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash", "View in List"]);
+  ).toEqual(["List", "Tags", "Timeline", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash", "View in List"]);
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("aria-current"))
     .toBe("page");
 });

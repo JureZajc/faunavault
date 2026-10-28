@@ -21,6 +21,18 @@ from app.catalog_query import CatalogSavedQuery
 from app.metadata_types import PhotoCullingState, PhotoRating
 from app.models import Animal, DuplicateScanState, Photo
 
+
+class CatalogTag(SQLModel):
+    name: str
+    count: int
+
+
+class CatalogTags(SQLModel):
+    tags: list[CatalogTag]
+    total_tags: int
+    untagged_count: int
+
+
 ALLOWED_PHOTO_STATUSES = {"pending", "classified", "needs_review"}
 BulkPhotoOperation = Literal[
     "set_culling_state",

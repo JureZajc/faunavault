@@ -394,3 +394,31 @@ Cached pages are a session snapshot; close/reopen to fully refresh concurrent ar
 
 Coverage: `__tests__/gallery-slideshow.test.tsx`, existing Album modal tests, and disposable
 browser journeys in `e2e/gallery.e2e.ts`. Run `npm run test:e2e -- gallery.e2e.ts` for focused journeys.
+
+## Tag Explorer and tag filter state
+
+`/tags` uses `GET /catalog/tags` to display active-photo usage counts, distinct tags,
+and photos without tags, with search, alphabetical/usage sorting, loading, empty,
+error and retry states. Links use the existing catalog URL writer through
+`tagListHref`. List stores each exact tag as a repeated `catalog_tag` parameter;
+`catalog_untagged=1` selects photos with no valid tags. For example,
+`/?catalog_tag=birds&catalog_tag=sunset` requires both tags. Matches are case-sensitive
+and whitespace-trimmed; `bird` does not match `birds`. General Search remains separate.
+
+The List toolbar supports searchable options, selected chips, individual removal,
+clear-all, and a mutually exclusive Photos without tags checkbox. Changes reset
+pagination and preserve other criteria; browser Back/Forward restores them. At most
+20 tag filters of 1000 characters each are accepted; excessive URL criteria show an
+API validation error. Culling preserves exact filters. Unsupported archive views
+explain the limitation before dropping filters, and a directly opened Map URL
+with tag filters offers the corresponding filtered List.
+
+Version-1 Smart Collections cannot persist dedicated tag/untagged criteria. Create
+and update are blocked while these criteria are active, with a clear-filter
+explanation, and `savedQueryFromState` guards the serialization boundary. Existing
+bulk add/remove dialogs can suggest tags; selecting a suggestion only fills the
+input and never submits. Comma-containing legacy tags remain selectable as exact
+filters but are omitted from the comma-delimited bulk suggestions.
+
+Focused coverage: `npm test -- __tests__/catalog-tags.test.tsx` and
+`npm run test:e2e -- tags.e2e.ts`. The E2E runner owns a disposable database and images.

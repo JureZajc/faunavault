@@ -12,6 +12,7 @@ from app.metadata_types import CullingFilter
 from app.schemas import (
     CatalogFacets,
     CatalogPhotoPage,
+    CatalogTags,
     CatalogTaxonPage,
     CullingWorkspace,
     PhotoMapPoint,
@@ -20,6 +21,7 @@ from app.schemas import (
 from app.services.catalog import (
     culling_workspace,
     get_catalog_facets,
+    get_catalog_tags,
     get_photo_timeline,
     list_catalog_photos,
     list_catalog_taxa,
@@ -47,6 +49,10 @@ def create_catalog_router() -> APIRouter:
     def get_facets(session: SessionDep) -> CatalogFacets:
         return get_catalog_facets(session)
 
+    @router.get("/tags", response_model=CatalogTags)
+    def get_tags(session: SessionDep) -> dict:
+        return get_catalog_tags(session)
+
     @router.get("/map", response_model=list[PhotoMapPoint])
     def get_photo_map_points(
         session: SessionDep,
@@ -54,6 +60,8 @@ def create_catalog_router() -> APIRouter:
         status: Literal["pending", "classified", "needs_review"] | None = None,
         category: str | None = Query(default=None, max_length=200),
         uncategorized: bool = False,
+        tags: list[str] = Query(default=[], max_length=20),
+        untagged: bool = False,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -69,6 +77,11 @@ def create_catalog_router() -> APIRouter:
             default=None, include_in_schema=False
         ),
     ) -> list[PhotoMapPoint]:
+        if tags or untagged:
+            raise HTTPException(
+                422,
+                detail="Exact tag filters are not supported on Map. Open the filtered List instead.",
+            )
         if import_session_id is not None:
             raise HTTPException(
                 422, detail="Import Session filters are not supported on Map."
@@ -91,6 +104,8 @@ def create_catalog_router() -> APIRouter:
             status=status,
             category=category,
             uncategorized=uncategorized,
+            tags=tags,
+            untagged=untagged,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,
@@ -106,6 +121,8 @@ def create_catalog_router() -> APIRouter:
         status: Literal["pending", "classified", "needs_review"] | None = None,
         category: str | None = Query(default=None, max_length=200),
         uncategorized: bool = False,
+        tags: list[str] = Query(default=[], max_length=20),
+        untagged: bool = False,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -134,6 +151,8 @@ def create_catalog_router() -> APIRouter:
             status=status,
             category=category,
             uncategorized=uncategorized,
+            tags=tags,
+            untagged=untagged,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,
@@ -161,6 +180,8 @@ def create_catalog_router() -> APIRouter:
         status: Literal["pending", "classified", "needs_review"] | None = None,
         category: str | None = Query(default=None, max_length=200),
         uncategorized: bool = False,
+        tags: list[str] = Query(default=[], max_length=20),
+        untagged: bool = False,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -189,6 +210,8 @@ def create_catalog_router() -> APIRouter:
             status=status,
             category=category,
             uncategorized=uncategorized,
+            tags=tags,
+            untagged=untagged,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,

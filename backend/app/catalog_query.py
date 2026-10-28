@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.metadata_types import CullingFilter, PhotoRating
 from app.services.import_sessions import canonical_session_id
+from app.tag_values import normalize_tags
 
 CatalogStatus = Literal["pending", "classified", "needs_review"]
 CatalogSort = Literal[
@@ -78,6 +79,21 @@ class CatalogSavedQuery(BaseModel):
 
 
 class CatalogQuery(CatalogSavedQuery):
-    """Live criteria; Event membership deliberately cannot be persisted in Smart queries."""
+    """Live criteria; Event membership and tags cannot be persisted in v1 Smart queries."""
 
     event_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    untagged: bool = False
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_filter_tags(cls, value: list[str]) -> list[str]:
+        if any(len(tag) > 1000 for tag in value):
+            raise ValueError("tag filters must be at most 1000 characters each")
+        return normalize_tags(value)
+
+    @model_validator(mode="after")
+    def validate_tag_filters(self) -> CatalogQuery:
+        if self.tags and self.untagged:
+            raise ValueError("tags and untagged cannot be combined")
+        return self

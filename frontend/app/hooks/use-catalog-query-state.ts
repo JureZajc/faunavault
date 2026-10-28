@@ -25,6 +25,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     () => parseCatalogState(new URLSearchParams(paramsString)),
     [paramsString],
   );
+  const latestCatalogState = useRef(catalogState);
   const homeView = useMemo(
     () => parseHomeView(new URLSearchParams(paramsString)),
     [paramsString],
@@ -48,6 +49,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
 
   const updateCatalog = useCallback(
     (nextState: typeof catalogState, replace = false) => {
+      latestCatalogState.current = nextState;
       navigate(
         (mode === "map" ? writeMapCatalogState : writeCatalogState)(new URLSearchParams(paramsString), nextState),
         replace,
@@ -55,6 +57,11 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     },
     [mode, navigate, paramsString],
   );
+  const latestUpdateCatalog = useRef(updateCatalog);
+  useEffect(() => {
+    latestCatalogState.current = catalogState;
+    latestUpdateCatalog.current = updateCatalog;
+  }, [catalogState, updateCatalog]);
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -75,8 +82,8 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
     searchTimer.current = window.setTimeout(() => {
       searchTimer.current = null;
-      updateCatalog(
-        { ...catalogState, search: value.trim() || undefined, page: 1 },
+      latestUpdateCatalog.current(
+        { ...latestCatalogState.current, search: value.trim() || undefined, page: 1 },
         true,
       );
     }, 300);
@@ -85,6 +92,11 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
   function cancelPendingSearch() {
     if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
     searchTimer.current = null;
+  }
+
+  function setTagFilters(tags: string[], untagged = false) {
+    cancelPendingSearch();
+    updateCatalog({ ...catalogState, search: searchInput.trim() || undefined, tags, untagged: untagged || undefined, page: 1 });
   }
 
   function setFavoritesOnly(favorites_only: boolean) {
@@ -156,6 +168,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
         ...catalogState,
         page: 1,
         favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
+        tags: undefined, untagged: undefined,
         event_id: undefined,
         import_session_id: undefined,
         culling_state: undefined,
@@ -186,6 +199,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     returnTo: paramsString ? `${pathname}?${paramsString}` : pathname,
     setSearchInput,
     cancelPendingSearch,
+    setTagFilters,
     setFavoritesOnly,
     setCullingState,
     setRatingFilter,

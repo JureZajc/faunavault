@@ -1,5 +1,6 @@
 "use client";
 
+import { useCatalogTags } from "../../hooks/use-catalog-tags";
 import { FormEvent, useRef, useState } from "react";
 import { useModalAccessibility } from "../../hooks/use-modal-accessibility";
 import { BulkPhotoActionRequest, PhotoCullingState, PhotoRating } from "../../lib/api";
@@ -29,6 +30,7 @@ export default function BulkActionDialog({
   rejectedReview = false,
   onRefreshRejected,
 }: BulkActionDialogProps) {
+  const tagOptions = useCatalogTags(action === "add_tags" || action === "remove_tags");
   const [favorite, setFavorite] = useState(true);
   const [rating, setRating] = useState("5");
   const [culling, setCulling] = useState<PhotoCullingState | "clear">("pick");
@@ -146,6 +148,11 @@ export default function BulkActionDialog({
             />
           </label>
         ) : null}
+
+        {action === "add_tags" || action === "remove_tags" ? <label className="mt-3 block text-sm">Suggest an existing tag
+          <select value="" disabled={isBusy} onChange={(event) => { if (event.target.value) setTagsInput([...tags, event.target.value].join(", ")); }} className="mt-1 min-h-11 w-full rounded-md border px-3"><option value="">{tagOptions.loading ? "Loading tags…" : "Choose a suggestion"}</option>{tagOptions.data?.tags.filter((tag) => !tag.name.includes(",") && !tags.includes(tag.name)).map((tag) => <option key={tag.name} value={tag.name}>{tag.name} ({tag.count})</option>)}</select>
+          {tagOptions.error && <span role="alert">Could not load suggestions. You can still enter tags. <button type="button" onClick={tagOptions.retry} className="min-h-11 underline">Retry suggestions</button></span>}
+        </label> : null}
 
         {action === "favorite" ? <label className="mt-4 block text-sm font-medium">Favorite action<select aria-label="Favorite action" value={favorite ? "favorite" : "unfavorite"} disabled={isBusy} onChange={(event) => setFavorite(event.target.value === "favorite")} className="mt-2 min-h-11 w-full rounded-md border px-3"><option value="favorite">Favorite selected</option><option value="unfavorite">Unfavorite selected</option></select></label> : null}
         {action === "rating" ? <label className="mt-4 block text-sm font-medium">Rating action<select aria-label="Rating action" value={rating} disabled={isBusy} onChange={(event) => setRating(event.target.value)} className="mt-2 min-h-11 w-full rounded-md border px-3">{[1,2,3,4,5].map((value) => <option key={value} value={value}>{value} stars</option>)}<option value="clear">Clear rating</option></select></label> : null}

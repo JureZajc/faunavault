@@ -13,7 +13,7 @@ import { useCatalogFacets } from "../hooks/use-catalog-facets";
 import { useCatalogQueryState } from "../hooks/use-catalog-query-state";
 import { useCatalogTaxa } from "../hooks/use-catalog-taxa";
 import { usePhotoMapPoints } from "../hooks/use-photo-map-points";
-import { hasCurationFilters, mapCatalogHref, mapListHref } from "../lib/catalog-query";
+import { hasTagFilters, hasCurationFilters, mapCatalogHref, mapListHref } from "../lib/catalog-query";
 
 export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | null }) {
   const query = useCatalogQueryState("map");
@@ -21,7 +21,8 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
   const unsupportedSearch = Boolean(state.search);
   const unsupportedCuration = hasCurationFilters(state);
   const unsupportedImport = Boolean(state.import_session_id);
-  const unsupported = unsupportedSearch || unsupportedCuration || unsupportedImport;
+  const unsupportedTags = hasTagFilters(state);
+  const unsupported = unsupportedTags || unsupportedSearch || unsupportedCuration || unsupportedImport;
   const locations = usePhotoMapPoints(state, unsupported);
   const options = useCatalogFacets();
   const taxa = useCatalogTaxa(state.taxon_id);
@@ -40,6 +41,7 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
     unsupportedCuration ? "Unsupported Favorite/Rating filters or Culling filters" : null,
     unsupportedSearch ? `Unsupported search: ${state.search}` : null,
     unsupportedImport ? "Unsupported Import Session filter" : null,
+    unsupportedTags ? "Unsupported exact tag filters" : null,
   ].filter(Boolean);
   const ready = !locations.isLoading && !locations.error && !unsupported;
   const count = locations.points?.length ?? 0;
@@ -49,7 +51,7 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
     <main className="min-h-screen min-w-0 overflow-x-hidden bg-[#f7f8f4] text-stone-950">
       <div className="mx-auto max-w-7xl px-3 py-8 sm:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <ArchiveNavigation active="map" />
+          <ArchiveNavigation active="map" catalogState={state} />
           <p className="text-sm text-stone-500 lg:text-right">Browse active photos by capture location</p>
         </div>
         {state.event_id !== undefined ? <div className="mt-5"><EventListContext id={String(state.event_id)} /></div> : null}
@@ -91,8 +93,8 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
           <h2 id="archive-map-heading" className="sr-only">Interactive archive map</h2>
           {unsupported ? (
             <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-              <p>{unsupportedImport ? "Import Session filters are not supported on Map. Remove unsupported filters to view locations, or use View in List." : unsupportedCuration ? "Favorite/Rating filters are not supported on Map. Culling filters are also unsupported. Remove unsupported filters to view locations, or use View in List." : "Text search is not supported on Map. Remove it to view locations, or use View in List."}</p>
-              <button type="button" onClick={() => query.setStatus(state.status)} className={`${buttonClass} mt-3`}>{unsupportedCuration || unsupportedImport ? "Remove unsupported filters" : "Remove text search"}</button>
+              <p>{unsupportedTags ? "Exact tag filters are not supported on Map. Use View in List to keep all your tag filters, or remove unsupported filters." : unsupportedImport ? "Import Session filters are not supported on Map. Remove unsupported filters to view locations, or use View in List." : unsupportedCuration ? "Favorite/Rating filters are not supported on Map. Culling filters are also unsupported. Remove unsupported filters to view locations, or use View in List." : "Text search is not supported on Map. Remove it to view locations, or use View in List."}</p>
+              <button type="button" onClick={() => query.setStatus(state.status)} className={`${buttonClass} mt-3`}>{unsupportedTags || unsupportedCuration || unsupportedImport ? "Remove unsupported filters" : "Remove text search"}</button>
             </div>
           ) : locations.isLoading ? (
             <div role="status" className="grid h-[clamp(24rem,calc(100dvh-13rem),56rem)] place-items-center rounded-lg border border-stone-200 bg-stone-200 text-sm text-stone-600">Loading photo locations…</div>

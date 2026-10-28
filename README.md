@@ -284,3 +284,18 @@ own API URL, so restart/rebuild normal frontend development afterward.
 
 The project uses the MIT license. The committed HEIC compatibility fixture
 retains its [BSD-3-Clause notice](backend/tests/fixtures/heic/LICENSE.txt).
+
+## Tag Explorer and exact tags
+
+Open **Tags** (`/tags`) to search all tags on active photos, sort alphabetically or
+by usage, and see distinct-tag and untagged-photo totals. Click a tag to open its
+exact match in List. List supports multiple tags with **AND** semantics, removable
+chips, a clear action, and **Photos without tags**. Filters persist in the URL and
+browser history. `bird` does not match `birds`; tag matching preserves case and
+trims whitespace just like existing photo and bulk tag edits. General text search
+keeps its broader behavior and can be combined with exact tags.
+
+Tag filters also work in Culling. Map explains its limitation and links back to
+the filtered List. Exact tags and untagged are live catalog criteria: version-1
+Smart Collections cannot save them. Clear tag filters before creating or updating
+a Smart Collection. No database migration or new tagging storage is required.
