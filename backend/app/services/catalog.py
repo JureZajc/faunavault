@@ -39,6 +39,100 @@ def _tag_entries():
     return func.json_each(array).table_valued("value", "type")
 
 
+def _gear_value(column):
+    return func.coalesce(func.trim(column, _TAG_WHITESPACE), "")
+
+
+def get_catalog_gear(
+    session: Session,
+    *,
+    page: int = 1,
+    page_size: int = 100,
+    search: str = "",
+    sort: str = "name",
+) -> dict:
+    """Four scalar/grouped SQL queries, bounded rows, no Photo hydration."""
+    make = _gear_value(Photo.camera_make)
+    model = _gear_value(Photo.camera_model)
+    lens = _gear_value(Photo.lens_model)
+    active = Photo.deleted_at.is_(None)
+    total, camera_models, lens_models, unknown_camera, unknown_lens = session.exec(
+        select(
+            func.count(Photo.id),
+            func.count(func.distinct(func.nullif(model, ""))),
+            func.count(func.distinct(func.nullif(lens, ""))),
+            func.count(case((and_(make == "", model == ""), 1))),
+            func.count(case((lens == "", 1))),
+        ).where(active)
+    ).one()
+    count = func.count(Photo.id)
+    cameras = select(
+        make.label("make"), model.label("model"), count.label("count")
+    ).where(active, or_(make != "", model != ""))
+    lenses = select(lens.label("lens"), count.label("count")).where(active, lens != "")
+    if search.strip():
+        pattern = f"%{_escape_like(search.strip())}%"
+        cameras = cameras.where(
+            or_(make.ilike(pattern, escape="\\"), model.ilike(pattern, escape="\\"))
+        )
+        lenses = lenses.where(lens.ilike(pattern, escape="\\"))
+    cameras = cameras.group_by(make, model).subquery()
+    lenses = lenses.group_by(lens).subquery()
+    camera_total, lens_total = session.exec(
+        select(
+            select(func.count()).select_from(cameras).scalar_subquery(),
+            select(func.count()).select_from(lenses).scalar_subquery(),
+        )
+    ).one()
+    camera_order = [
+        cameras.c.make.collate("NOCASE"),
+        cameras.c.make,
+        cameras.c.model.collate("NOCASE"),
+        cameras.c.model,
+    ]
+    lens_order = [lenses.c.lens.collate("NOCASE"), lenses.c.lens]
+    if sort == "count":
+        camera_order.insert(0, cameras.c.count.desc())
+        lens_order.insert(0, lenses.c.count.desc())
+    offset = (page - 1) * page_size
+    camera_rows = session.exec(
+        select(cameras.c.make, cameras.c.model, cameras.c.count)
+        .order_by(*camera_order)
+        .offset(offset)
+        .limit(page_size)
+    ).all()
+    lens_rows = session.exec(
+        select(lenses.c.lens, lenses.c.count)
+        .order_by(*lens_order)
+        .offset(offset)
+        .limit(page_size)
+    ).all()
+    return {
+        "active_total": total,
+        "distinct_camera_models": camera_models,
+        "distinct_lens_models": lens_models,
+        "unknown_camera_count": unknown_camera,
+        "unknown_lens_count": unknown_lens,
+        "camera_total": camera_total,
+        "lens_total": lens_total,
+        "page": page,
+        "page_size": page_size,
+        "cameras": [
+            {
+                "camera_make": make or None,
+                "camera_model": model or None,
+                "count": count,
+                "percentage": count * 100 / total,
+            }
+            for make, model, count in camera_rows
+        ],
+        "lenses": [
+            {"lens_model": lens, "count": count, "percentage": count * 100 / total}
+            for lens, count in lens_rows
+        ],
+    }
+
+
 def _tag_name(entries):
     return func.trim(entries.c.value, _TAG_WHITESPACE)
 
@@ -299,6 +393,19 @@ def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
     conditions = [Photo.deleted_at.is_(None)]
     if isinstance(criteria, CatalogQuery):
         conditions.extend(_tag_conditions(criteria))
+        for field in ("camera_make", "camera_model", "lens_model"):
+            value = getattr(criteria, field)
+            if value is not None:
+                conditions.append(_gear_value(getattr(Photo, field)) == value)
+        if criteria.unknown_camera:
+            conditions.extend(
+                [
+                    _gear_value(Photo.camera_make) == "",
+                    _gear_value(Photo.camera_model) == "",
+                ]
+            )
+        if criteria.unknown_lens:
+            conditions.append(_gear_value(Photo.lens_model) == "")
     if isinstance(criteria, CatalogQuery) and criteria.event_id is not None:
         conditions.append(
             Photo.id.in_(
@@ -370,10 +477,20 @@ def list_catalog_photos(
     event_id: int | None = None,
     tags: list[str] | None = None,
     untagged: bool = False,
+    camera_make: str | None = None,
+    camera_model: str | None = None,
+    lens_model: str | None = None,
+    unknown_camera: bool = False,
+    unknown_lens: bool = False,
 ) -> CatalogPhotoPage:
     if event_id is not None:
         event_or_404(event_id, session)
     criteria = CatalogQuery(
+        camera_make=camera_make,
+        camera_model=camera_model,
+        lens_model=lens_model,
+        unknown_camera=unknown_camera,
+        unknown_lens=unknown_lens,
         tags=tags or [],
         untagged=untagged,
         event_id=event_id,
@@ -402,7 +519,12 @@ def list_catalog_photos(
     conditions = _catalog_conditions(criteria)
 
     selective_photo_filters = bool(
-        criteria.tags
+        camera_make is not None
+        or camera_model is not None
+        or lens_model is not None
+        or unknown_camera
+        or unknown_lens
+        or criteria.tags
         or criteria.untagged
         or event_id is not None
         or import_session_id is not None

@@ -176,7 +176,26 @@ export type CatalogSort =
 
 export type CatalogOrder = "asc" | "desc";
 
-export type CatalogQuery = {
+export type EquipmentQuery = {
+  camera_make?: string;
+  camera_model?: string;
+  lens_model?: string;
+  unknown_camera?: boolean;
+  unknown_lens?: boolean;
+};
+export type GearCamera = { camera_make: string | null; camera_model: string | null; count: number; percentage: number };
+export type GearLens = { lens_model: string; count: number; percentage: number };
+export type CatalogGear = {
+  active_total: number; distinct_camera_models: number; distinct_lens_models: number;
+  unknown_camera_count: number; unknown_lens_count: number;
+  cameras: GearCamera[]; lenses: GearLens[]; camera_total: number; lens_total: number;
+  page: number; page_size: number;
+};
+export function getCatalogGear(search = "", sort = "name", page = 1, signal?: AbortSignal) {
+  return request<CatalogGear>(`/catalog/gear?${new URLSearchParams({ search, sort, page: String(page) })}`, { signal });
+}
+
+export type CatalogQuery = EquipmentQuery & {
   tags?: string[];
   untagged?: boolean;
   event_id?: number;
@@ -307,7 +326,7 @@ export type CollectionDetail = CollectionSummary & {
   photos: CollectionPhotoPage;
 };
 
-export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id" | "tags" | "untagged">;
+export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id" | "tags" | "untagged" | keyof EquipmentQuery>;
 export type SmartCollectionSummary = {
   id: number;
   name: string;
@@ -964,6 +983,11 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
 
 function catalogQueryParams(query: CatalogQuery) {
   const params = new URLSearchParams();
+  for (const key of ["camera_make", "camera_model", "lens_model"] as const) {
+    if (query[key] !== undefined) params.set(key, query[key]);
+  }
+  if (query.unknown_camera) params.set("unknown_camera", "true");
+  if (query.unknown_lens) params.set("unknown_lens", "true");
   for (const tag of query.tags ?? []) params.append("tags", tag);
   if (query.untagged) params.set("untagged", "true");
   if (query.event_id !== undefined) params.set("event_id", String(query.event_id));

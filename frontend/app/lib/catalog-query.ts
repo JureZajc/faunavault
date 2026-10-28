@@ -5,6 +5,8 @@ import {
   PhotoStatus,
   PhotoRating,
   CullingFilter,
+  EquipmentQuery,
+  GearCamera,
 } from "./api";
 
 export type CatalogLayout = "flat" | "grouped";
@@ -55,6 +57,7 @@ export function mapListHref(state: CatalogState) {
     culling_state: state.culling_state,
     import_session_id: state.import_session_id,
     tags: state.tags, untagged: state.untagged,
+    ...equipmentQuery(state),
   }).toString();
   return query ? `/?${query}` : "/";
 }
@@ -71,7 +74,7 @@ export const REJECTED_PHOTOS_HREF = "/?catalog_culling_state=reject";
 
 export function hasAdditionalRejectedFilters(state: CatalogQuery) {
   return Boolean(
-    hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
+    hasEquipmentFilters(state) || hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
     state.taxon_id || state.taken_from || state.taken_to || state.favorites_only ||
     state.rating || state.rating_min || state.unrated,
   );
@@ -162,6 +165,11 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   const unrated = params.get("catalog_unrated") === "1";
   const culling = params.get("catalog_culling_state");
   return {
+    camera_make: params.has("catalog_camera_make") ? trimTag(params.get("catalog_camera_make")!) : undefined,
+    camera_model: params.has("catalog_camera_model") ? trimTag(params.get("catalog_camera_model")!) : undefined,
+    lens_model: params.has("catalog_lens_model") ? trimTag(params.get("catalog_lens_model")!) : undefined,
+    unknown_camera: params.get("catalog_unknown_camera") === "1" || undefined,
+    unknown_lens: params.get("catalog_unknown_lens") === "1" || undefined,
     tags: params.has("catalog_tag") ? Array.from(new Set(params.getAll("catalog_tag").map(trimTag).filter(Boolean))) : undefined,
     untagged: params.get("catalog_untagged") === "1" || undefined,
     event_id: params.has("catalog_event_id") ? positiveInteger(params.get("catalog_event_id")) ?? 0 : undefined,
@@ -195,6 +203,12 @@ export function writeCatalogState(
     if (value) params.set(key, value);
     else params.delete(key);
   };
+  for (const key of ["camera_make", "camera_model", "lens_model"] as const) {
+    if (state[key] !== undefined) params.set(`catalog_${key}`, state[key]);
+    else params.delete(`catalog_${key}`);
+  }
+  setOrDelete("catalog_unknown_camera", state.unknown_camera ? "1" : undefined);
+  setOrDelete("catalog_unknown_lens", state.unknown_lens ? "1" : undefined);
   params.delete("catalog_tag");
   for (const tag of state.tags ?? []) params.append("catalog_tag", tag);
   setOrDelete("catalog_untagged", state.untagged ? "1" : undefined);
@@ -274,4 +288,24 @@ export function catalogListHref(state: CatalogState) {
 
 export function tagListHref(tag?: string) {
   return catalogListHref({ ...DEFAULT_CATALOG_STATE, tags: tag === undefined ? [] : [tag], untagged: tag === undefined });
+}
+
+export function equipmentQuery(state: EquipmentQuery): EquipmentQuery {
+  const { camera_make, camera_model, lens_model, unknown_camera, unknown_lens } = state;
+  return { camera_make, camera_model, lens_model, unknown_camera, unknown_lens };
+}
+
+export function hasEquipmentFilters(state: EquipmentQuery) {
+  return state.camera_make !== undefined || state.camera_model !== undefined || state.lens_model !== undefined || Boolean(state.unknown_camera || state.unknown_lens);
+}
+
+export function gearListHref(criteria: EquipmentQuery) {
+  return catalogListHref({ ...DEFAULT_CATALOG_STATE, ...criteria });
+}
+
+export function cameraLabel(camera: Pick<GearCamera, "camera_make" | "camera_model">) {
+  const make = camera.camera_make ?? "";
+  const model = camera.camera_model ?? "";
+  const containsMake = model.toLocaleLowerCase().includes(make.toLocaleLowerCase());
+  return (containsMake ? model : `${make} ${model}`).trim() || "Unknown camera";
 }

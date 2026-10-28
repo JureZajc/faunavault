@@ -79,11 +79,32 @@ class CatalogSavedQuery(BaseModel):
 
 
 class CatalogQuery(CatalogSavedQuery):
-    """Live criteria; Event membership and tags cannot be persisted in v1 Smart queries."""
+    """Live criteria; Events, tags and equipment cannot be saved in v1 Smart queries."""
 
     event_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
     tags: list[str] = Field(default_factory=list, max_length=20)
     untagged: bool = False
+    # Empty strings explicitly select a missing component of a partial identity.
+    camera_make: str | None = Field(default=None, max_length=1000)
+    camera_model: str | None = Field(default=None, max_length=1000)
+    lens_model: str | None = Field(default=None, max_length=1000)
+    unknown_camera: bool = False
+    unknown_lens: bool = False
+
+    @field_validator("camera_make", "camera_model", "lens_model")
+    @classmethod
+    def trim_equipment(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_equipment(self) -> CatalogQuery:
+        if self.unknown_camera and (
+            self.camera_make is not None or self.camera_model is not None
+        ):
+            raise ValueError("camera criteria and unknown_camera cannot be combined")
+        if self.unknown_lens and self.lens_model is not None:
+            raise ValueError("lens_model and unknown_lens cannot be combined")
+        return self
 
     @field_validator("tags")
     @classmethod

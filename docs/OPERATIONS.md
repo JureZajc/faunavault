@@ -4,6 +4,58 @@ Detailed workflows and API behavior for the source-based application. Start with
 [Quick Start](../README.md#quick-start). Backend commands below run from `backend`;
 root developer commands run from the repository root.
 
+## Camera & Lens Explorer
+
+Choose **Gear** to explore cameras and lenses extracted from imported EXIF.
+Only active Photos contribute; Trash removes their contribution and Restore returns
+it. Counts and percentages use the entire active archive, even when searching or
+paging equipment. Distinct camera/lens model totals count nonblank model strings;
+manufacturer-only records appear in camera groups but have no model to count.
+Camera groups use the exact trimmed `(camera_make, camera_model)` pair. Differently
+spelled or cased values remain separate, and model-only records never acquire an
+inferred manufacturer. Labels avoid repeating a manufacturer already in the model.
+
+Click a camera, lens, or missing-equipment total to open List. Independent exact
+manufacturer/model/lens criteria combine with AND and with tags, taxonomy,
+classification, category, search, Favorites, Ratings, Culling, dates, Import Session
+and Trip/Event membership. List and Culling share the validated catalog query and
+retain normal counts, sorting and pagination. **Exact equipment** supports individual
+removal, clearing all equipment, and missing-camera/lens options. URLs and browser
+history retain equipment criteria; changing criteria resets the List page.
+
+Equipment is descriptive imported metadata, not verified identity. Stored strings
+and original files stay untouched; comparisons trim Python-style whitespace and
+use case-sensitive equality, without substring, brand, or spelling normalization.
+A camera is unknown only if both make and model are null/blank; a lens is unknown
+if its model is null/blank. Partial information is retained. No external equipment
+lookup, AI classification, new tables or migration is involved.
+
+`GET /catalog/gear` returns typed overview totals, `cameras` (make, model, count,
+percentage), `lenses` (model, count, percentage), matching `camera_total`/`lens_total`,
+`page` and `page_size`. Parameters: `search` (literal substring of equipment values,
+up to 200 characters), `sort=name|count`, `page>=1`, and `page_size=1..200` (default
+100). Each list is paged independently at the same page/size; the shorter list may
+be empty on later pages. Overview totals remain archive-wide. Alphabetical ordering
+uses make then model for cameras and model for lenses; most-used sorting adds count
+descending first. Binary value tie-breakers keep pages deterministic.
+
+`GET /catalog/photos` and `/catalog/culling` accept `camera_make`, `camera_model`,
+`lens_model` (up to 1000 characters), `unknown_camera`, `unknown_lens`. Omit a string
+parameter for no criterion; an explicitly empty value selects a missing component.
+Gear links include both camera components, using an empty value where absent, so
+partial-group links match their displayed counts exactly. Unknown camera plus any
+camera component, or unknown lens plus a lens component, returns HTTP 422. Live
+equipment criteria are excluded from version-1 Smart Collections; both new saves
+and updates are blocked. Map rejects equipment criteria and offers the full List;
+Timeline and other archive views keep their existing filtering contracts.
+
+Aggregation uses four scalar/grouped SQL statements, bounded returned rows and no
+Photo hydration or N+1 queries. SQLite scans active EXIF fields and groups them in
+SQL; trimming expressions and substring option search require scans rather than
+raw-column indexes. Cost grows with active archive size; pagination bounds response
+and browser memory, not the aggregation scan. A 10,000-photo regression test checks
+query count, a generous time budget, deterministic pages and zero Photo hydration.
+
 ## Selected photo ZIP export
 
 In List, enter **Select photos**, select individual photos or a page, and choose

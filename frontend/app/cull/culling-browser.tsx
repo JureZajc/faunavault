@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import EventListContext from "../components/events/event-list-context";
-import { catalogListHref, hasTagFilters, writeCatalogState } from "../lib/catalog-query";
+import { catalogListHref, hasEquipmentFilters, hasTagFilters, writeCatalogState } from "../lib/catalog-query";
 import ImportSessionSummary from "../components/import-session-summary";
 import { importRejectedHref } from "../lib/import-sessions";
 import ArchiveNavigation from "../components/archive-navigation";
@@ -198,8 +198,8 @@ export default function CullingBrowser() {
       <header className="mt-6 flex flex-wrap items-end justify-between gap-3">
         <div><h1 className="text-3xl font-semibold">Photo Culling</h1><p className="mt-2 text-sm text-stone-600">{source === "list" ? "Current List query" : "Active undecided photos"} · Pick selects; Reject keeps the photo in your archive.</p></div>
         <div className="flex flex-wrap gap-2">
-          <Link href={hasTagFilters(query) || query.event_id !== undefined ? `/?${writeCatalogState(new URLSearchParams(), { ...query, page: 1, culling_state: "reject" })}` : query.import_session_id ? importRejectedHref(query.import_session_id) : REJECTED_PHOTOS_HREF} aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Review rejected</Link>
-          <Link href={safeListReturn(params.get("returnTo"), hasTagFilters(query) ? catalogListHref(query) : "/")} aria-disabled={busy} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Back to List</Link>
+          <Link href={(hasTagFilters(query) || hasEquipmentFilters(query)) || query.event_id !== undefined ? `/?${writeCatalogState(new URLSearchParams(), { ...query, page: 1, culling_state: "reject" })}` : query.import_session_id ? importRejectedHref(query.import_session_id) : REJECTED_PHOTOS_HREF} aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Review rejected</Link>
+          <Link href={safeListReturn(params.get("returnTo"), (hasTagFilters(query) || hasEquipmentFilters(query)) ? catalogListHref(query) : "/")} aria-disabled={busy} onClick={(event) => { if (saving.current) event.preventDefault(); }} className={buttonClass + " inline-flex items-center"}>Back to List</Link>
         </div>
       </header>
       <p role="status" className="mt-4 text-sm text-stone-600">{workspace?.total ?? 0} matching photos · {decided.size} decisions this session</p>

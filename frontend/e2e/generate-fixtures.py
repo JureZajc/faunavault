@@ -180,6 +180,21 @@ def generate(test_root: Path) -> None:
         fixtures / "faunavault-e2e-culling-pick.jpg", format="JPEG", quality=84
     )
 
+    # Disposable equipment EXIF exercises extraction, not a metadata-edit API.
+    gear = [
+        ("E2E Canon", "E2E Canon EOS R5", "E2E RF100-500mm"),
+        ("E2E Canon", "E2E Canon EOS R5", "E2E RF100-500mm II"),
+        ("E2E Nikon", "E2E Z9", "E2E RF100-500mm"),
+        ("E2E Canon", None, None),
+        (None, None, None),
+    ]
+    for index, values in enumerate(gear):
+        exif = Image.Exif()
+        for tag, value in zip((ExifTags.Base.Make, ExifTags.Base.Model, ExifTags.Base.LensModel), values, strict=True):
+            if value is not None:
+                exif[int(tag)] = value
+        bulk_scene(index % 2 + 1).save(fixtures / f"faunavault-e2e-gear-{index}.jpg", format="JPEG", quality=85 + index, exif=exif)
+
     heic_exif = Image.Exif()
     heic_exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:23 09:15:00"
     heic_exif[int(ExifTags.Base.OffsetTimeOriginal)] = "+02:00"
