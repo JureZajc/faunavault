@@ -6,6 +6,13 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Custom Trip/Event cover Photos with immediate member selection, removal,
+  responsive thumbnail cards/headers, and deterministic automatic fallback.
+  Trash retains the custom choice for Restore; membership removal and permanent
+  deletion clear it. SQLite serializes cover/membership updates. Append-only
+  schema 20, backup-v1 verification/rehearsal through schemas 9–20, and portable
+  metadata v11 preserve covers, including Trash references.
+
 - Interactive Leaflet GPS picker for single-photo metadata drafts and bulk Set GPS:
   click/tap, drag a marker, or edit full-precision coordinates. Accessible keyboard
   entry, Cancel/focus restoration, loading/error fallback, and responsive layouts.

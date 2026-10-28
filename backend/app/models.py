@@ -338,6 +338,12 @@ class ArchiveEvent(SQLModel, table=True):
     end_date: date
     location_label: str | None = None
     notes: str | None = None
+    cover_photo_id: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer, ForeignKey("photo.id", ondelete="SET NULL"), index=True
+        ),
+    )
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

@@ -791,7 +791,18 @@ def _event_records(connection) -> tuple[tuple, tuple]:
 def read_event_signature(path: Path) -> tuple[tuple, tuple]:
     connection = open_read_only_database(path)
     try:
-        return _event_records(connection)
+        records, memberships = _event_records(connection)
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(archive_event)")
+        }
+        covers = (
+            dict(connection.execute("SELECT id, cover_photo_id FROM archive_event"))
+            if "cover_photo_id" in columns
+            else {}
+        )
+        # Normalize historical schema-19 Events to an absent custom cover, so
+        # migration rehearsal compares the complete metadata without loss.
+        return tuple(row + (covers.get(row[0]),) for row in records), memberships
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(f"Could not read Trips/Events: {exc}") from exc
     finally:
@@ -881,6 +892,54 @@ def _inspect_schema_19(connection, migrations: list[int]) -> DatabaseInventory:
     )
 
 
+def validate_event_covers(connection) -> None:
+    column = next(
+        (
+            row
+            for row in connection.execute("PRAGMA table_info(archive_event)")
+            if row[1] == "cover_photo_id"
+        ),
+        None,
+    )
+    if column is None or (column[2].upper(), column[3], column[4], column[5]) != (
+        "INTEGER",
+        0,
+        None,
+        0,
+    ):
+        raise ArchiveIntegrityError("Invalid Trip/Event cover column structure")
+    if not any(
+        row[2:5] == ("photo", "cover_photo_id", "id") and row[6] == "SET NULL"
+        for row in connection.execute("PRAGMA foreign_key_list(archive_event)")
+    ):
+        raise ArchiveIntegrityError("Missing Trip/Event cover SET NULL foreign key")
+    if not any(
+        row[1] == "ix_archive_event_cover_photo_id" and row[4] == 0
+        for row in connection.execute("PRAGMA index_list(archive_event)")
+    ) or [
+        row[2]
+        for row in connection.execute(
+            "PRAGMA index_info(ix_archive_event_cover_photo_id)"
+        )
+    ] != ["cover_photo_id"]:
+        raise ArchiveIntegrityError("Missing Trip/Event cover index")
+    invalid = connection.execute(
+        "SELECT e.id FROM archive_event e WHERE e.cover_photo_id IS NOT NULL AND "
+        "(NOT EXISTS (SELECT 1 FROM photo p WHERE p.id=e.cover_photo_id) OR "
+        "NOT EXISTS (SELECT 1 FROM archive_event_photo m WHERE m.event_id=e.id AND m.photo_id=e.cover_photo_id)) LIMIT 1"
+    ).fetchone()
+    if invalid:
+        raise ArchiveIntegrityError(
+            "Trip/Event cover must reference an existing member Photo"
+        )
+
+
+def _inspect_schema_20(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_19(connection, migrations)
+    validate_event_covers(connection)
+    return base
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
@@ -893,6 +952,7 @@ SCHEMA_INVENTORY_READERS = {
     17: _inspect_schema_17,
     18: _inspect_schema_18,
     19: _inspect_schema_19,
+    20: _inspect_schema_20,
 }
 
 

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.catalog_query import CatalogSavedQuery
 from app.metadata_types import PhotoCullingState, PhotoRating
 
-EXPORT_FORMAT_VERSION = 10
+EXPORT_FORMAT_VERSION = 11
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -304,6 +304,7 @@ class ArchiveEventExport(StrictExportModel):
     end_date: str
     location_label: str | None
     notes: str | None
+    cover_photo_id: int | None = Field(ge=1)
     created_at: str
     updated_at: str
 
@@ -406,6 +407,15 @@ class ArchiveMetadataExport(StrictExportModel):
         collection_ids = {collection.id for collection in self.collections}
         photo_ids = {photo.id for photo in self.photos}
         event_ids = {item.id for item in self.archive_events}
+        event_memberships = set(event_keys)
+        if any(
+            item.cover_photo_id is not None
+            and (item.id, item.cover_photo_id) not in event_memberships
+            for item in self.archive_events
+        ):
+            raise ValueError(
+                "Trip/Event cover must reference a member Photo in the export"
+            )
         if any(
             item.event_id not in event_ids or item.photo_id not in photo_ids
             for item in self.archive_event_photos

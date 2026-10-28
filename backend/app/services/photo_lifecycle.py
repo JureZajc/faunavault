@@ -13,12 +13,13 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
+from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, func, select
 
 from app.album_identity import normalize_legacy_species_group
 from app.config import Settings
-from app.models import Animal, Photo, utc_now
+from app.models import Animal, ArchiveEvent, Photo, utc_now
 from app.schemas import TrashMutationResponse, TrashPage
 from app.services.classification_jobs import (
     enqueue_classification_jobs,
@@ -589,6 +590,11 @@ def permanently_delete_photo(
         ) from exc
 
     try:
+        session.exec(
+            update(ArchiveEvent)
+            .where(ArchiveEvent.cover_photo_id == photo_id)
+            .values(cover_photo_id=None, updated_at=utc_now())
+        )
         session.delete(photo)
         session.commit()
     except SQLAlchemyError as exc:

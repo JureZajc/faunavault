@@ -3,6 +3,7 @@ from fastapi import APIRouter, Path, Query
 from app.db import SessionDep
 from app.event_schemas import (
     EventAddResponse,
+    EventCoverRequest,
     EventDeleteResponse,
     EventDetail,
     EventFields,
@@ -18,6 +19,7 @@ from app.services.events import (
     delete_event,
     get_event,
     list_events,
+    update_cover,
     update_event,
 )
 
@@ -49,6 +51,14 @@ def create_events_router() -> APIRouter:
         event_id: int = Path(ge=1, le=2**63 - 1),
     ):
         return update_event(event_id, request, session)
+
+    @router.patch("/{event_id}/cover", response_model=EventDetail)
+    def cover(
+        request: EventCoverRequest,
+        session: SessionDep,
+        event_id: int = Path(ge=1, le=2**63 - 1),
+    ):
+        return update_cover(event_id, request.photo_id, session)
 
     @router.delete("/{event_id}", response_model=EventDeleteResponse)
     def remove(session: SessionDep, event_id: int = Path(ge=1, le=2**63 - 1)):

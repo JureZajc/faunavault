@@ -446,6 +446,8 @@ def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
 
 
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
+    if schema_version == 20:
+        return _read_schema_19_snapshot(database_path, schema_version=20)
     if schema_version == 19:
         return _read_schema_19_snapshot(database_path)
     if schema_version == 18:
@@ -474,11 +476,13 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_19_snapshot(database_path)
+    return _read_schema_19_snapshot(database_path, schema_version=20)
 
 
-def _read_schema_19_snapshot(database_path: Path) -> RecoverySnapshot:
-    base = _read_schema_18_snapshot(database_path, schema_version=19)
+def _read_schema_19_snapshot(
+    database_path: Path, *, schema_version: int = 19
+) -> RecoverySnapshot:
+    base = _read_schema_18_snapshot(database_path, schema_version=schema_version)
     events, memberships = read_event_signature(database_path)
     return replace(base, archive_events=events, archive_event_memberships=memberships)
 

@@ -339,3 +339,24 @@ List supports Favorites only and a single exact/minimum/Unrated rating dropdown,
 plus rating sorting. URL state and Smart Collection criteria preserve them.
 Bulk dialogs Favorite/Unfavorite or set/clear Rating on explicitly selected IDs.
 Map blocks unsupported curation URLs and preserves criteria when returning to List.
+
+
+## Trip/Event cover Photos
+
+Event cards use wide thumbnail covers; the detail header adapts to desktop and
+mobile widths. On `/events/{id}`, **Set as cover** immediately saves a member
+Photo and announces success. **Current cover** identifies the saved choice;
+**Remove custom cover** restores automatic selection. Cover actions are separate
+from membership selection and disabled while saving; API failures show an alert
+and refresh Event and member data without changing the current page.
+
+The API supplies `cover_photo_id` and lightweight `cover_photo` metadata.
+Automatic selection uses active membership ordered by `created_at DESC, id DESC`.
+Trash hides the saved cover and shows a fallback; Restore reactivates it while
+membership remains valid. Removing membership or permanently deleting the Photo
+clears the saved cover. Empty Events have a placeholder. Existing thumbnail URLs
+and components are reused; originals are never requested for covers.
+
+Coverage: `npm test -- __tests__/events-ui.test.tsx __tests__/events-api.test.ts`
+and `npm run test:e2e -- event-cover.e2e.ts` (disposable archive; desktop/mobile,
+reload persistence, keyboard access, overflow, Trash/Restore and removal).
