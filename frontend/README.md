@@ -196,6 +196,17 @@ removal have explicit safety wording and Cancel-first focus. Select page is
 strictly page-local, the client and server both enforce a 250-photo maximum, and
 there is no all-matching-results or bulk permanent-delete action.
 
+Manual Collection cards and detail headers display a large thumbnail using the
+same preview renderer as Trips & Events. **Set as cover** on an active member saves
+immediately; **Current cover** identifies the custom choice. **Remove custom cover**
+restores the newest active member (creation timestamp, then ID), with a placeholder
+when none remain. Trash temporarily displays the automatic fallback and Restore
+returns the custom cover while membership remains. Removing membership or permanently
+deleting the Photo clears the choice. Cover saves preserve pagination and selection,
+disable conflicting actions, and announce success or recoverable errors. The API
+returns lightweight previews in summary/detail responses and accepts
+`PATCH /collections/{id}/cover` with `{ "photo_id": number | null }`.
+
 List offers **Save as Smart Collection** for its current search, filters, and
 sort, including search text still awaiting debounce. The page and grouped
 layout are not saved. `/collections` separates manual groups from live saved

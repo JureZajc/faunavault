@@ -12,7 +12,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 import app.main as main
 from app.config import Settings
-from app.migrations import run_migrations
+from app.migrations import _migration_10, run_migrations
 from app.models import Animal, Photo
 from app.services.photo_lifecycle import reconcile_purge_journal
 from tests.heic_fixtures import heic_bytes, multi_image_heic_bytes
@@ -440,6 +440,7 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
         18,
         19,
         20,
+        21,
     ]
     with engine.connect() as connection:
         indexes = {
@@ -509,6 +510,7 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         18,
         19,
         20,
+        21,
     ]
     assert migration_versions(engine) == [
         1,
@@ -531,6 +533,7 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         18,
         19,
         20,
+        21,
     ]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
@@ -568,7 +571,7 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
 
     assert run_migrations(
         engine, settings, main.normalize_existing_domestic_metadata
-    ) == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    ) == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
     assert migration_versions(engine) == [
         1,
         2,
@@ -590,6 +593,7 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
         18,
         19,
         20,
+        21,
     ]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
@@ -641,6 +645,7 @@ def test_migration_8_backfills_normalized_album_group_and_is_idempotent(tmp_path
         18,
         19,
         20,
+        21,
     ]
     with engine.connect() as connection:
         rows = connection.exec_driver_sql(
@@ -691,6 +696,7 @@ def test_migration_9_adds_nullable_perceptual_hash_without_backfill(tmp_path):
         18,
         19,
         20,
+        21,
     ]
     with engine.connect() as connection:
         columns = {
@@ -722,13 +728,15 @@ def test_migration_12_adds_nullable_review_timestamp_without_backfill(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
+        # This synthetic schema-11 database must include its schema-10 tables.
+        _migration_10(connection)
         for version in range(1, 12):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (version,),
             )
 
-    assert run_migrations(engine, settings) == [12, 13, 14, 15, 16, 17, 18, 19, 20]
+    assert run_migrations(engine, settings) == [12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
     with engine.connect() as connection:
         columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(photo)")
@@ -777,6 +785,7 @@ def test_migration_10_creates_collection_relations_with_cascades(tmp_path):
         18,
         19,
         20,
+        21,
     ]
     with engine.begin() as connection:
         connection.exec_driver_sql(
@@ -823,6 +832,7 @@ def test_migration_10_creates_collection_relations_with_cascades(tmp_path):
         "name_key",
         "created_at",
         "updated_at",
+        "cover_photo_id",
     ]
     assert {row[1]: row[3] for row in membership_columns} == {
         "collection_id": 1,

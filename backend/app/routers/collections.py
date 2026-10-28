@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query, status
 from app.db import SessionDep
 from app.schemas import (
     CollectionAddPhotosResponse,
+    CollectionCoverUpdate,
     CollectionCreateRequest,
     CollectionDeleteResponse,
     CollectionDetailRead,
@@ -21,6 +22,7 @@ from app.services.collections import (
     list_collections,
     remove_collection_photos,
     rename_collection,
+    update_cover,
 )
 
 
@@ -63,6 +65,14 @@ def create_collections_router() -> APIRouter:
         session: SessionDep,
     ) -> CollectionSummaryRead:
         return rename_collection(collection_id, request.name, session)
+
+    @router.patch("/{collection_id}/cover", response_model=CollectionSummaryRead)
+    def patch_cover(
+        collection_id: int,
+        request: CollectionCoverUpdate,
+        session: SessionDep,
+    ) -> CollectionSummaryRead:
+        return update_cover(collection_id, request.photo_id, session)
 
     @router.delete("/{collection_id}", response_model=CollectionDeleteResponse)
     def remove_collection(

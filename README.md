@@ -69,6 +69,10 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   and recoverable Trash actions; explicit local scans discover existing pairs.
 - Optional durable AI classification jobs, confidence-based Review Inbox,
   manual editing, and local taxonomy with GBIF lookup.
+- Manual Collections have large cover cards and header previews. Choose **Set as cover**
+  on an active member, or **Remove custom cover** to use the newest active member
+  (creation timestamp, then ID). Trash preserves the choice for Restore; removing
+  membership or permanently deleting the Photo clears it. Empty Collections show a placeholder.
 - Recoverable Trash, confirmed permanent deletion, archive diagnostics,
   verified cold backups, isolated recovery rehearsal, and portable metadata export.
 
@@ -216,7 +220,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–20. Production restore remains manual.
+schemas 9–21. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)

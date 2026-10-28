@@ -605,10 +605,25 @@ class CollectionMembershipRequest(SQLModel):
     photo_ids: list[int]
 
 
+class CollectionCoverUpdate(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    photo_id: Annotated[int, PydanticField(strict=True, ge=1, le=2**63 - 1)] | None
+
+
+class TimelinePhotoPreview(SQLModel):
+    id: int
+    thumbnail_filename: str
+    original_filename: str
+    display_title: str | None
+
+
 class CollectionSummaryRead(SQLModel):
     id: int
     name: str
     active_photo_count: int
+    cover_photo_id: int | None = None
+    cover_photo: TimelinePhotoPreview | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -704,13 +719,6 @@ class CatalogPhotoPage(SQLModel):
     total: int
     total_pages: int
     facets: CatalogFacets
-
-
-class TimelinePhotoPreview(SQLModel):
-    id: int
-    thumbnail_filename: str
-    original_filename: str
-    display_title: str | None
 
 
 class TimelineMonth(SQLModel):

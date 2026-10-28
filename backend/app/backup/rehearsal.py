@@ -138,6 +138,7 @@ class CollectionRecoveryRecord:
     name_key: str
     created_at: str
     updated_at: str
+    cover_photo_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -446,6 +447,8 @@ def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
 
 
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
+    if schema_version == 21:
+        return _read_schema_21_snapshot(database_path)
     if schema_version == 20:
         return _read_schema_19_snapshot(database_path, schema_version=20)
     if schema_version == 19:
@@ -476,7 +479,23 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_19_snapshot(database_path, schema_version=20)
+    return _read_schema_21_snapshot(database_path)
+
+
+def _read_schema_21_snapshot(database_path: Path) -> RecoverySnapshot:
+    base = _read_schema_19_snapshot(database_path, schema_version=21)
+    connection = open_read_only_database(database_path)
+    try:
+        covers = dict(connection.execute("SELECT id, cover_photo_id FROM collection"))
+        return replace(
+            base,
+            collections=tuple(
+                replace(item, cover_photo_id=covers[item.id])
+                for item in base.collections
+            ),
+        )
+    finally:
+        connection.close()
 
 
 def _read_schema_19_snapshot(

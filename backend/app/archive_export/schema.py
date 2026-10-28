@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.catalog_query import CatalogSavedQuery
 from app.metadata_types import PhotoCullingState, PhotoRating
 
-EXPORT_FORMAT_VERSION = 11
+EXPORT_FORMAT_VERSION = 12
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -211,6 +211,7 @@ class TaxonExport(StrictExportModel):
 
 class CollectionExport(StrictExportModel):
     id: int = Field(ge=1)
+    cover_photo_id: int | None = Field(ge=1)
     name: str = Field(min_length=1, max_length=100)
     created_at: str
     updated_at: str
@@ -406,6 +407,17 @@ class ArchiveMetadataExport(StrictExportModel):
         taxon_ids = {taxon.id for taxon in self.taxa}
         collection_ids = {collection.id for collection in self.collections}
         photo_ids = {photo.id for photo in self.photos}
+        collection_memberships = {
+            (item.collection_id, item.photo_id) for item in self.collection_photos
+        }
+        if any(
+            item.cover_photo_id is not None
+            and (item.id, item.cover_photo_id) not in collection_memberships
+            for item in self.collections
+        ):
+            raise ValueError(
+                "Collection cover must reference a member Photo in the export"
+            )
         event_ids = {item.id for item in self.archive_events}
         event_memberships = set(event_keys)
         if any(

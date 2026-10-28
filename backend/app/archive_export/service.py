@@ -37,6 +37,7 @@ from app.archive_integrity import (
     is_link_or_junction,
     open_read_only_database,
     snapshot_database,
+    validate_collection_covers,
     validate_database_connection,
     validate_event_covers,
     validate_event_tables,
@@ -602,15 +603,17 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                 "synchronized_at FROM taxon ORDER BY id"
             )
         ]
+        validate_collection_covers(connection)
         collections = [
             CollectionExport(
                 id=_required_id(row["id"], "collection.id"),
+                cover_photo_id=row["cover_photo_id"],
                 name=_required_text(row["name"], "collection.name"),
                 created_at=_timestamp(row["created_at"], "collection.created_at"),
                 updated_at=_timestamp(row["updated_at"], "collection.updated_at"),
             )
             for row in connection.execute(
-                "SELECT id, name, created_at, updated_at FROM collection ORDER BY id"
+                "SELECT id, name, cover_photo_id, created_at, updated_at FROM collection ORDER BY id"
             )
         ]
         collection_photos = [

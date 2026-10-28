@@ -5,8 +5,8 @@ import math
 import unicodedata
 
 from fastapi import HTTPException
-from sqlalchemy import and_, delete, func
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy import and_, case, delete, func
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlmodel import Session, select
 
 from app.models import Collection, CollectionPhoto, Photo, utc_now
@@ -17,6 +17,7 @@ from app.schemas import (
     CollectionPhotoPage,
     CollectionRemovePhotosResponse,
     CollectionSummaryRead,
+    TimelinePhotoPreview,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,11 +67,17 @@ def _collection_or_404(collection_id: int, session: Session) -> Collection:
     return collection
 
 
-def _summary(collection: Collection, active_photo_count: int) -> CollectionSummaryRead:
+def _summary(
+    collection: Collection,
+    active_photo_count: int,
+    cover: TimelinePhotoPreview | None = None,
+) -> CollectionSummaryRead:
     return CollectionSummaryRead(
         id=collection.id or 0,
         name=collection.name,
         active_photo_count=active_photo_count,
+        cover_photo_id=collection.cover_photo_id,
+        cover_photo=cover,
         created_at=collection.created_at,
         updated_at=collection.updated_at,
     )
@@ -86,6 +93,107 @@ def _active_count(collection_id: int, session: Session) -> int:
             Photo.deleted_at.is_(None),
         )
     ).one()
+
+
+def _covers(session: Session, identities: list[int]) -> dict[int, TimelinePhotoPreview]:
+    if not identities:
+        return {}
+    # Rank lightweight previews in one query, using the Event cover ordering.
+    ranked = (
+        select(
+            CollectionPhoto.collection_id,
+            Photo.id,
+            Photo.thumbnail_filename,
+            Photo.original_filename,
+            Photo.display_title,
+            func.row_number()
+            .over(
+                partition_by=CollectionPhoto.collection_id,
+                order_by=(
+                    case((Photo.id == Collection.cover_photo_id, 0), else_=1),
+                    Photo.created_at.desc(),
+                    Photo.id.desc(),
+                ),
+            )
+            .label("rank"),
+        )
+        .join(Photo, Photo.id == CollectionPhoto.photo_id)
+        .join(Collection, Collection.id == CollectionPhoto.collection_id)
+        .where(
+            CollectionPhoto.collection_id.in_(identities), Photo.deleted_at.is_(None)
+        )
+        .subquery()
+    )
+    return {
+        row.collection_id: TimelinePhotoPreview(
+            id=row.id,
+            thumbnail_filename=row.thumbnail_filename,
+            original_filename=row.original_filename,
+            display_title=row.display_title,
+        )
+        for row in session.exec(select(*ranked.c).where(ranked.c.rank == 1)).all()
+    }
+
+
+def _read_summary(collection: Collection, session: Session) -> CollectionSummaryRead:
+    return _summary(
+        collection,
+        _active_count(collection.id, session),
+        _covers(session, [collection.id]).get(collection.id),
+    )
+
+
+def _lock_collection_write(session: Session) -> None:
+    # Serialize validation and writes with membership and Photo lifecycle changes.
+    try:
+        session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        session.expire_all()
+    except OperationalError as exc:
+        session.rollback()
+        raise _error(
+            409, "collection_busy", "The archive is busy. Refresh and try again."
+        ) from exc
+
+
+def update_cover(
+    collection_id: int, photo_id: int | None, session: Session
+) -> CollectionSummaryRead:
+    _lock_collection_write(session)
+    try:
+        collection = _collection_or_404(collection_id, session)
+        if photo_id is not None:
+            photo = session.get(Photo, photo_id)
+            if photo is None:
+                raise _error(404, "photo_not_found", "Photo not found.")
+            if photo.deleted_at is not None:
+                raise _error(
+                    409,
+                    "photo_not_active",
+                    "A Photo in Trash cannot be selected as cover. Refresh the Collection.",
+                )
+            if session.get(CollectionPhoto, (collection_id, photo_id)) is None:
+                raise _error(
+                    409,
+                    "photo_not_collection_member",
+                    "Cover must be a member Photo. Refresh the Collection.",
+                )
+        if collection.cover_photo_id != photo_id:
+            collection.cover_photo_id = photo_id
+            collection.updated_at = utc_now()
+            session.add(collection)
+            session.commit()
+        else:
+            session.rollback()
+    except HTTPException:
+        session.rollback()
+        raise
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("Collection cover update failed")
+        raise _error(
+            500, "collection_operation_failed", "Could not save the Collection cover."
+        ) from exc
+    return _read_summary(_collection_or_404(collection_id, session), session)
 
 
 def list_collections(session: Session) -> list[CollectionSummaryRead]:
@@ -104,7 +212,11 @@ def list_collections(session: Session) -> list[CollectionSummaryRead]:
         .group_by(Collection.id)
         .order_by(Collection.name_key.asc(), Collection.id.asc())
     ).all()
-    return [_summary(collection, count) for collection, count in rows]
+    covers = _covers(session, [collection.id for collection, _ in rows])
+    return [
+        _summary(collection, count, covers.get(collection.id))
+        for collection, count in rows
+    ]
 
 
 def create_collection(name_value: str, session: Session) -> CollectionSummaryRead:
@@ -188,7 +300,7 @@ def rename_collection(
                 "collection_operation_failed",
                 "Could not rename the Collection.",
             ) from exc
-    return _summary(collection, _active_count(collection_id, session))
+    return _read_summary(collection, session)
 
 
 def delete_collection(collection_id: int, session: Session) -> CollectionDeleteResponse:
@@ -236,7 +348,9 @@ def get_collection_detail(
             .limit(page_size)
         ).all()
     )
-    summary = _summary(collection, total)
+    summary = _summary(
+        collection, total, _covers(session, [collection_id]).get(collection_id)
+    )
     return CollectionDetailRead(
         **summary.model_dump(),
         photos=CollectionPhotoPage(
@@ -301,6 +415,7 @@ def add_collection_photos(
     photo_ids: list[int],
     session: Session,
 ) -> CollectionAddPhotosResponse:
+    _lock_collection_write(session)
     collection = _collection_or_404(collection_id, session)
     _validate_photo_ids(photo_ids)
     photos = _load_photos(photo_ids, session)
@@ -334,6 +449,8 @@ def add_collection_photos(
             collection.updated_at = utc_now()
             session.add(collection)
             session.commit()
+        else:
+            session.rollback()
     except SQLAlchemyError as exc:
         session.rollback()
         logger.exception("Adding Collection memberships failed")
@@ -355,6 +472,7 @@ def remove_collection_photos(
     photo_ids: list[int],
     session: Session,
 ) -> CollectionRemovePhotosResponse:
+    _lock_collection_write(session)
     collection = _collection_or_404(collection_id, session)
     _validate_photo_ids(photo_ids)
     _load_photos(photo_ids, session)
@@ -368,6 +486,8 @@ def remove_collection_photos(
     )
     try:
         if present:
+            if collection.cover_photo_id in present:
+                collection.cover_photo_id = None
             session.execute(
                 delete(CollectionPhoto).where(
                     CollectionPhoto.collection_id == collection_id,
@@ -377,6 +497,8 @@ def remove_collection_photos(
             collection.updated_at = utc_now()
             session.add(collection)
             session.commit()
+        else:
+            session.rollback()
     except SQLAlchemyError as exc:
         session.rollback()
         logger.exception("Removing Collection memberships failed")
