@@ -422,3 +422,23 @@ filters but are omitted from the comma-delimited bulk suggestions.
 
 Focused coverage: `npm test -- __tests__/catalog-tags.test.tsx` and
 `npm run test:e2e -- tags.e2e.ts`. The E2E runner owns a disposable database and images.
+
+Tag cards also expose Rename, Merge and Delete without changing name-link navigation.
+`tag-operation-dialog.tsx` uses the shared modal focus/keyboard utility and a
+preview-then-confirm workflow. Operations cover the entire archive, including Trash;
+active usage counts remain active-only. Destination input preserves case and is
+trimmed on the server. Rename to an existing tag merges; Merge requires an existing
+destination (a Trash-only tag can be typed). Delete has destructive styling and a
+separate confirmation checkbox. All submissions disable controls, and changed,
+expired or uncertain previews require Retry Preview before another apply.
+
+`POST /tags/operations/preview` returns server counts, samples and a signed token;
+`POST /tags/operations/apply` sends the operation, token and delete confirmation.
+Successful operations announce results and emit `catalog-tags-changed` to refresh
+mounted `useCatalogTags` consumers, including filter and bulk suggestions. Ordinary
+navigation/focus refreshes data from the same catalog API. Exact filters, Search,
+Culling and Restore read the updated metadata; Smart Collection query versions do
+not change. Focus returns to the trigger, or the Explorer heading if it disappeared.
+
+Coverage: `__tests__/tag-management.test.tsx`, `__tests__/catalog-tags.test.tsx`, and
+`npm run test:e2e -- tag-management.e2e.ts tags.e2e.ts` with disposable archives.

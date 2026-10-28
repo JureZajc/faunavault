@@ -6,6 +6,13 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Archive-wide Tag Explorer Rename, Merge and Delete actions, including Trash,
+  with read-only previews, affected counts, before/after examples, explicit delete
+  confirmation and accessible responsive dialogs. Case-sensitive merging avoids
+  duplicate destination tags. Signed previews, SQLite write locking, stale-preview
+  rejection and atomic bounded updates preserve review state, unrelated metadata
+  and original images. Successful changes refresh tag counts and suggestions.
+
 - Tag Explorer at `/tags`, with active-photo counts, search, alphabetical/usage
   sorting, distinct and untagged totals. Exact case-sensitive List and Culling tag
   filters use AND semantics and support untagged photos, URL/history restoration,

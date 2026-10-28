@@ -1460,3 +1460,52 @@ The dataset has six distinct tags and 1–4 entries per photo, with no untagged
 photos. Catalog measurements include counts, a maximum 48-photo page and global
 facets. Untagged therefore measures a zero-result count plus facets. Aggregation
 always runs two statements; existing browse query shapes remain unchanged.
+
+## Archive-wide tag management
+
+In Tags, choose Rename, Merge or Delete beside a tag. Operations affect every
+matching Photo, **including Trash**. Explorer usage counts still show active Photos.
+Names are case-sensitive and whitespace-trimmed: `Birds` → `birds` is an explicit
+merge, not a global change to case rules. Rename to an existing destination also
+merges. Merge requires an existing destination, including tags used only in Trash.
+Delete removes the exact tag without deleting Photos and requires explicit confirmation.
+Existing destination positions are retained; otherwise the replacement occupies
+the first source position. Unrelated values and their order remain unchanged.
+
+The read-only `POST /tags/operations/preview` accepts
+`{"operation":"rename","source":"bird","destination":"birds"}` (omit destination
+for delete). It returns `active_photos`, `trashed_photos`, `destination_overlap`
+(affected Photos already containing the destination), `total_photos`,
+`destination_exists`, up to five before/after examples and `preview_token`.
+`POST /tags/operations/apply` accepts the same operation plus `preview_token`;
+delete also requires `"confirm_delete":true`. Unknown fields, client counts and
+Photo IDs are rejected. Tag names are limited to 1000 characters and exclude
+embedded ASCII control characters. Responses use structured `detail.code` and
+`detail.message` errors: `invalid_tag_operation`, `source_not_found`,
+`destination_not_found`, `delete_confirmation_required`, `invalid_preview`,
+`stale_preview`, `archive_busy`, `tag_preview_failed`, and `tag_operation_failed`.
+
+Preview uses an explicit read transaction. Apply obtains `BEGIN IMMEDIATE`,
+recomputes the snapshot fingerprint and validates the signed operation before
+writing. A changed source/destination Photo, membership, Trash state or timestamp
+invalidates the preview. Duplicate/concurrent submissions cannot apply the same
+snapshot twice; the second receives a conflict. Failure rolls back every batch.
+No client counts or IDs determine the update. Tokens expire after 15 minutes and
+are bound to the current backend process; restart/reload requires a new preview.
+This follows the supported local single-process API deployment; multiple workers
+do not share preview signing keys. Busy writers may return HTTP 409; retry preview.
+
+Guarded SQLite JSON membership queries ignore invalid/non-array legacy JSON.
+Mixed arrays preserve unrelated non-string entries, blank strings and duplicates;
+only source/destination occurrences change. Matching rows stream for fingerprinting;
+updates use keyset pages and SQL batches of 250 within one transaction, without
+hydrating the archive. Work still scans tag JSON and holds a write reservation
+through revalidation and all updates, so large operations can delay other writers.
+No new tables, migrations, dependencies, external requests or AI processing are used.
+
+Only actual tag changes update `Photo.updated_at`. Classification status,
+`reviewed_at`, animal/taxonomy associations, Collections, Events, favorites, ratings,
+culling state, GPS/capture data and image references remain intact. No original
+image bytes are read or modified by these operations. Filters, Search, Culling,
+bulk suggestions and Trash/Restore use the corrected values. Existing Smart
+Collections remain compatible with their existing query version.
