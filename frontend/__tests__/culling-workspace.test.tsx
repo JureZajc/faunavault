@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Profiler } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import CullingBrowser from "../app/cull/culling-browser";
 import PhotoCard from "../app/components/catalog/photo-card";
@@ -109,6 +110,20 @@ test("Compare uses the existing next neighbor, falls back to previous and disabl
   view.unmount(); photos = [makePhoto(3)]; window.history.replaceState(null, "", "/cull?photo=3");
   render(<CullingBrowser />);
   expect((await screen.findByRole<HTMLButtonElement>("button", { name: "Compare · no neighbor" })).disabled).toBe(true);
+});
+
+test("keyboard navigation is ready as soon as the photo is visible", async () => {
+  let navigated = false;
+  render(<Profiler id="culling" onRender={() => {
+    // Deliver input at the visible commit, before passive effects are flushed.
+    if (!navigated && screen.queryByRole("heading", { name: "Photo 3" })) {
+      navigated = true;
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    }
+  }}><CullingBrowser /></Profiler>);
+  await screen.findByRole("heading", { name: "Photo 2" });
+  expect(navigated).toBe(true);
+  expect(api.updatePhoto).not.toHaveBeenCalled();
 });
 
 test("skipping leaves state alone and last save keeps image with end-of-pass and restart", async () => {

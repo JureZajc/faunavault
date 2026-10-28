@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import EventListContext from "../components/events/event-list-context";
 import { writeCatalogState } from "../lib/catalog-query";
 import ImportSessionSummary from "../components/import-session-summary";
@@ -162,7 +162,8 @@ export default function CullingBrowser() {
     }
   }
 
-  useEffect(() => {
+  // Keep shortcuts in sync with the visible photo before it becomes interactive.
+  useLayoutEffect(() => {
     function keydown(event: KeyboardEvent) {
       if (loading || saving.current || !photo || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || document.querySelector('[aria-modal="true"]')) return;
       const target = event.target;
