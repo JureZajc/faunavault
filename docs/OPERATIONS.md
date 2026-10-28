@@ -1365,3 +1365,33 @@ HTTP, JSON encoding, browser rendering, and cold disk reads. All Time joins reus
 the catalog's active-ID lookup pattern to avoid reading wide rows in capture-index
 order; selected years retain the selective capture-index range scan. No new index
 or planner hint is required. Timings depend on machine and archive distribution.
+
+## Fullscreen gallery and slideshow
+
+In a Manual Collection, choose **Open gallery** to start with its first active member.
+In a Trip/Event, **View gallery** starts at the custom cover if active, otherwise the first
+active member. **View in gallery** on a member card starts from that Photo. Membership is
+explicit; Event dates do not determine gallery contents. Gallery actions do not change covers
+or memberships. Photos in Trash are excluded when loading pages.
+
+Use the touch-friendly Previous/Next buttons, or Left/Right arrows with focus in the viewer.
+Escape closes and returns focus to the opening control. Tab and Shift+Tab cycle through gallery
+controls. Inputs and controls keep their usual keyboard behavior; gallery keys do not trigger
+Culling actions behind the overlay. Captions and a position counter accompany resized images.
+
+Choose **Play** to begin; playback never starts automatically. Choose an interval of 3, 5
+(default), or 10 seconds, and **Pause** to stop. Playback waits until each image loads, stops
+at the final image, and pauses on an image/page error or when the browser tab becomes hidden.
+Returning to the tab requires Play again. Manual navigation pauses playback. Closing clears
+playback and pending requests. Reduced-motion preferences disable image transitions.
+
+Large Collections and Events load 48-member pages on demand and retain no more than three
+pages. Gallery navigation leaves the original grid page, selection and URL unchanged.
+Only the current resized derivative is loaded; originals (including HEIC/HEIF) are not requested.
+Species Albums use the same slideshow controls within their currently displayed Album page.
+
+Use **Retry image** or **Skip image** for unavailable media. Page failures offer **Retry page**
+and, when a later page exists, **Skip page**. Recovery is explicit so disappearing Photos cannot
+cause endless automatic requests. Pages already visited are a bounded session snapshot; concurrent
+membership edits can shift positions. Close and reopen for a fully refreshed order and count.
+No slideshow settings are persisted and no database changes are needed.

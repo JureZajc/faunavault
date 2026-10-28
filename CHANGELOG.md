@@ -6,6 +6,13 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Fullscreen galleries for manual Collections and Trips & Events, sharing the existing
+  Species Album/Photo lightbox. Accessible navigation, captions/counts, image/page recovery,
+  and opt-in 3/5/10-second slideshow with loading-aware timers, hidden-tab pausing,
+  final-image stopping and reduced-motion transitions. On-demand 48-Photo pages use a
+  three-page cache, abort obsolete requests and preserve the underlying grid. Event headers
+  start at active custom covers using the existing ranked catalog API. No schema changes.
+
 - Custom cover Photos for manual Collections, with responsive cards/headers,
   immediate accessible selection, clearing, and deterministic automatic fallback.
   Trash preserves the choice for Restore; membership removal clears it atomically

@@ -69,6 +69,7 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   and recoverable Trash actions; explicit local scans discover existing pairs.
 - Optional durable AI classification jobs, confidence-based Review Inbox,
   manual editing, and local taxonomy with GBIF lookup.
+- **Fullscreen gallery & slideshow** in manual Collections and Trips & Events: open from the header or a Photo, navigate with arrows, and explicitly Play at 3, 5 (default), or 10 seconds. Galleries load bounded pages independently of the grid; Species Album viewers share the slideshow controls. See [gallery controls](docs/OPERATIONS.md#fullscreen-gallery-and-slideshow).
 - Manual Collections have large cover cards and header previews. Choose **Set as cover**
   on an active member, or **Remove custom cover** to use the newest active member
   (creation timestamp, then ID). Trash preserves the choice for Restore; removing
