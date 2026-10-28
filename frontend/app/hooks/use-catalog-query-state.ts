@@ -94,6 +94,13 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     searchTimer.current = null;
   }
 
+  function setEquipmentFilters(equipment: import("../lib/api").EquipmentQuery) {
+    cancelPendingSearch();
+    updateCatalog({ ...catalogState, search: searchInput.trim() || undefined,
+      camera_make: undefined, camera_model: undefined, lens_model: undefined,
+      unknown_camera: undefined, unknown_lens: undefined, ...equipment, page: 1 });
+  }
+
   function setTagFilters(tags: string[], untagged = false) {
     cancelPendingSearch();
     updateCatalog({ ...catalogState, search: searchInput.trim() || undefined, tags, untagged: untagged || undefined, page: 1 });
@@ -169,6 +176,8 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
         page: 1,
         favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
         tags: undefined, untagged: undefined,
+        camera_make: undefined, camera_model: undefined, lens_model: undefined,
+        unknown_camera: undefined, unknown_lens: undefined,
         event_id: undefined,
         import_session_id: undefined,
         culling_state: undefined,
@@ -200,6 +209,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     setSearchInput,
     cancelPendingSearch,
     setTagFilters,
+    setEquipmentFilters,
     setFavoritesOnly,
     setCullingState,
     setRatingFilter,

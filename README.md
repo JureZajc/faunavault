@@ -12,6 +12,10 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 
 ## Key features
 
+- **Gear Explorer** at `/gear` shows active-photo camera/lens usage, missing EXIF
+  counts, search and usage sorting. Open equipment in List for exact trimmed,
+  case-sensitive filters, combinable with other catalog criteria and Culling.
+  [Equipment semantics and supported views](docs/OPERATIONS.md#camera--lens-explorer).
 - JPEG, PNG, WebP, HEIC, and HEIF uploads; recursive local folder import.
 - Recent Imports groups each browser selection or folder invocation, with live
   progress and View imported photos / Cull this import actions. **Create Trip/Event**

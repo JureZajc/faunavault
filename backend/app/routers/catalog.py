@@ -11,6 +11,7 @@ from app.db import SessionDep
 from app.metadata_types import CullingFilter
 from app.schemas import (
     CatalogFacets,
+    CatalogGear,
     CatalogPhotoPage,
     CatalogTags,
     CatalogTaxonPage,
@@ -21,6 +22,7 @@ from app.schemas import (
 from app.services.catalog import (
     culling_workspace,
     get_catalog_facets,
+    get_catalog_gear,
     get_catalog_tags,
     get_photo_timeline,
     list_catalog_photos,
@@ -53,6 +55,18 @@ def create_catalog_router() -> APIRouter:
     def get_tags(session: SessionDep) -> dict:
         return get_catalog_tags(session)
 
+    @router.get("/gear", response_model=CatalogGear)
+    def get_gear(
+        session: SessionDep,
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=100, ge=1, le=200),
+        search: str = Query(default="", max_length=200),
+        sort: Literal["name", "count"] = "name",
+    ) -> dict:
+        return get_catalog_gear(
+            session, page=page, page_size=page_size, search=search, sort=sort
+        )
+
     @router.get("/map", response_model=list[PhotoMapPoint])
     def get_photo_map_points(
         session: SessionDep,
@@ -62,6 +76,11 @@ def create_catalog_router() -> APIRouter:
         uncategorized: bool = False,
         tags: list[str] = Query(default=[], max_length=20),
         untagged: bool = False,
+        camera_make: str | None = Query(default=None, max_length=1000),
+        camera_model: str | None = Query(default=None, max_length=1000),
+        lens_model: str | None = Query(default=None, max_length=1000),
+        unknown_camera: bool = False,
+        unknown_lens: bool = False,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -77,6 +96,17 @@ def create_catalog_router() -> APIRouter:
             default=None, include_in_schema=False
         ),
     ) -> list[PhotoMapPoint]:
+        if (
+            camera_make is not None
+            or camera_model is not None
+            or lens_model is not None
+            or unknown_camera
+            or unknown_lens
+        ):
+            raise HTTPException(
+                422,
+                detail="Equipment filters are not supported on Map. Open the filtered List instead.",
+            )
         if tags or untagged:
             raise HTTPException(
                 422,
@@ -106,6 +136,11 @@ def create_catalog_router() -> APIRouter:
             uncategorized=uncategorized,
             tags=tags,
             untagged=untagged,
+            camera_make=camera_make,
+            camera_model=camera_model,
+            lens_model=lens_model,
+            unknown_camera=unknown_camera,
+            unknown_lens=unknown_lens,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,
@@ -123,6 +158,11 @@ def create_catalog_router() -> APIRouter:
         uncategorized: bool = False,
         tags: list[str] = Query(default=[], max_length=20),
         untagged: bool = False,
+        camera_make: str | None = Query(default=None, max_length=1000),
+        camera_model: str | None = Query(default=None, max_length=1000),
+        lens_model: str | None = Query(default=None, max_length=1000),
+        unknown_camera: bool = False,
+        unknown_lens: bool = False,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -153,6 +193,11 @@ def create_catalog_router() -> APIRouter:
             uncategorized=uncategorized,
             tags=tags,
             untagged=untagged,
+            camera_make=camera_make,
+            camera_model=camera_model,
+            lens_model=lens_model,
+            unknown_camera=unknown_camera,
+            unknown_lens=unknown_lens,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,
@@ -182,6 +227,11 @@ def create_catalog_router() -> APIRouter:
         uncategorized: bool = False,
         tags: list[str] = Query(default=[], max_length=20),
         untagged: bool = False,
+        camera_make: str | None = Query(default=None, max_length=1000),
+        camera_model: str | None = Query(default=None, max_length=1000),
+        lens_model: str | None = Query(default=None, max_length=1000),
+        unknown_camera: bool = False,
+        unknown_lens: bool = False,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -212,6 +262,11 @@ def create_catalog_router() -> APIRouter:
             uncategorized=uncategorized,
             tags=tags,
             untagged=untagged,
+            camera_make=camera_make,
+            camera_model=camera_model,
+            lens_model=lens_model,
+            unknown_camera=unknown_camera,
+            unknown_lens=unknown_lens,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,

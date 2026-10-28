@@ -6,6 +6,14 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Camera & Lens Explorer at `/gear`, with active archive totals, exact partial-camera
+  groups, lens usage percentages, search, alphabetical/most-used sorting and bounded
+  SQL aggregation. Exact trimmed, case-sensitive manufacturer/model/lens and unknown
+  equipment filters combine with existing List/Culling criteria, preserve URL/history,
+  and support individual removal. Version-1 Smart Collection saves/updates and Map
+  navigation explain unsupported equipment filters. Stored EXIF and originals remain
+  unchanged; no equipment inference, external lookup, new tables or migrations.
+
 - Archive-wide Tag Explorer Rename, Merge and Delete actions, including Trash,
   with read-only previews, affected counts, before/after examples, explicit delete
   confirmation and accessible responsive dialogs. Case-sensitive merging avoids

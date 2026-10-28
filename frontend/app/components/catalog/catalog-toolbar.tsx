@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import CatalogGearFilter from "./catalog-gear-filter";
+import { EquipmentQuery } from "../../lib/api";
 import CatalogTagFilter from "./catalog-tag-filter";
 import { CatalogTaxonOption, CullingFilter } from "../../lib/api";
 import { CatalogLayout, CatalogSortOption, REJECTED_PHOTOS_HREF } from "../../lib/catalog-query";
@@ -30,6 +32,8 @@ const sortLabels: Record<CatalogSortOption, string> = {
 };
 
 type CatalogToolbarProps = {
+  equipment?: EquipmentQuery;
+  onEquipmentChange?: (value: EquipmentQuery) => void;
   tags?: string[];
   untagged?: boolean;
   onTagFiltersChange?: (tags: string[], untagged?: boolean) => void;
@@ -78,6 +82,7 @@ type CatalogToolbarProps = {
 };
 
 export default function CatalogToolbar({
+  equipment, onEquipmentChange,
   tags, untagged, onTagFiltersChange,
   rejectedHref,
   cullingState, onCullingStateChange, cullingHref, onReviewRejected,
@@ -124,6 +129,7 @@ export default function CatalogToolbar({
   };
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+      {equipment && onEquipmentChange && <CatalogGearFilter value={equipment} onChange={onEquipmentChange} />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
         <label className="block sm:col-span-2 lg:col-span-1">
           <span className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
@@ -186,7 +192,7 @@ export default function CatalogToolbar({
           {mapHref ? <div>
             {mapDisabled ? <button type="button" disabled aria-describedby="map-search-explanation" className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold opacity-50">View on Map</button>
               : <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">View on Map</Link>}
-            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.</p> : null}
+            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear equipment, exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.</p> : null}
           </div> : null}
           {onSaveSmartCollection ? <button type="button" onClick={onSaveSmartCollection} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Save as Smart Collection</button> : null}
           {hasActiveFilters ? (

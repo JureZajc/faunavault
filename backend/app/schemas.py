@@ -342,6 +342,33 @@ class BatchUploadResponse(SQLModel):
     failed: list[BatchUploadFailure]
 
 
+class GearCamera(SQLModel):
+    camera_make: str | None
+    camera_model: str | None
+    count: int
+    percentage: float
+
+
+class GearLens(SQLModel):
+    lens_model: str
+    count: int
+    percentage: float
+
+
+class CatalogGear(SQLModel):
+    active_total: int
+    distinct_camera_models: int
+    distinct_lens_models: int
+    unknown_camera_count: int
+    unknown_lens_count: int
+    cameras: list[GearCamera]
+    lenses: list[GearLens]
+    camera_total: int
+    lens_total: int
+    page: int
+    page_size: int
+
+
 class PhotoMapPoint(SQLModel):
     id: int
     latitude: float

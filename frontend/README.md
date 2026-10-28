@@ -20,6 +20,34 @@ bind addresses, `NEXT_PUBLIC_API_URL`, and backend CORS origins. Localhost bindi
 does not replace authentication or other protections for intentional network
 deployment. See the [root startup instructions](../README.md#starting-faunavault).
 
+## Camera & Lens Explorer
+
+Open **Gear** (`/gear`) to explore active Photos by camera or lens. The overview
+shows distinct nonblank models and missing-equipment totals. Percentages use all
+active Photos, including those without EXIF. Search and alphabetical/most-used
+sorting run on bounded server pages; Previous/Next reaches the rest of the archive.
+Camera labels omit a repeated manufacturer, without merging stored identities.
+
+Equipment links open the canonical List. Its **Exact equipment** controls select
+manufacturer, camera model and lens independently, with AND semantics, unknown
+options, removable criteria and Clear equipment filters. Search equipment options
+and page through options for larger archives. General text search remains available.
+Changing criteria resets pagination; URL parameters preserve choices through reload
+and Back/Forward. An empty component means missing metadata, preserving exact
+manufacturer-only/model-only links. Selected values remain visible across option pages.
+
+Matching is case-sensitive equality after trimming whitespace, including Unicode
+whitespace. No brand inference, spelling normalization, equipment database, EXIF
+rewrite, network identification or classification occurs. A camera is unknown only
+when both make and model are missing; a lens is unknown when its model is missing.
+Equipment criteria work in List and Culling. Version-1 Smart Collection creation
+and updates are blocked with an explanation; Map and other archive navigation
+explain unsupported equipment criteria and offer the filtered List.
+
+Coverage: `npm test -- __tests__/catalog-gear.test.tsx` and
+`npm run test:e2e -- gear.e2e.ts` (disposable EXIF JPEGs, desktop/mobile,
+keyboard navigation, exact results, history, Culling and unsupported Map URLs).
+
 ## Interactive GPS location picker
 
 Open a Photo → **Edit metadata → Choose on map**. Click/tap to select a point,

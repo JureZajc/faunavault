@@ -273,7 +273,7 @@ test("preserves catalog parameters while switching collection views", async () =
   const navigation = screen.getByRole("navigation", { name: "Archive views" });
   expect(
     Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
-  ).toEqual(["List", "Tags", "Timeline", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash"]);
+  ).toEqual(["List", "Gear", "Tags", "Timeline", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash"]);
   expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("href"))
     .toBe("/timeline");
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))
@@ -288,7 +288,7 @@ test("List opens Map with supported membership filters and disables pending text
   expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toBe("/map?catalog_status=classified&catalog_category=bird&catalog_taxon=7&catalog_taken_from=2026-01-01");
   await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "f");
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
-  expect(screen.getByText("Clear exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.")).toBeTruthy();
+  expect(screen.getByText("Clear equipment, exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.")).toBeTruthy();
 });
 
 test("List Event membership survives filters and prevents saving Smart criteria", async () => {
@@ -306,6 +306,23 @@ test("List Event membership survives filters and prevents saving Smart criteria"
   window.history.pushState(null, "", "/?catalog_event_id=8"); window.dispatchEvent(new PopStateEvent("popstate"));
   await screen.findByRole("heading", { name: "Trip: Trip 8" });
   await waitFor(() => expect(screen.queryByText("1 selected", { exact: true })).toBeNull());
+});
+
+test("equipment restored from history resets selection and blocks Smart Collection updates", async () => {
+  window.history.replaceState(null, "", "/?catalog_camera_model=R5&smart_edit=7");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+  expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/Equipment filters cannot be saved in version-1 Smart Collections/)).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Select photos" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: /Select photo 1:/ }));
+  expect(screen.getByText("1 selected", { exact: true })).toBeTruthy();
+  window.history.pushState(null, "", "/?catalog_camera_model=R6&smart_edit=7");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  await waitFor(() => expect(screen.queryByText("1 selected", { exact: true })).toBeNull());
+  expect(api.updateSmartCollection).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Clear equipment filters" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(false));
 });
 
 test("List suggestion target does not scope membership; successful addition clears selection and stays in List", async () => {
