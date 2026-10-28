@@ -86,7 +86,11 @@ preview/apply workflow and can restore capture and GPS independently.
   offsets, a specific signed offset from `-23:59` to `+23:59`, or explicitly unknown.
   Unknown offsets never silently become UTC.
 - **Set GPS** requires both finite coordinates: latitude `[-90,90]`, longitude
-  `[-180,180]`. **Remove GPS** clears both; **Clear capture metadata** clears both
+  `[-180,180]`. Use **Choose on map** to click/tap a location or drag a marker,
+  then **Use this location** to stage that pair for every selected Photo. Numeric
+  entry remains available offline. Changing the chosen pair invalidates the preview;
+  preview, confirmation, and atomic apply are still required for up to 250 Photos.
+  **Remove GPS** clears both; **Clear capture metadata** clears both
   capture timestamp and offset. These intentional clears set independent override
   flags, retain extracted values and prevent EXIF backfills from repopulating them.
 - **Restore original metadata** verifies and re-reads original files using the same
@@ -565,7 +569,7 @@ The basemap defaults to standard OpenStreetMap raster tiles with visible
 attribution. The browser requests only tiles for the visible viewport; FaunaVault
 does not send photo records, filenames, species, tags, or thumbnails to the tile
 provider. Remote tiles mean basemap rendering is not offline, and there is no
-reverse geocoding, place search, coordinate editing, tile downloader, analytics,
+reverse geocoding, place search, tile downloader, analytics,
 or external map metadata API.
 
 Normal deletion only sets a deleted timestamp. Trash continues to reference the same local files. A photo must be moved to Trash before it can be permanently deleted. Permanent deletion stages variants in a private journal, commits the row deletion, and cleans the staged files; interrupted work is reconciled on the next backend startup.
@@ -595,7 +599,27 @@ capture date/time, optional signed UTC offset, and latitude/longitude. Capture
 time is the camera-local wall time; neither browser timezone nor GPS changes it.
 An empty offset is valid. Latitude must be −90 to 90, longitude −180 to 180, and
 both finite coordinates must be supplied together. Camera/lens/dimensions remain
-read-only. There is no bulk capture editor, geocoding, or timezone lookup.
+read-only. Bulk editing uses the separate preview/apply workflow documented above.
+There is no geocoding or timezone lookup.
+
+For a location, choose **Choose on map** in the metadata editor. Click/tap to place
+the marker or drag it to refine a point, then review the live coordinates and
+choose **Use this location**. Existing GPS initializes the map and marker; a Photo
+without GPS starts with an unselected world view and requires an explicit point
+or complete numeric pair. This only changes the form draft. **Save** persists the
+location with the editor's version check; editor Cancel discards it. Picker
+Cancel/Escape discards only the unconfirmed picker changes and restores focus.
+
+Latitude and longitude are editable by keyboard both in the editor and picker,
+including negative values, `0,0`, and boundary coordinates. Values keep JavaScript
+number precision without decimal rounding. Map clicks across repeated world views
+normalize longitude to `[-180,180]`; the Mercator basemap cannot depict the exact
+poles, but numeric entry accepts ±90°. GPS selection never changes capture times
+or UTC offsets. No device location permission, tracking, or reverse geocoding is
+used. Loading map tiles may contact the configured external provider in
+`frontend/app/lib/map-config.ts` (OpenStreetMap by default); tile coordinates reveal
+the viewed area, without sending photo metadata or filenames. Manual coordinate
+entry and confirmation remain usable if offline or if map loading fails.
 
 The Taken and Location rows show **Manually edited** or **Manually cleared** when
 applicable. **Clear capture date** also removes the offset; **Remove location**

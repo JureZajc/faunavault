@@ -25,6 +25,11 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   Selection and URL filters stay intact. [Selected export guide](docs/OPERATIONS.md#selected-photo-zip-export).
 - Individual capture date/time, UTC offset, and GPS corrections, with retained
   extracted values and Restore original metadata. [Editing guide](docs/OPERATIONS.md#editable-capture-metadata-v02).
+- Interactive GPS picker: in **Edit metadata**, choose **Choose on map**, click/tap
+  a point or drag the existing marker, then **Use this location** and **Save**.
+  In bulk **Edit capture / GPS → Set GPS coordinates**, choose one location,
+  preview, confirm, and apply. Editable latitude/longitude remain available offline;
+  loading maps may contact the configured external tile provider (OpenStreetMap).
 - Bulk **Edit capture / GPS** for up to 250 selected photos: shift camera-local
   time, set date/time with preserved, specific or unknown offsets, set/remove GPS,
   clear capture time, or independently restore capture/GPS from verified originals.

@@ -20,6 +20,31 @@ bind addresses, `NEXT_PUBLIC_API_URL`, and backend CORS origins. Localhost bindi
 does not replace authentication or other protections for intentional network
 deployment. See the [root startup instructions](../README.md#starting-faunavault).
 
+## Interactive GPS location picker
+
+Open a Photo → **Edit metadata → Choose on map**. Click/tap to select a point,
+drag the marker to adjust it, or edit latitude/longitude directly. Existing GPS
+centers the map and supplies the marker; missing GPS opens a world view without
+selecting a location. **Use this location** updates the form draft; **Save** persists
+it. Picker Cancel/Escape discards its selection; editor Cancel discards the draft.
+
+In List, select up to 250 photos → **Edit capture / GPS → Set GPS coordinates →
+Choose on map**. Confirm the point, preview the changes, check confirmation, and
+apply. Choosing another location invalidates the previous preview.
+
+Both numeric fields remain usable when tiles or the map cannot load. Complete
+finite pairs, including `0,0`, are required; latitude is −90…90 and longitude
+−180…180. GPS changes never adjust dates or UTC offsets. The shared picker uses
+client-only dynamic Leaflet loading, existing marker/tile/lifecycle helpers, and
+the existing modal focus/scroll lock hook. Opening maps may contact the configured
+external tile provider, currently OpenStreetMap. No device location, geocoding,
+photo metadata, or filenames are sent to it; tile requests identify the viewport.
+
+Coverage: `npm test -- __tests__/gps-location-picker.test.tsx
+__tests__/photo-detail.test.tsx __tests__/bulk-capture-dialog.test.tsx` and
+`npm run test:e2e -- gps-picker.e2e.ts bulk-capture.e2e.ts` (disposable archives,
+desktop/mobile, local tile responses or simulated tile failure).
+
 ## Bulk capture and GPS editing
 
 From List, select up to 250 photos and choose **Edit capture / GPS**. Configure

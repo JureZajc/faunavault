@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import BulkCaptureDialog from "../app/components/catalog/bulk-capture-dialog";
@@ -94,6 +94,36 @@ test("editing configuration invalidates preview and confirmation", async () => {
   expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull();
   await showPreview();
   expect((screen.getByRole("checkbox", { name: /I reviewed/ }) as HTMLInputElement).checked).toBe(false);
+});
+
+test("GPS picker confirmation invalidates previews; cancel preserves them and never skips preview/apply", async () => {
+  open();
+  await userEvent.selectOptions(screen.getByLabelText("Operation"), "set_gps");
+  fireEvent.change(screen.getByLabelText("Latitude"), { target: { value: "46" } });
+  fireEvent.change(screen.getByLabelText("Longitude"), { target: { value: "14" } });
+  await showPreview();
+  await userEvent.click(screen.getByRole("checkbox", { name: /I reviewed/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Choose on map" }));
+  let picker = within(screen.getByRole("dialog", { name: "Choose GPS location" }));
+  fireEvent.change(picker.getByLabelText("Latitude"), { target: { value: "0" } });
+  await userEvent.keyboard("{Escape}");
+  expect(onClose).not.toHaveBeenCalled();
+  expect(screen.getByRole("table")).toBeTruthy();
+  expect(screen.getByRole<HTMLInputElement>("checkbox", { name: /I reviewed/ }).checked).toBe(true);
+  expect(document.body.style.overflow).toBe("hidden");
+  await userEvent.click(screen.getByRole("button", { name: "Choose on map" }));
+  picker = within(screen.getByRole("dialog", { name: "Choose GPS location" }));
+  fireEvent.change(picker.getByLabelText("Latitude"), { target: { value: "-45.123456789" } });
+  fireEvent.change(picker.getByLabelText("Longitude"), { target: { value: "180" } });
+  await userEvent.click(picker.getByRole("button", { name: "Use this location" }));
+  expect(screen.queryByRole("table")).toBeNull();
+  expect(api.applyBulkCapture).not.toHaveBeenCalled();
+  expect(api.previewBulkCapture).toHaveBeenCalledTimes(1);
+  await showPreview();
+  expect(api.previewBulkCapture).toHaveBeenLastCalledWith({ photo_ids: [1, 2], change: { operation: "set_gps", latitude: -45.123456789, longitude: 180 } });
+  expect(screen.getByRole<HTMLInputElement>("checkbox", { name: /I reviewed/ }).checked).toBe(false);
+  await confirmAndApply();
+  expect(api.applyBulkCapture).toHaveBeenCalledWith(expect.objectContaining({ change: { operation: "set_gps", latitude: -45.123456789, longitude: 180 }, expected_versions: expect.arrayContaining([{ photo_id: 1, updated_at: "version-1", original_sha256: null }]) }));
 });
 
 test("missing capture time blocks whole selection and shows the issue", async () => {

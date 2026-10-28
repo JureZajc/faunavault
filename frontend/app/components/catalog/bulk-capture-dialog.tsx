@@ -7,6 +7,7 @@ import {
   BulkCapturePreview, BulkCaptureResult, CaptureMetadataValues,
 } from "../../lib/api";
 import { formatUtcOffset, parseCaptureFields, parseLocationFields } from "../../lib/photo-metadata";
+import GpsLocationPicker from "../maps/gps-location-picker";
 
 const operations = {
   shift_time: "Shift capture time",
@@ -130,7 +131,11 @@ export default function BulkCaptureDialog({ photoIds, onClose, onSuccess }: Prop
           <label className="block text-sm font-medium">UTC offset handling<select value={offsetMode} onChange={(event) => setOffsetMode(event.target.value as typeof offsetMode)} className={inputClass}><option value="preserve">Preserve each existing offset</option><option value="assign">Assign a specific offset</option><option value="unknown">Explicitly unknown offset</option></select></label>
           {offsetMode === "assign" ? <label className="block text-sm font-medium">UTC offset<input placeholder="+02:00" value={offset} onChange={(event) => setOffset(event.target.value)} className={inputClass} /></label> : null}
         </> : null}
-        {operation === "set_gps" ? <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium">Latitude<input inputMode="decimal" value={latitude} onChange={(event) => setLatitude(event.target.value)} className={inputClass} /></label><label className="block text-sm font-medium">Longitude<input inputMode="decimal" value={longitude} onChange={(event) => setLongitude(event.target.value)} className={inputClass} /></label></div> : null}
+        {operation === "set_gps" ? <><div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium">Latitude<input inputMode="decimal" value={latitude} onChange={(event) => setLatitude(event.target.value)} className={inputClass} /></label><label className="block text-sm font-medium">Longitude<input inputMode="decimal" value={longitude} onChange={(event) => setLongitude(event.target.value)} className={inputClass} /></label></div><GpsLocationPicker latitude={latitude} longitude={longitude} disabled={busy !== null} onChange={(coordinates) => {
+          setLatitude(String(coordinates.latitude));
+          setLongitude(String(coordinates.longitude));
+          invalidate();
+        }} /></> : null}
         {operation === "restore_original" ? <><label className="block text-sm font-medium">Restore group<select value={group} onChange={(event) => setGroup(event.target.value as typeof group)} className={inputClass}><option value="both">Capture time and GPS</option><option value="capture">Capture time only</option><option value="location">GPS only</option></select></label><p className="text-sm text-stone-600">Re-read and verify each original file. Missing, corrupted or changed originals block the entire operation. Original metadata may be empty.</p></> : null}
         {operation === "remove_gps" || operation === "clear_capture" ? <p className="text-sm text-stone-600">This intentional clear prevents EXIF backfills from restoring the cleared values. Retained extracted metadata remains available; use Restore original metadata to verify and restore it.</p> : null}
       </fieldset>

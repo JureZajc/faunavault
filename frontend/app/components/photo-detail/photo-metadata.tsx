@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { Photo, PhotoStatus, PhotoUpdate, updatePhoto } from "../../lib/api";
+import GpsLocationPicker from "../maps/gps-location-picker";
 import {
   formatCameraLocalDate,
   formatUtcOffset,
@@ -298,6 +299,9 @@ export function PhotoMetadataEditor({
           <button type="button" className="min-h-10 text-left text-sm font-semibold text-emerald-800" onClick={() => { updateField("captured_at", ""); updateField("capture_offset", ""); setClearCapture(true); }}>Clear capture date</button>
           <MetadataInput label="Latitude" value={form.latitude} disabled={isSaving || restoreOriginal} placeholder="-90 to 90" onChange={(value) => updateField("latitude", value)} />
           <MetadataInput label="Longitude" value={form.longitude} disabled={isSaving || restoreOriginal} placeholder="-180 to 180" onChange={(value) => updateField("longitude", value)} />
+          <GpsLocationPicker latitude={form.latitude} longitude={form.longitude} disabled={isSaving || restoreOriginal} onChange={({ latitude, longitude }) => {
+            setForm((current) => ({ ...current, latitude: String(latitude), longitude: String(longitude) }));
+          }} />
           <button type="button" className="min-h-10 text-left text-sm font-semibold text-emerald-800" onClick={() => { updateField("latitude", ""); updateField("longitude", ""); setClearLocation(true); }}>Remove location</button>
         </fieldset>
         <div>
