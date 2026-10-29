@@ -124,6 +124,7 @@ function capturedAtLabel(photo: Photo) {
 export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
   return (
     <>
+      {(photo.capture_metadata_overridden || photo.location_metadata_overridden) && <p className="mt-4 text-sm text-stone-600">Capture metadata has manual edits or cleared values. In Edit metadata, Restore original metadata may recover values after verifying the original file. Review before saving; restoring replaces both capture and GPS overrides.</p>}
       <dl className="mt-5 rounded-lg border border-stone-200 px-4">
         <MetadataRow label="Taken" value={`${capturedAtLabel(photo) ?? "Not recorded"}${photo.capture_metadata_overridden ? (photo.captured_at ? " · Manually edited" : " · Manually cleared") : ""}`} />
         {cameraLabel(photo) ? (

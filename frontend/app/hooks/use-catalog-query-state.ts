@@ -101,6 +101,11 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
       unknown_camera: undefined, unknown_lens: undefined, ...equipment, page: 1 });
   }
 
+  function setMetadataIssue(metadata_issue?: import("../lib/api").MetadataIssue) {
+    cancelPendingSearch();
+    updateCatalog({ ...catalogState, search: searchInput.trim() || undefined, metadata_issue, page: 1 });
+  }
+
   function setTagFilters(tags: string[], untagged = false) {
     cancelPendingSearch();
     updateCatalog({ ...catalogState, search: searchInput.trim() || undefined, tags, untagged: untagged || undefined, page: 1 });
@@ -175,6 +180,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
         ...catalogState,
         page: 1,
         favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
+        metadata_issue: undefined,
         tags: undefined, untagged: undefined,
         camera_make: undefined, camera_model: undefined, lens_model: undefined,
         unknown_camera: undefined, unknown_lens: undefined,
@@ -208,6 +214,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     returnTo: paramsString ? `${pathname}?${paramsString}` : pathname,
     setSearchInput,
     cancelPendingSearch,
+    setMetadataIssue,
     setTagFilters,
     setEquipmentFilters,
     setFavoritesOnly,

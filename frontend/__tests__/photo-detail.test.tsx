@@ -2,11 +2,13 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import PhotoDetail from "../app/photos/[id]/photo-detail";
+import Home from "../app/page";
 import { Animal, Photo } from "../app/lib/api";
 import { formatCameraLocalDate, parseCaptureFields, parseLocationFields } from "../app/lib/photo-metadata";
 
 const api = vi.hoisted(() => ({
   getPhoto: vi.fn(),
+  getCatalogPhotos: vi.fn(),
   getAnimal: vi.fn(),
   getClassificationJobs: vi.fn(),
   updatePhoto: vi.fn(),
@@ -498,4 +500,44 @@ test("shows load failures and rejects unsafe return locations", async () => {
   expect(await screen.findByText("Photo service unavailable")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Photo not found" })).toBeTruthy();
   expect(screen.getByRole("link", { name: "Back to catalog" }).getAttribute("href")).toBe("/");
+});
+
+
+test.each(["missing_gps", "missing_capture"] as const)("repairs %s through the existing editor and returns to a refreshed filtered List", async (issue) => {
+  let current = photo({ animal_id: null, capture_metadata_overridden: true, location_metadata_overridden: true });
+  const returnTo = `/?catalog_metadata_issue=${issue}`;
+  window.history.replaceState(null, "", returnTo);
+  api.getPhoto.mockImplementation(async () => current);
+  api.getCatalogPhotos.mockImplementation(async () => {
+    const missing = issue === "missing_gps" ? current.latitude === null || current.longitude === null : current.captured_at === null;
+    return { items: missing ? [current] : [], total: missing ? 1 : 0, total_pages: missing ? 1 : 0, page: 1, page_size: 48,
+      facets: { active_total: 1, status_counts: { classified: 1, pending: 0, needs_review: 0 }, categories: [], uncategorized_count: 0 } };
+  });
+  api.updatePhoto.mockImplementation(async (_id, values) => {
+    current = { ...current, ...values, updated_at: "2026-08-12T10:00:00Z" };
+    return current;
+  });
+  const catalog = render(<Home />);
+  await screen.findByRole("heading", { name: "Lion" });
+  const card = screen.getByRole("heading", { name: "Lion" }).closest("a")!;
+  expect(card.getAttribute("href")).toBe(`/photos/44?returnTo=${encodeURIComponent(returnTo)}`);
+  catalog.unmount();
+  const detail = render(<PhotoDetail id="44" returnTo={returnTo} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Edit metadata" }));
+  if (issue === "missing_gps") {
+    await userEvent.type(screen.getByLabelText("Latitude", { exact: true }), "0");
+    await userEvent.type(screen.getByLabelText("Longitude", { exact: true }), "0");
+  } else {
+    fireEvent.change(screen.getByLabelText("Capture date/time"), { target: { value: "2026-05-02T12:00" } });
+  }
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await screen.findByRole("button", { name: "Edit metadata" });
+  expect(api.updatePhoto).toHaveBeenLastCalledWith(44, issue === "missing_gps" ? { latitude: 0, longitude: 0 } : { captured_at: "2026-05-02T12:00:00", captured_at_offset_minutes: null }, "2026-08-12T08:00:00Z");
+  expect(current.status).toBe("classified");
+  expect(screen.getByText(/Restore original metadata may recover values/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Back to catalog" }).getAttribute("href")).toBe(returnTo);
+  detail.unmount();
+  render(<Home />);
+  await screen.findByText("No matching records");
+  expect((screen.getByLabelText("Metadata completeness") as HTMLSelectElement).value).toBe(issue);
 });

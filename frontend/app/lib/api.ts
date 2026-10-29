@@ -201,7 +201,19 @@ export function getCatalogGear(search = "", sort = "name", page = 1, signal?: Ab
   return request<CatalogGear>(`/catalog/gear?${new URLSearchParams({ search, sort, page: String(page) })}`, { signal });
 }
 
+export type MetadataIssue = "missing_capture" | "missing_gps" | "missing_both" | "missing_either" | "complete";
+export type MetadataHealth = {
+  active_total: number; missing_capture: number; missing_gps: number;
+  missing_both: number; missing_either: number; complete: number;
+  completeness_percentage: number;
+};
+
+export function getMetadataHealth(signal?: AbortSignal) {
+  return request<MetadataHealth>("/catalog/metadata-health", { signal });
+}
+
 export type CatalogQuery = EquipmentQuery & {
+  metadata_issue?: MetadataIssue;
   tags?: string[];
   untagged?: boolean;
   event_id?: number;
@@ -332,7 +344,7 @@ export type CollectionDetail = CollectionSummary & {
   photos: CollectionPhotoPage;
 };
 
-export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id" | "tags" | "untagged" | keyof EquipmentQuery>;
+export type SmartCollectionQuery = Omit<CatalogQuery, "metadata_issue" | "page" | "page_size" | "event_id" | "tags" | "untagged" | keyof EquipmentQuery>;
 export type SmartCollectionSummary = {
   id: number;
   name: string;
@@ -989,6 +1001,7 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
 
 function catalogQueryParams(query: CatalogQuery) {
   const params = new URLSearchParams();
+  if (query.metadata_issue) params.set("metadata_issue", query.metadata_issue);
   for (const key of ["camera_make", "camera_model", "lens_model"] as const) {
     if (query[key] !== undefined) params.set(key, query[key]);
   }

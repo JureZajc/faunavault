@@ -18,6 +18,7 @@ from app.insights_schemas import (
 )
 from app.models import Animal, Photo, Taxon
 from app.services.catalog import _gear_value
+from app.services.metadata_health import capture_present, gps_present
 
 CATEGORY_LIMIT = 20
 STATUSES = {
@@ -57,7 +58,7 @@ def get_insights(session: Session, year: int | None = None) -> InsightsResponse:
 
     # Linked local taxonomy is the same verification definition used by Albums.
     species = and_(Taxon.id.is_not(None), func.upper(Taxon.taxonomic_rank) == "SPECIES")
-    gps = and_(Photo.latitude.between(-90, 90), Photo.longitude.between(-180, 180))
+    gps = gps_present()
     uncategorized = func.trim(func.coalesce(Photo.category, "")) == ""
     # Share the Explorer/List contract: trim surrounding whitespace, preserve
     # case and spelling, and never infer a missing manufacturer or model.
@@ -77,7 +78,7 @@ def get_insights(session: Session, year: int | None = None) -> InsightsResponse:
             count_if(Photo.culling_state == "pick"),
             count_if(Photo.culling_state == "reject"),
             count_if(gps),
-            count_if(Photo.captured_at.is_not(None)),
+            count_if(capture_present()),
             count_if(Taxon.id.is_(None)),
             count_if(and_(Taxon.id.is_not(None), ~species)),
             count_if(uncategorized),

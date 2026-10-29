@@ -23,7 +23,8 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
   const unsupportedImport = Boolean(state.import_session_id);
   const unsupportedEquipment = hasEquipmentFilters(state);
   const unsupportedTags = hasTagFilters(state);
-  const unsupported = unsupportedEquipment || unsupportedTags || unsupportedSearch || unsupportedCuration || unsupportedImport;
+  const unsupportedMetadata = Boolean(state.metadata_issue);
+  const unsupported = unsupportedMetadata || unsupportedEquipment || unsupportedTags || unsupportedSearch || unsupportedCuration || unsupportedImport;
   const locations = usePhotoMapPoints(state, unsupported);
   const options = useCatalogFacets();
   const taxa = useCatalogTaxa(state.taxon_id);
@@ -42,6 +43,7 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
     unsupportedCuration ? "Unsupported Favorite/Rating filters or Culling filters" : null,
     unsupportedSearch ? `Unsupported search: ${state.search}` : null,
     unsupportedImport ? "Unsupported Import Session filter" : null,
+    unsupportedMetadata ? "Unsupported metadata completeness filter" : null,
     unsupportedTags ? "Unsupported exact tag filters" : null,
     unsupportedEquipment ? "Unsupported equipment filters" : null,
   ].filter(Boolean);
@@ -95,8 +97,8 @@ export default function MapBrowser({ focusPhotoId }: { focusPhotoId: number | nu
           <h2 id="archive-map-heading" className="sr-only">Interactive archive map</h2>
           {unsupported ? (
             <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-              <p>{unsupportedEquipment ? "Equipment filters are not supported on Map. Use View in List to keep equipment criteria, or remove unsupported filters." : unsupportedTags ? "Exact tag filters are not supported on Map. Use View in List to keep all your tag filters, or remove unsupported filters." : unsupportedImport ? "Import Session filters are not supported on Map. Remove unsupported filters to view locations, or use View in List." : unsupportedCuration ? "Favorite/Rating filters are not supported on Map. Culling filters are also unsupported. Remove unsupported filters to view locations, or use View in List." : "Text search is not supported on Map. Remove it to view locations, or use View in List."}</p>
-              <button type="button" onClick={() => query.setStatus(state.status)} className={`${buttonClass} mt-3`}>{unsupportedEquipment || unsupportedTags || unsupportedCuration || unsupportedImport ? "Remove unsupported filters" : "Remove text search"}</button>
+              <p>{unsupportedMetadata ? "Metadata completeness filters are not supported on Map. Use View in List to keep this filter, or remove unsupported filters." : unsupportedEquipment ? "Equipment filters are not supported on Map. Use View in List to keep equipment criteria, or remove unsupported filters." : unsupportedTags ? "Exact tag filters are not supported on Map. Use View in List to keep all your tag filters, or remove unsupported filters." : unsupportedImport ? "Import Session filters are not supported on Map. Remove unsupported filters to view locations, or use View in List." : unsupportedCuration ? "Favorite/Rating filters are not supported on Map. Culling filters are also unsupported. Remove unsupported filters to view locations, or use View in List." : "Text search is not supported on Map. Remove it to view locations, or use View in List."}</p>
+              <button type="button" onClick={() => query.setStatus(state.status)} className={`${buttonClass} mt-3`}>{unsupportedMetadata || unsupportedEquipment || unsupportedTags || unsupportedCuration || unsupportedImport ? "Remove unsupported filters" : "Remove text search"}</button>
             </div>
           ) : locations.isLoading ? (
             <div role="status" className="grid h-[clamp(24rem,calc(100dvh-13rem),56rem)] place-items-center rounded-lg border border-stone-200 bg-stone-200 text-sm text-stone-600">Loading photo locations…</div>

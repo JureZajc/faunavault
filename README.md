@@ -315,3 +315,55 @@ values before confirming. Delete additionally requires an explicit checkbox.
 to an existing tag merges into it, without duplicate destination tags. Other tags,
 photo order, review decisions and original images are preserved. Corrected tags
 remain on restored photos. Concurrent changes require **Retry Preview**.
+
+## Metadata Health and cleanup
+
+Open **Metadata Health** (`/metadata-health`) from archive navigation to see total
+active Photos, missing capture dates, missing valid GPS, missing both, missing
+either, complete Photos, and overall completeness. Click a count to open the
+existing List, or use its **Metadata completeness** filter. The List URL preserves
+this criterion with other filters, sorting and pagination across reload and browser
+Back/Forward. Changing the criterion resets the page.
+
+Completeness uses only effective Photo metadata: `captured_at IS NOT NULL` and
+both latitude in [-90, 90] and longitude in [-180, 180], including valid `(0,0)`.
+Partial or invalid legacy coordinate pairs are missing GPS. A complete Photo has
+both groups; camera/lens EXIF, tags, taxonomy and classification do not contribute.
+Import Session times, creation times and file modification times are never capture
+date substitutes: importing does not establish when a Photo was taken. Trash is
+excluded because it is outside the active archive; Restore makes a Photo count again.
+An empty archive reports zero counts and 0% completeness.
+
+From a filtered List, open a Photo, choose **Edit metadata**, enter the capture
+date/time or GPS pair (optionally **Choose on map**), and Save. Use **Back to
+catalog** to return to the same filtered List; a corrected Photo disappears when
+it no longer matches. For bulk work choose **Select photos → Edit capture / GPS**,
+select **Set GPS** or a capture date operation, preview, review and confirm.
+Never assume selected Photos share a capture date; explicitly verify before
+confirming a shared date. These actions preserve existing validation, optimistic
+concurrency and classification/review state, and never modify original images.
+
+For deliberately cleared or overridden metadata, **Restore original metadata** in
+the editor may recover extracted values. It verifies and re-reads the original
+file, rather than trusting a stale extracted snapshot. It replaces both manual
+capture/GPS overrides in the individual editor; bulk Restore original lets you
+choose the group and preview. Review before saving: restoration is always explicit
+and never overwrites a correction automatically. Missing or changed originals may
+prevent restoration. No speculative repairable count is shown.
+
+The read-only `GET /catalog/metadata-health` endpoint returns `active_total`,
+`missing_capture`, `missing_gps`, `missing_both`, `missing_either`, `complete`, and
+`completeness_percentage` (rounded to two decimals). It performs one SQLite scalar
+aggregate without Photo hydration, image decoding or network requests. Counts
+reconcile with `GET /catalog/photos?metadata_issue=...`, where accepted values are
+`missing_capture`, `missing_gps`, `missing_both`, `missing_either`, and `complete`.
+The criterion combines with other live filters using AND semantics; invalid values
+return 422. Culling also retains the criterion. No tables or migrations are added.
+
+Metadata completeness remains a live List/Culling criterion. Version-1 Smart
+Collection queries cannot save it, and Map does not support it. Navigation explains
+these limitations and offers the filtered List or an explicit unfiltered destination;
+clear the criterion before saving a Smart Collection. Direct Map API requests with
+this criterion return 422. Wildlife Insights links undated Photos only for All Time;
+missing-GPS links retain a selected capture year's date range. Existing Insights
+percentages and comparisons keep their original meanings.

@@ -22,6 +22,9 @@ CatalogSort = Literal[
     "pending",
 ]
 CatalogOrder = Literal["asc", "desc"]
+MetadataIssue = Literal[
+    "missing_capture", "missing_gps", "missing_both", "missing_either", "complete"
+]
 
 
 class CatalogSavedQuery(BaseModel):
@@ -81,6 +84,7 @@ class CatalogSavedQuery(BaseModel):
 class CatalogQuery(CatalogSavedQuery):
     """Live criteria; Events, tags and equipment cannot be saved in v1 Smart queries."""
 
+    metadata_issue: MetadataIssue | None = None
     event_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
     tags: list[str] = Field(default_factory=list, max_length=20)
     untagged: bool = False

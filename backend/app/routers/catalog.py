@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import ValidationError
 
-from app.catalog_query import CatalogQuery
+from app.catalog_query import CatalogQuery, MetadataIssue
 from app.db import SessionDep
 from app.metadata_types import CullingFilter
 from app.schemas import (
@@ -16,6 +16,7 @@ from app.schemas import (
     CatalogTags,
     CatalogTaxonPage,
     CullingWorkspace,
+    MetadataHealth,
     PhotoMapPoint,
     TimelineResponse,
 )
@@ -29,6 +30,7 @@ from app.services.catalog import (
     list_catalog_taxa,
     list_photo_map_points,
 )
+from app.services.metadata_health import get_metadata_health
 
 RatingParameter = Literal["1", "2", "3", "4", "5"]
 
@@ -42,6 +44,10 @@ def _validated_query(**values) -> CatalogQuery:
 
 def create_catalog_router() -> APIRouter:
     router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+    @router.get("/metadata-health", response_model=MetadataHealth)
+    def metadata_health(session: SessionDep) -> MetadataHealth:
+        return get_metadata_health(session)
 
     @router.get("/timeline", response_model=TimelineResponse)
     def get_timeline(session: SessionDep) -> TimelineResponse:
@@ -81,6 +87,7 @@ def create_catalog_router() -> APIRouter:
         lens_model: str | None = Query(default=None, max_length=1000),
         unknown_camera: bool = False,
         unknown_lens: bool = False,
+        metadata_issue: MetadataIssue | None = None,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -96,6 +103,11 @@ def create_catalog_router() -> APIRouter:
             default=None, include_in_schema=False
         ),
     ) -> list[PhotoMapPoint]:
+        if metadata_issue is not None:
+            raise HTTPException(
+                422,
+                detail="Metadata completeness filters are not supported on Map. Open the filtered List instead.",
+            )
         if (
             camera_make is not None
             or camera_model is not None
@@ -141,6 +153,7 @@ def create_catalog_router() -> APIRouter:
             lens_model=lens_model,
             unknown_camera=unknown_camera,
             unknown_lens=unknown_lens,
+            metadata_issue=metadata_issue,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,
@@ -163,6 +176,7 @@ def create_catalog_router() -> APIRouter:
         lens_model: str | None = Query(default=None, max_length=1000),
         unknown_camera: bool = False,
         unknown_lens: bool = False,
+        metadata_issue: MetadataIssue | None = None,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -198,6 +212,7 @@ def create_catalog_router() -> APIRouter:
             lens_model=lens_model,
             unknown_camera=unknown_camera,
             unknown_lens=unknown_lens,
+            metadata_issue=metadata_issue,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,
@@ -232,6 +247,7 @@ def create_catalog_router() -> APIRouter:
         lens_model: str | None = Query(default=None, max_length=1000),
         unknown_camera: bool = False,
         unknown_lens: bool = False,
+        metadata_issue: MetadataIssue | None = None,
         taxon_id: int | None = Query(default=None, ge=1),
         taken_from: date | None = None,
         taken_to: date | None = None,
@@ -267,6 +283,7 @@ def create_catalog_router() -> APIRouter:
             lens_model=lens_model,
             unknown_camera=unknown_camera,
             unknown_lens=unknown_lens,
+            metadata_issue=metadata_issue,
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,

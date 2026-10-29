@@ -56,6 +56,7 @@ export function mapListHref(state: CatalogState) {
     favorites_only: state.favorites_only, rating: state.rating, rating_min: state.rating_min, unrated: state.unrated,
     culling_state: state.culling_state,
     import_session_id: state.import_session_id,
+    metadata_issue: state.metadata_issue,
     tags: state.tags, untagged: state.untagged,
     ...equipmentQuery(state),
   }).toString();
@@ -74,7 +75,7 @@ export const REJECTED_PHOTOS_HREF = "/?catalog_culling_state=reject";
 
 export function hasAdditionalRejectedFilters(state: CatalogQuery) {
   return Boolean(
-    hasEquipmentFilters(state) || hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
+    state.metadata_issue || hasEquipmentFilters(state) || hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
     state.taxon_id || state.taken_from || state.taken_to || state.favorites_only ||
     state.rating || state.rating_min || state.unrated,
   );
@@ -165,6 +166,7 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   const unrated = params.get("catalog_unrated") === "1";
   const culling = params.get("catalog_culling_state");
   return {
+    metadata_issue: parseMetadataIssue(params.get("catalog_metadata_issue")),
     camera_make: params.has("catalog_camera_make") ? trimTag(params.get("catalog_camera_make")!) : undefined,
     camera_model: params.has("catalog_camera_model") ? trimTag(params.get("catalog_camera_model")!) : undefined,
     lens_model: params.has("catalog_lens_model") ? trimTag(params.get("catalog_lens_model")!) : undefined,
@@ -207,6 +209,7 @@ export function writeCatalogState(
     if (state[key] !== undefined) params.set(`catalog_${key}`, state[key]);
     else params.delete(`catalog_${key}`);
   }
+  setOrDelete("catalog_metadata_issue", state.metadata_issue);
   setOrDelete("catalog_unknown_camera", state.unknown_camera ? "1" : undefined);
   setOrDelete("catalog_unknown_lens", state.unknown_lens ? "1" : undefined);
   params.delete("catalog_tag");
@@ -275,6 +278,15 @@ export function applyCatalogSortOption(
   option: CatalogSortOption,
 ): CatalogState {
   return { ...state, ...sortOptionMap[option], page: 1 };
+}
+
+export const metadataIssueLabels: Record<import("./api").MetadataIssue, string> = {
+  missing_capture: "Missing capture date", missing_gps: "Missing GPS",
+  missing_both: "Missing both", missing_either: "Missing either", complete: "Complete",
+};
+
+export function parseMetadataIssue(value: string | null) {
+  return value && Object.hasOwn(metadataIssueLabels, value) ? value as import("./api").MetadataIssue : undefined;
 }
 
 export function hasTagFilters(state: Pick<CatalogQuery, "tags" | "untagged">) {

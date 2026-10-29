@@ -24,7 +24,7 @@ export function InsightsSummaryCards({ overview, year }: { overview: InsightsOve
     { label: "Favorite photos", value: overview.favorites, note: "Personal favorites", href: insightsListHref(year, { favorites_only: true }) },
     { label: "Pick photos", value: overview.picks, note: "Culling decision: Pick", href: insightsListHref(year, { culling_state: "pick" }) },
     { label: "Reject photos", value: overview.rejects, note: "Active photos marked Reject", href: insightsListHref(year, { culling_state: "reject" }) },
-    { label: "Undated photos", value: overview.capture_dates.missing, note: year === undefined ? "Included in All Time" : "Excluded by capture-year filter" },
+    { label: "Undated photos", value: overview.capture_dates.missing, note: year === undefined ? "Included in All Time" : "Excluded by capture-year filter", href: year === undefined ? insightsListHref(undefined, { metadata_issue: "missing_capture" }) : undefined },
   ];
   return <dl aria-label="Archive summary" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
     {metrics.map((metric) => <div key={metric.label} className="min-w-0 rounded-xl border border-stone-200 bg-white p-4 shadow-sm sm:p-5">
@@ -120,7 +120,7 @@ export function LocationCoverage({ data }: { data: InsightsResponse }) {
   const gps = data.overview.gps;
   return <InsightsPanel title="Geographic coverage" description="GPS requires a complete latitude/longitude pair within valid ranges.">
     <p className="text-4xl font-semibold tracking-tight text-emerald-950">{percent(gps.percentage)} <span className="text-sm font-normal text-stone-500">GPS coverage</span></p>
-    <dl className="mt-5 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-stone-500">With GPS</dt><dd className="mt-1 font-semibold">{count(gps.known)} {gps.known === 1 ? "photo" : "photos"}</dd></div><div><dt className="text-stone-500">Without valid GPS</dt><dd className="mt-1 font-semibold">{count(gps.missing)} {gps.missing === 1 ? "photo" : "photos"}</dd></div></dl>
+    <dl className="mt-5 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-stone-500">With GPS</dt><dd className="mt-1 font-semibold">{count(gps.known)} {gps.known === 1 ? "photo" : "photos"}</dd></div><div><dt className="text-stone-500"><Link className={linkClass} href={insightsListHref(data.year ?? undefined, { metadata_issue: "missing_gps" })}>Without valid GPS</Link></dt><dd className="mt-1 font-semibold">{count(gps.missing)} {gps.missing === 1 ? "photo" : "photos"}</dd></div></dl>
     <Link href={mapCatalogHref(insightsYearRange(data.year ?? undefined))} className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-emerald-800 px-4 text-sm font-semibold text-white hover:bg-emerald-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700">View on Map</Link>
   </InsightsPanel>;
 }
