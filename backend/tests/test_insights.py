@@ -20,6 +20,18 @@ def reconcile(body):
         assert coverage["percentage"] == (
             round(coverage["known"] / total * 100, 2) if total else 0
         )
+    for name in ("camera", "lens"):
+        coverage = body["equipment"][name]
+        assert coverage["known"] + coverage["missing"] == total
+        assert coverage["percentage"] == (
+            round(100 * coverage["known"] / total, 2) if total else 0
+        )
+    for name in ("top_cameras", "top_lenses"):
+        assert len(body["equipment"][name]) <= 10
+        for equipment in body["equipment"][name]:
+            assert equipment["percentage"] == round(
+                100 * equipment["photo_count"] / total, 2
+            )
     assert (
         sum(row["photo_count"] for row in body["yearly"])
         == body["overview"]["capture_dates"]["known"]
@@ -41,6 +53,8 @@ def test_empty_unknown_and_invalid_years(catalog_app):
         assert body["overview"]["total_photos"] == 0
         assert body["overview"]["verified_species"] == 0
         assert body["available_years"] == body["top_species"] == []
+        assert body["equipment"]["top_cameras"] == []
+        assert body["equipment"]["top_lenses"] == []
         reconcile(body)
     for value in (0, -1, 10000, "oops", "2026.5", ""):
         assert client.get("/insights", params={"year": value}).status_code == 422
@@ -180,6 +194,9 @@ def test_effective_metadata_edits_trash_and_restore_are_live(catalog_app):
             taxon=taxon,
             captured_at=datetime(2025, 12, 31),
             extracted_captured_at=datetime(2025, 12, 31),
+            camera_make="Canon",
+            camera_model="R5",
+            lens_model="RF100",
         )
         photo_id = photo.id
         animal_id = photo.animal_id
@@ -212,11 +229,16 @@ def test_effective_metadata_edits_trash_and_restore_are_live(catalog_app):
     )
     assert client.get("/insights?year=2025").json()["overview"]["total_photos"] == 0
     assert body["available_years"] == [2026]
+    assert body["equipment"]["top_cameras"][0]["photo_count"] == 1
+    assert body["equipment"]["top_lenses"][0]["photo_count"] == 1
+    assert client.get("/insights?year=2025").json()["equipment"]["top_cameras"] == []
     reconcile(body)
     assert client.delete(f"/photos/{photo_id}").status_code == 200
     assert client.get("/insights").json()["overview"]["total_photos"] == 0
+    assert client.get("/insights").json()["equipment"]["top_cameras"] == []
     assert client.post(f"/trash/photos/{photo_id}/restore").status_code == 200
     assert client.get("/insights").json()["overview"]["verified_species"] == 1
+    assert client.get("/insights").json()["equipment"]["camera"]["known"] == 1
     with Session(engine) as session:
         animal = session.get(Animal, animal_id)
         animal.taxon_id = None
@@ -225,7 +247,10 @@ def test_effective_metadata_edits_trash_and_restore_are_live(catalog_app):
     assert client.get("/insights").json()["overview"]["verified_species"] == 0
 
 
-def test_query_count_projection_and_legacy_incomplete_gps(catalog_app):
+@pytest.mark.parametrize("year, expected_queries", [(None, 7), (2026, 8)])
+def test_query_count_projection_and_legacy_incomplete_gps(
+    catalog_app, year, expected_queries
+):
     _, engine = catalog_app
     with Session(engine) as session:
         for index in range(150):
@@ -242,14 +267,20 @@ def test_query_count_projection_and_legacy_incomplete_gps(catalog_app):
     event.listen(engine, "before_cursor_execute", record)
     try:
         with Session(engine) as session:
-            result = get_insights(session, 2026)
+
+            def forbid_hydration(_session, _instance):
+                pytest.fail("Insights must not hydrate ORM entities")
+
+            event.listen(session, "loaded_as_persistent", forbid_hydration)
+            result = get_insights(session, year)
             assert len(session.identity_map) == 0
     finally:
         event.remove(engine, "before_cursor_execute", record)
-    assert len(statements) == 6
+    assert len(statements) == expected_queries
     assert all("count(" in statement.lower() for statement in statements)
     assert result.overview.gps.known == 0
     assert result.overview.gps.missing == 150
+    assert result.equipment.camera.missing == result.equipment.lens.missing == 150
     reconcile(result.model_dump())
 
 
@@ -263,3 +294,141 @@ def test_extreme_calendar_years(catalog_app, year):
     assert body["overview"]["total_photos"] == 1
     assert body["monthly"][-1]["photo_count"] == 1
     reconcile(body)
+
+
+def test_equipment_partial_exact_identities_unknowns_and_scoped_links(catalog_app):
+    client, engine = catalog_app
+    with Session(engine) as session:
+        fox = add_taxon(session, "Vulpes vulpes")
+        values = [
+            ("Canon", "R5", "RF100", datetime(2024, 2, 29, 23, 59)),
+            ("Canon", "R5", "RF100", datetime(2024, 1, 1)),
+            (None, "R5", "rf100", datetime(2024, 12, 31, 23, 59)),
+            ("Canon", None, None, datetime(2024, 3, 1)),
+            (None, None, None, datetime(2024, 6, 1)),
+            ("\t\u2003", " ", "\n\t", datetime(2024, 7, 1)),
+            ("canon", "R5", "RF100", datetime(2025, 1, 1)),
+            ("Other", "R5", "RF100", None),
+        ]
+        for index, (make, model, lens, capture) in enumerate(values, 1):
+            add_photo(
+                session,
+                index,
+                camera_make=make,
+                camera_model=model,
+                lens_model=lens,
+                captured_at=capture,
+                captured_at_offset_minutes=840 if capture else None,
+                taxon=fox,
+                is_favorite=index == 1,
+                culling_state="pick" if index == 1 else "reject",
+            )
+        trashed = add_photo(
+            session,
+            9,
+            camera_make="Trash",
+            camera_model="Excluded",
+            lens_model="Trash",
+            captured_at=datetime(2024, 2, 29),
+            deleted_at=datetime(2026, 1, 1),
+        )
+        trashed_id = trashed.id
+        session.commit()
+    body = client.get("/insights?year=2024").json()
+    gear = body["equipment"]
+    assert body["overview"]["total_photos"] == 6
+    assert body["overview"]["verified_species"] == 1
+    assert gear["camera"] == {"known": 4, "missing": 2, "percentage": 66.67}
+    assert gear["lens"] == {"known": 3, "missing": 3, "percentage": 50}
+    assert gear["top_cameras"][0] == {
+        "camera_make": "Canon",
+        "camera_model": "R5",
+        "photo_count": 2,
+        "percentage": 33.33,
+    }
+    assert [
+        (row["camera_make"], row["camera_model"]) for row in gear["top_cameras"][1:]
+    ] == [("Canon", None), (None, "R5")]
+    assert [row["lens_model"] for row in gear["top_lenses"]] == ["RF100", "rf100"]
+    reconcile(body)
+    # Each chart row drills down to exactly its count, preserving the year and
+    # explicitly filtering missing components of partial camera identities.
+    base = {"taken_from": "2024-01-01", "taken_to": "2024-12-31"}
+    for row in gear["top_cameras"]:
+        result = client.get(
+            "/catalog/photos",
+            params={
+                **base,
+                "camera_make": row["camera_make"] or "",
+                "camera_model": row["camera_model"] or "",
+            },
+        ).json()
+        assert result["total"] == row["photo_count"]
+    for row in gear["top_lenses"]:
+        assert (
+            client.get(
+                "/catalog/photos", params={**base, "lens_model": row["lens_model"]}
+            ).json()["total"]
+            == row["photo_count"]
+        )
+    for kind in ("camera", "lens"):
+        assert (
+            client.get(
+                "/catalog/photos", params={**base, f"unknown_{kind}": True}
+            ).json()["total"]
+            == gear[kind]["missing"]
+        )
+    all_time = client.get("/insights").json()
+    assert all_time["overview"]["total_photos"] == 8
+    assert all_time["equipment"]["camera"]["known"] == 6
+    reconcile(all_time)
+    assert client.post(f"/trash/photos/{trashed_id}/restore").status_code == 200
+    restored = client.get("/insights?year=2024").json()
+    assert restored["equipment"]["camera"]["known"] == 5
+    assert restored["equipment"]["lens"]["known"] == 4
+    reconcile(restored)
+
+
+def test_equipment_top_ten_ties_and_case_sensitive_stored_values(catalog_app):
+    client, engine = catalog_app
+    names = ["a", "A", "b", "B"] + [f"Camera {index:02}" for index in range(12)]
+    with Session(engine) as session:
+        for index, name in enumerate(reversed(names), 1):
+            add_photo(
+                session, index, camera_make=name, camera_model="Model", lens_model=name
+            )
+        add_photo(session, 100, camera_make="Z", camera_model="Winner", lens_model="Z")
+        add_photo(session, 101, camera_make="Z", camera_model="Winner", lens_model="Z")
+        session.commit()
+    gear = client.get("/insights").json()["equipment"]
+    expected = ["Z"] + sorted(names, key=lambda name: (name.lower(), name))[:9]
+    assert [row["camera_make"] for row in gear["top_cameras"]] == expected
+    assert [row["lens_model"] for row in gear["top_lenses"]] == expected
+    assert gear["camera"]["known"] == gear["lens"]["known"] == 18
+    assert gear["top_cameras"][0]["photo_count"] == 2
+    assert gear["top_lenses"][0]["percentage"] == 11.11
+
+
+def test_camera_identity_never_guesses_manufacturer_from_model(catalog_app):
+    client, engine = catalog_app
+    pairs = [
+        ("Canon", "Canon R5"),
+        (None, "Canon R5"),
+        ("Canon", "R5"),
+        ("Canon R5", None),
+    ]
+    with Session(engine) as session:
+        for index, (make, model) in enumerate(pairs, 1):
+            add_photo(session, index, camera_make=make, camera_model=model)
+        session.commit()
+    gear = client.get("/insights").json()["equipment"]
+    assert gear["camera"] == {"known": 4, "missing": 0, "percentage": 100}
+    assert gear["lens"] == {"known": 0, "missing": 4, "percentage": 0}
+    assert gear["top_lenses"] == []
+    assert [
+        (row["camera_make"], row["camera_model"]) for row in gear["top_cameras"]
+    ] == [pairs[index] for index in (0, 1, 2, 3)]
+    assert all(
+        row["photo_count"] == 1 and row["percentage"] == 25
+        for row in gear["top_cameras"]
+    )

@@ -195,6 +195,12 @@ def generate(test_root: Path) -> None:
                 exif[int(tag)] = value
         bulk_scene(index % 2 + 1).save(fixtures / f"faunavault-e2e-gear-{index}.jpg", format="JPEG", quality=85 + index, exif=exif)
 
+    long_gear = Image.Exif()
+    long_gear[int(ExifTags.Base.Make)] = "E2E Insights"
+    long_gear[int(ExifTags.Base.Model)] = "LongCamera" + "X" * 170
+    long_gear[int(ExifTags.Base.LensModel)] = "LongLens" + "Y" * 170
+    bulk_scene(1).save(fixtures / "faunavault-e2e-insights-long.jpg", format="JPEG", quality=91, exif=long_gear)
+
     heic_exif = Image.Exif()
     heic_exif[int(ExifTags.Base.DateTimeOriginal)] = "2026:08:23 09:15:00"
     heic_exif[int(ExifTags.Base.OffsetTimeOriginal)] = "+02:00"

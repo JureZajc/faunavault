@@ -6,6 +6,15 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Wildlife Insights v2 adds scoped Top 10 cameras/lenses, identifiable/missing
+  equipment coverage, and exact equipment/unknown drill-downs into List that
+  retain the capture year. Optional explicit year comparisons restore through
+  URL/history and show active Photos, distinct verified species, Favorites,
+  Picks, Rejects, and GPS percentage-point differences, with zero-baseline guards
+  and independent retry/cancellation. All shares use the period's active Photo
+  total; missing EXIF stays unknown and Photo counts never imply observations.
+  SQLite aggregates add two bounded queries; no migration or chart dependency.
+
 - Camera & Lens Explorer at `/gear`, with active archive totals, exact partial-camera
   groups, lens usage percentages, search, alphabetical/most-used sorting and bounded
   SQL aggregation. Exact trimmed, case-sensitive manufacturer/model/lens and unknown

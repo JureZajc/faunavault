@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getInsights, InsightsResponse } from "../lib/api";
 
 export function useInsights(year?: number) {
-  const [state, setState] = useState<{ data: InsightsResponse | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: true });
+  const key = year ?? null;
+  const [state, setState] = useState<{ key: number | null; data: InsightsResponse | null; error: string | null; loading: boolean }>({ key, data: null, error: null, loading: true });
   const requestId = useRef(0);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const controller = useRef<AbortController | null>(null);
@@ -13,15 +14,15 @@ export function useInsights(year?: number) {
     const next = new AbortController();
     controller.current = next;
     const id = ++requestId.current;
-    setState({ data: null, error: null, loading: true });
+    setState({ key: year ?? null, data: null, error: null, loading: true });
     try {
       const data = await getInsights(year, next.signal);
       if (!next.signal.aborted && id === requestId.current) {
         setAvailableYears(data.available_years);
-        setState({ data, error: null, loading: false });
+        setState({ key: year ?? null, data, error: null, loading: false });
       }
     } catch {
-      if (!next.signal.aborted && id === requestId.current) setState({ data: null, error: "Could not load Wildlife Insights", loading: false });
+      if (!next.signal.aborted && id === requestId.current) setState({ key: year ?? null, data: null, error: "Could not load Wildlife Insights", loading: false });
     }
   }, [year]);
   useEffect(() => {
@@ -33,6 +34,6 @@ export function useInsights(year?: number) {
     };
   }, [load]);
   // Hide the previous period immediately, even before the effect starts fetching.
-  const matches = state.data?.year === (year ?? null);
-  return { ...state, availableYears, data: matches ? state.data : null, loading: state.loading || Boolean(state.data && !matches), retry: load };
+  const matches = state.key === key;
+  return { availableYears, data: matches ? state.data : null, error: matches ? state.error : null, loading: state.loading || !matches, retry: load };
 }

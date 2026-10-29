@@ -2,18 +2,22 @@
 
 from datetime import datetime
 
-from sqlalchemy import Integer, and_, case, cast, func
+from sqlalchemy import Integer, and_, case, cast, func, or_
 from sqlmodel import Session, select
 
 from app.insights_schemas import (
+    InsightsCamera,
     InsightsCoverage,
     InsightsDistribution,
+    InsightsEquipment,
+    InsightsLens,
     InsightsOverview,
     InsightsPeriod,
     InsightsResponse,
     InsightsSpecies,
 )
 from app.models import Animal, Photo, Taxon
+from app.services.catalog import _gear_value
 
 CATEGORY_LIMIT = 20
 STATUSES = {
@@ -55,6 +59,12 @@ def get_insights(session: Session, year: int | None = None) -> InsightsResponse:
     species = and_(Taxon.id.is_not(None), func.upper(Taxon.taxonomic_rank) == "SPECIES")
     gps = and_(Photo.latitude.between(-90, 90), Photo.longitude.between(-180, 180))
     uncategorized = func.trim(func.coalesce(Photo.category, "")) == ""
+    # Share the Explorer/List contract: trim surrounding whitespace, preserve
+    # case and spelling, and never infer a missing manufacturer or model.
+    make = _gear_value(Photo.camera_make)
+    model = _gear_value(Photo.camera_model)
+    lens = _gear_value(Photo.lens_model)
+    known_camera = or_(make != "", model != "")
 
     def count_if(condition):
         return func.count(case((condition, Photo.id)))
@@ -71,6 +81,8 @@ def get_insights(session: Session, year: int | None = None) -> InsightsResponse:
             count_if(Taxon.id.is_(None)),
             count_if(and_(Taxon.id.is_not(None), ~species)),
             count_if(uncategorized),
+            count_if(known_camera),
+            count_if(lens != ""),
         )
         .select_from(Photo)
         .outerjoin(Animal, Photo.animal_id == Animal.id)
@@ -88,6 +100,8 @@ def get_insights(session: Session, year: int | None = None) -> InsightsResponse:
         unverified,
         other_rank,
         uncategorized_count,
+        camera_count,
+        lens_count,
     ) = row
 
     def coverage(known):
@@ -120,6 +134,23 @@ def get_insights(session: Session, year: int | None = None) -> InsightsResponse:
         ]
 
     photo_count = func.count(Photo.id)
+    # Two bounded grouped queries. Coverage piggybacks on the overview above;
+    # neither ranking needs Photo ORM objects or an extra per-group lookup.
+    camera_name = func.trim(make + " " + model)
+    cameras = session.exec(
+        select(make, model, photo_count)
+        .where(*joined_conditions, known_camera)
+        .group_by(make, model)
+        .order_by(photo_count.desc(), camera_name.collate("NOCASE"), make, model)
+        .limit(10)
+    ).all()
+    lenses = session.exec(
+        select(lens, photo_count)
+        .where(*joined_conditions, lens != "")
+        .group_by(lens)
+        .order_by(photo_count.desc(), lens.collate("NOCASE"), lens)
+        .limit(10)
+    ).all()
     ranked = session.exec(
         select(Taxon.id, Taxon.common_name, Taxon.scientific_name, photo_count)
         .select_from(Photo)
@@ -202,4 +233,25 @@ def get_insights(session: Session, year: int | None = None) -> InsightsResponse:
         ],
         categories=categories,
         classification=classification,
+        equipment=InsightsEquipment(
+            camera=coverage(camera_count),
+            lens=coverage(lens_count),
+            top_cameras=[
+                InsightsCamera(
+                    camera_make=make or None,
+                    camera_model=model or None,
+                    photo_count=count,
+                    percentage=percentage(count, total),
+                )
+                for make, model, count in cameras
+            ],
+            top_lenses=[
+                InsightsLens(
+                    lens_model=value,
+                    photo_count=count,
+                    percentage=percentage(count, total),
+                )
+                for value, count in lenses
+            ],
+        ),
     )

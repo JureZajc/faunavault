@@ -45,8 +45,11 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 - Search, filters, sorting, Timeline, clustered Map, species Albums, manual
   Collections, and live Smart Collections.
 - Wildlife Insights summarizes active photos, verified species, capture activity,
-  categories, classification, curation, and GPS coverage, with year filters and
-  direct List/Map navigation. [Metric definitions and limits](docs/OPERATIONS.md#wildlife-insights).
+  categories, classification, curation, GPS coverage, and Top 10 cameras/lenses.
+  Optional year comparisons show count differences and GPS percentage-point changes;
+  exact equipment drill-downs retain capture-year filters in List. Missing EXIF stays
+  unknown; percentages use the period's entire active Photo total. Photo counts are
+  images, not wildlife observations. [Metric definitions and limits](docs/OPERATIONS.md#wildlife-insights).
 - Trips & Events group explicitly selected Photos around dated experiences, with
   date suggestions, List/Map/Culling entry, custom cover Photos, and safe membership removal.
   Choose **Set as cover** on a member Photo or **Remove custom cover** to use

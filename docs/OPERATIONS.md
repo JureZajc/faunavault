@@ -1365,6 +1365,19 @@ Pick/Reject are independent photo counts, so they do not partition the total.
 - **Classification**: Pending, Classified, and Needs Review use existing statuses.
   Unclassified/pending photos still belong to all applicable totals. Unexpected
   legacy statuses appear as Other status so the distribution reconciles.
+- **Top Cameras / Top Lenses**: ten most-used manufacturer/model pairs and lens
+  models, respectively. The existing Explorer/List convention trims surrounding
+  whitespace, preserving case and spelling. No guessed brand identity merges
+  groups: manufacturer-only and model-only cameras remain distinct. Rankings use
+  photo count descending, equipment name ascending (SQLite NOCASE), then exact
+  component values to break ties. Unknown groups stay outside the Top 10.
+- **Equipment coverage**: a camera is identifiable if either manufacturer or model
+  is nonblank; a lens requires a nonblank lens-model field. Both known and missing
+  shares use the entire selected period's active Photo total. Missing EXIF can
+  reflect absent camera metadata, export stripping, or unsupported metadata; it
+  does not identify a particular device. Equipment links filter exact stored
+  criteria (including explicitly missing components), and unknown links use
+  existing unknown-equipment filters. Both retain the capture-year range in List.
 
 All percentages use the selected period's **entire active photo total**, rather
 than just dated, GPS-tagged, classified, or verified photos. Empty denominators
@@ -1384,14 +1397,37 @@ Insights performs no geocoding, location naming, remote analytics, or tracking.
 return HTTP 422. `available_years` always describes the entire active archive;
 all overview and distribution fields are scoped. `yearly` contains scoped capture
 years; `monthly` is empty for All Time and twelve entries for a selected year.
+The additive typed `equipment` object contains `camera` and `lens` coverage
+(`known`, `missing`, `percentage`) and bounded `top_cameras` / `top_lenses`.
+Camera rows contain nullable `camera_make` / `camera_model`, `photo_count`, and
+`percentage`; lens rows contain `lens_model`, `photo_count`, and `percentage`.
+Existing response fields and metric definitions remain unchanged.
 The page's `year` URL parameter is restorable; an invalid page value visibly falls
 back to All Time. Fetch failures provide Retry; switching years cancels old
 requests and ignores late responses.
 
-The service uses five aggregate queries for All Time and six for a selected year,
+**Compare with** is optional and requires an explicitly selected second capture
+year different from the primary. `/insights?year=2026&compare=2025` restores both
+years after reload or browser Back/Forward. All Time is never a comparison year.
+Invalid URL comparisons show an explanation; choosing All Time or making the
+primary equal the comparison clears it. Valid years with no active Photos show
+an empty period. The comparison reuses `GET /insights` for each year, reusing the
+already-loaded primary response. Loading and retry are independent; cancelled or
+late responses cannot show a previously selected year's metrics.
+
+The comparison shows active Photo total, distinct linked verified species-rank
+taxa, Favorite/Pick/Reject Photos, and GPS coverage for each year. Differences
+are primary minus comparison. Count changes also show relative percentages when
+the comparison value is nonzero; a zero baseline displays `N/A` without dividing
+by zero. GPS differences are **percentage points**, not relative percent changes.
+Verified species totals do not identify newly observed species, unique sightings,
+or individual animals. Year links open that year's canonical filtered List.
+
+The service uses seven aggregate queries for All Time and eight for a selected year,
 without loading Photo objects or reading images. Existing relationship/capture
 indexes are reused. Year rows are bounded by the 1–9999 calendar; species and
-category results have fixed limits. There is no migration, cache, analytics DB,
+category and equipment results have fixed limits. Equipment coverage shares the
+overview query; two grouped queries return bounded Top 10 lists. There is no migration, cache, analytics DB,
 new chart dependency, or AI reclassification. Counts refresh on navigation/reload,
 not through live polling. Detailed geographic aggregation, heatmaps, and
 observation/deduplicated-animal inference remain outside this first version.
@@ -1406,10 +1442,11 @@ This reuses the catalog benchmark's protected-location checks, deterministic
 synthetic dataset, production storage initializer/indexes, owned temporary
 database cleanup, and exclusive new-report publication. It never opens the live
 archive or reads original images. An independent in-memory oracle verifies
-population, distinct species, ranking counts/order, and breakdown reconciliation.
+population, distinct species, equipment counts/coverage/percentages, ranking
+counts/order, and breakdown reconciliation. Query counts are asserted exactly.
 `--verbose` prints emitted SQL and query plans. Choose a fresh output filename.
 
-On the development machine, 100,000 synthetic photos (95,000 active) produced
+Before equipment analytics, 100,000 synthetic photos (95,000 active) produced
 2,550-byte All Time and 2,608-byte 2026 responses. Across 20 warm-cache service
 calls, All Time median/p95 were 220/228 ms with five queries; 2026 median/p95 were
 139/167 ms with six queries and 5,935 matching photos. These measurements exclude
@@ -1417,6 +1454,14 @@ HTTP, JSON encoding, browser rendering, and cold disk reads. All Time joins reus
 the catalog's active-ID lookup pattern to avoid reading wide rows in capture-index
 order; selected years retain the selective capture-index range scan. No new index
 or planner hint is required. Timings depend on machine and archive distribution.
+
+With equipment analytics, a disposable 100,000-Photo run (20 warm-cache calls)
+measured All Time median/p95 at 542/609 ms with seven queries, and 2026 at
+200/276 ms with eight queries and 5,935 matching Photos. Response sizes were
+2,869 and 2,921 bytes. Gear rankings reuse the sequential active-ID lookup for
+All Time and the existing selective capture index for a selected year. These
+service timings exclude HTTP, JSON encoding, browser rendering and cold reads;
+background load and archive equipment diversity can change the results.
 
 ## Fullscreen gallery and slideshow
 
