@@ -4,6 +4,72 @@ Detailed workflows and API behavior for the source-based application. Start with
 [Quick Start](../README.md#quick-start). Backend commands below run from `backend`;
 root developer commands run from the repository root.
 
+## Nearby Photos
+
+Open an active Photo with a complete, finite GPS pair to see **Nearby Photos**
+below Location map. Search within 1, 5 (default), 10 or 25 km. Up to 12 nearest
+previews show titles (display title, breed, common name, then original filename),
+thumbnail links, distance and optional camera-local capture date. Meters are used
+below 1 km and kilometers rounded to one decimal above it. `(0,0)` is valid.
+Missing or invalid effective GPS hides the section; extracted GPS is never a
+fallback after a manual correction or clear. Distances depend on GPS accuracy and
+measure surface great-circle separation, not travel distance or wildlife sightings.
+
+The radius lives in `nearby_radius` in the detail URL. Changes update results
+without reloading the detail view, preserve existing `returnTo`, abort obsolete
+requests and ignore late replies. Loading, empty, error/Retry and an explicit
+unavailable response are handled. Thumbnail links return one hop to the source
+Photo with its selected radius. They omit its previous return context to prevent
+unbounded nested URLs. The existing **View on map** action stays available.
+Map selections are rectangular geographic bounds; Nearby Photos uses a circle,
+so those two result sets can differ.
+
+`GET /photos/{photo_id}/nearby?radius_km=5&limit=12` returns:
+
+- `source_photo_id`, `radius_km`, `availability` (`available` or `unavailable`),
+  and `unavailable_reason` (`missing_or_invalid_gps`, otherwise null).
+- `total`: all active matching Photos within the circle, independent of `limit`.
+- `items`: up to `limit` previews with `id`, `thumbnail_filename`,
+  `original_filename`, `display_title`, `captured_at`, and `distance_m`.
+
+Allowed radii are exactly 1/5/10/25 km; `limit` is 1–24 (default 12). Invalid query
+values return 422. Missing or trashed source Photos return 404, matching active
+detail behavior. An active source without valid GPS returns 200 with unavailable
+state, zero total and empty items. With no other eligible Photos, available
+results are empty. Only effective `Photo.latitude` and `Photo.longitude` are used.
+
+Haversine uses the mean spherical Earth radius **6,371,008.8 meters**. Longitude
+differences wrap across the antimeridian, and results include the radius boundary
+with a 0.000001 m floating-point tolerance. This spherical approximation does not
+correct GPS error or model Earth's ellipsoid. Sort order is exact calculated
+distance ascending, effective capture time descending with nulls last, then Photo
+ID ascending. Capture time keeps camera-local semantics; offsets are not applied.
+
+Two lightweight SQL projections read source coordinates and candidates within a
+conservative spherical-cap bounding box. The latter reuses catalog geographic
+predicates, uses longitude OR for antimeridian crossings and all longitudes when
+the cap touches a pole. SQLite excludes inactive, missing/invalid GPS and the
+source Photo before Python distance checks. Candidates stream in batches of 256;
+a nearest-results heap holds at most `limit` entries while every circle match is
+counted. Memory is O(256 + limit), with O(candidates × log(limit)) selection work.
+Dense areas can still require examining many candidate coordinates. There are no
+Photo ORM objects, N+1 queries, image reads, geocoding, new services or migrations.
+
+Results use current archive metadata on each request. Trash removes Photos,
+Restore makes them eligible, GPS edits change matching, clearing GPS excludes a
+Photo and permanent deletion leaves no references. Clearing source GPS removes
+the section after Save. Refresh an open detail after edits made elsewhere; live
+cross-tab pushes are not provided. Nearby search is read-only and never changes
+originals, derivatives, metadata or preferences. Location map tiles retain their
+existing behavior; Nearby search itself needs no tiles or external service.
+
+Focused validation: from backend, `uv run --no-sync pytest
+tests/test_nearby_photos.py tests/test_geographic_catalog.py`; from frontend,
+`npm test -- __tests__/nearby-photos.test.tsx __tests__/nearby-photos-api.test.ts
+__tests__/photo-detail.test.tsx` and `npm run test:e2e -- nearby-photos.e2e.ts`.
+Tests use synthetic coordinates and disposable archives, independent reference
+distances, desktop/touch mobile and local map-tile responses.
+
 ## Camera & Lens Explorer
 
 Choose **Gear** to explore cameras and lenses extracted from imported EXIF.

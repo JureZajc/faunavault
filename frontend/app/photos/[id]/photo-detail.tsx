@@ -64,7 +64,7 @@ export default function PhotoDetail({
             href={safeReturnLocation(returnTo)}
             className="inline-flex w-fit rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 transition hover:border-emerald-300 hover:text-emerald-900"
           >
-            Back to catalog
+            {/^\/photos\/[1-9]\d*(?:\?|$)/.test(safeReturnLocation(returnTo)) ? "Back to source photo" : "Back to catalog"}
           </Link>
           <p className="break-words text-sm text-stone-500 sm:text-right">
             Field record stored in your local animal archive

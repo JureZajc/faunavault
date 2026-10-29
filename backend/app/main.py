@@ -26,6 +26,7 @@ from app.routers.duplicates import create_duplicates_router
 from app.routers.events import create_events_router
 from app.routers.import_sessions import create_import_sessions_router
 from app.routers.insights import create_insights_router
+from app.routers.nearby_photos import create_nearby_photos_router
 from app.routers.photo_lifecycle import create_photo_lifecycle_router
 from app.routers.review import create_review_router
 from app.routers.selected_photo_export import create_selected_export_router
@@ -196,6 +197,7 @@ app.include_router(create_review_router(lambda: settings))
 app.include_router(create_duplicates_router())
 app.include_router(create_import_sessions_router())
 app.include_router(create_insights_router())
+app.include_router(create_nearby_photos_router())
 
 
 def photo_or_404(photo_id: int, session: Session) -> Photo:

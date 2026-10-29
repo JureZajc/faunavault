@@ -12,6 +12,12 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
 
 ## Key features
 
+- **Nearby Photos** on geotagged Photo details finds active Photos within 1, 5
+  (default), 10, or 25 km, with thumbnail links, distances and capture dates.
+  Spherical distances use effective GPS; accuracy depends on recorded coordinates.
+  Missing GPS hides the section. Trash is excluded and Restore makes Photos
+  eligible again. Circular results differ from rectangular Map selections.
+  [Nearby Photos guide](docs/OPERATIONS.md#nearby-photos).
 - **Gear Explorer** at `/gear` shows active-photo camera/lens usage, missing EXIF
   counts, search and usage sorting. Open equipment in List for exact trimmed,
   case-sensitive filters, combinable with other catalog criteria and Culling.

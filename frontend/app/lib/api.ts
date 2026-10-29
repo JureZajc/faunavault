@@ -1104,6 +1104,24 @@ export function getPhoto(id: string, signal?: AbortSignal) {
   return request<Photo>(`/photos/${id}`, { signal });
 }
 
+export type NearbyRadius = 1 | 5 | 10 | 25;
+export type NearbyPhotoPreview = TimelinePhotoPreview & {
+  captured_at: string | null;
+  distance_m: number;
+};
+export type NearbyPhotosResponse = {
+  source_photo_id: number;
+  radius_km: NearbyRadius;
+  availability: "available" | "unavailable";
+  unavailable_reason: "missing_or_invalid_gps" | null;
+  total: number;
+  items: NearbyPhotoPreview[];
+};
+
+export function getNearbyPhotos(id: number, radiusKm: NearbyRadius = 5, limit = 12, signal?: AbortSignal) {
+  return request<NearbyPhotosResponse>(`/photos/${id}/nearby?radius_km=${radiusKm}&limit=${limit}`, { signal, cache: "no-store" });
+}
+
 export function deletePhoto(id: number) {
   return request<{ status: "trashed"; photo_id: number }>(`/photos/${id}`, {
     method: "DELETE",
