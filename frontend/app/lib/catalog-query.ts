@@ -8,6 +8,7 @@ import {
   EquipmentQuery,
   GearCamera,
 } from "./api";
+import { BOUND_KEYS, hasArea, parseCoordinate } from "./geographic-bounds";
 
 export type CatalogLayout = "flat" | "grouped";
 export type HomeView = "list" | "album" | "trash";
@@ -29,12 +30,12 @@ export type CatalogSortOption =
 
 export type CatalogState = CatalogQuery & { layout: CatalogLayout };
 export type MapCatalogQuery = Pick<CatalogQuery,
-  "event_id" | "status" | "category" | "uncategorized" | "taxon_id" | "taken_from" | "taken_to"
+  "event_id" | "status" | "category" | "uncategorized" | "taxon_id" | "taken_from" | "taken_to" | "bbox_south" | "bbox_north" | "bbox_west" | "bbox_east"
 >;
 
 export function mapCatalogQuery(state: MapCatalogQuery): MapCatalogQuery {
-  const { event_id, status, category, uncategorized, taxon_id, taken_from, taken_to } = state;
-  return { event_id, status, category, uncategorized, taxon_id, taken_from, taken_to };
+  const { event_id, status, category, uncategorized, taxon_id, taken_from, taken_to, bbox_south, bbox_north, bbox_west, bbox_east } = state;
+  return { event_id, status, category, uncategorized, taxon_id, taken_from, taken_to, bbox_south, bbox_north, bbox_west, bbox_east };
 }
 
 export function writeMapCatalogState(current: URLSearchParams, state: MapCatalogQuery) {
@@ -46,7 +47,8 @@ export function writeMapCatalogState(current: URLSearchParams, state: MapCatalog
 }
 
 export function mapCatalogHref(state: MapCatalogQuery) {
-  const query = writeMapCatalogState(new URLSearchParams(), state).toString();
+  // Keep unsupported live criteria in navigation so Map can explain them.
+  const query = writeCatalogState(new URLSearchParams(), { ...DEFAULT_CATALOG_STATE, ...state, page: 1, sort: "created_at", order: "desc", layout: "flat" }).toString();
   return query ? `/map?${query}` : "/map";
 }
 
@@ -75,7 +77,7 @@ export const REJECTED_PHOTOS_HREF = "/?catalog_culling_state=reject";
 
 export function hasAdditionalRejectedFilters(state: CatalogQuery) {
   return Boolean(
-    state.metadata_issue || hasEquipmentFilters(state) || hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
+    hasArea(state) || state.metadata_issue || hasEquipmentFilters(state) || hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
     state.taxon_id || state.taken_from || state.taken_to || state.favorites_only ||
     state.rating || state.rating_min || state.unrated,
   );
@@ -166,6 +168,8 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   const unrated = params.get("catalog_unrated") === "1";
   const culling = params.get("catalog_culling_state");
   return {
+    ...Object.fromEntries(BOUND_KEYS.filter((key) => params.has(`catalog_${key}`)).map((key) => [key,
+      params.getAll(`catalog_${key}`).length === 1 ? parseCoordinate(params.get(`catalog_${key}`)!) : NaN])),
     metadata_issue: parseMetadataIssue(params.get("catalog_metadata_issue")),
     camera_make: params.has("catalog_camera_make") ? trimTag(params.get("catalog_camera_make")!) : undefined,
     camera_model: params.has("catalog_camera_model") ? trimTag(params.get("catalog_camera_model")!) : undefined,
@@ -201,6 +205,10 @@ export function writeCatalogState(
   state: CatalogState,
 ) {
   const params = new URLSearchParams(current.toString());
+  for (const key of BOUND_KEYS) {
+    if (state[key] !== undefined) params.set(`catalog_${key}`, String(state[key]));
+    else params.delete(`catalog_${key}`);
+  }
   const setOrDelete = (key: string, value?: string) => {
     if (value) params.set(key, value);
     else params.delete(key);

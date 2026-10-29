@@ -26,7 +26,7 @@ from app.schemas import (
     TimelineYear,
 )
 from app.services.events import event_or_404
-from app.services.metadata_health import metadata_condition
+from app.services.metadata_health import gps_present, metadata_condition
 
 TIMELINE_PREVIEW_LIMIT = 4
 
@@ -395,6 +395,19 @@ def _catalog_joins(query, criteria: CatalogSavedQuery):
 def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
     conditions = [Photo.deleted_at.is_(None)]
     if isinstance(criteria, CatalogQuery):
+        if criteria.bbox_south is not None:
+            conditions.extend(
+                [
+                    gps_present(),
+                    Photo.latitude.between(criteria.bbox_south, criteria.bbox_north),
+                    Photo.longitude.between(criteria.bbox_west, criteria.bbox_east)
+                    if criteria.bbox_west < criteria.bbox_east
+                    else or_(
+                        Photo.longitude >= criteria.bbox_west,
+                        Photo.longitude <= criteria.bbox_east,
+                    ),
+                ]
+            )
         if criteria.metadata_issue is not None:
             conditions.append(metadata_condition(criteria.metadata_issue))
         conditions.extend(_tag_conditions(criteria))
@@ -492,10 +505,18 @@ def list_catalog_photos(
     unknown_camera: bool = False,
     unknown_lens: bool = False,
     metadata_issue: MetadataIssue | None = None,
+    bbox_south: float | None = None,
+    bbox_north: float | None = None,
+    bbox_west: float | None = None,
+    bbox_east: float | None = None,
 ) -> CatalogPhotoPage:
     if event_id is not None:
         event_or_404(event_id, session)
     criteria = CatalogQuery(
+        bbox_south=bbox_south,
+        bbox_north=bbox_north,
+        bbox_west=bbox_west,
+        bbox_east=bbox_east,
         metadata_issue=metadata_issue,
         camera_make=camera_make,
         camera_model=camera_model,
@@ -530,7 +551,8 @@ def list_catalog_photos(
     conditions = _catalog_conditions(criteria)
 
     selective_photo_filters = bool(
-        camera_make is not None
+        bbox_south is not None
+        or camera_make is not None
         or camera_model is not None
         or lens_model is not None
         or unknown_camera
@@ -682,8 +704,7 @@ def list_photo_map_points(
     rows = session.exec(
         query.where(
             *_catalog_conditions(criteria),
-            Photo.latitude.is_not(None),
-            Photo.longitude.is_not(None),
+            gps_present(),
         ).order_by(Photo.id.asc())
     ).all()
     return [

@@ -6,6 +6,14 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Photo Map geographic area selection by desktop drag, mobile two-corner taps,
+  or accessible coordinate fields, with a visible rectangle, mapped Photo counts,
+  replacement, clearing, and Map/List navigation. Inclusive validated bounding-box
+  filters share catalog SQL, support antimeridian crossings and zero coordinates,
+  persist in URLs/history/detail return links, and combine with existing List
+  criteria. Missing GPS and Trash never match an area. No database migration,
+  drawing dependency, image processing, or original Photo changes.
+
 - Daily Photography Calendar integrated into Timeline with URL-restorable mode
   and year selection, all twelve Monday-first month grids, accessible daily
   photo intensity and List drill-down, yearly totals, active days, average Photos

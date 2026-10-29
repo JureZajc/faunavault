@@ -223,7 +223,7 @@ export function getMetadataHealth(signal?: AbortSignal) {
   return request<MetadataHealth>("/catalog/metadata-health", { signal });
 }
 
-export type CatalogQuery = EquipmentQuery & {
+export type CatalogQuery = EquipmentQuery & import("./geographic-bounds").BoundsQuery & {
   metadata_issue?: MetadataIssue;
   tags?: string[];
   untagged?: boolean;
@@ -355,7 +355,7 @@ export type CollectionDetail = CollectionSummary & {
   photos: CollectionPhotoPage;
 };
 
-export type SmartCollectionQuery = Omit<CatalogQuery, "metadata_issue" | "page" | "page_size" | "event_id" | "tags" | "untagged" | keyof EquipmentQuery>;
+export type SmartCollectionQuery = Omit<CatalogQuery, keyof import("./geographic-bounds").BoundsQuery | "metadata_issue" | "page" | "page_size" | "event_id" | "tags" | "untagged" | keyof EquipmentQuery>;
 export type SmartCollectionSummary = {
   id: number;
   name: string;
@@ -1012,6 +1012,9 @@ export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
 
 function catalogQueryParams(query: CatalogQuery) {
   const params = new URLSearchParams();
+  for (const key of ["bbox_south", "bbox_north", "bbox_west", "bbox_east"] as const) {
+    if (query[key] !== undefined) params.set(key, String(query[key]));
+  }
   if (query.metadata_issue) params.set("metadata_issue", query.metadata_issue);
   for (const key of ["camera_make", "camera_model", "lens_model"] as const) {
     if (query[key] !== undefined) params.set(key, query[key]);

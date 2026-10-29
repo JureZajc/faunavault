@@ -313,3 +313,97 @@ test("suppresses previous markers and count after a filtered projection fails", 
   expect(screen.queryByRole("region", { name: "Mock archive map" })).toBeNull();
   expect(map.isConnected).toBe(true);
 });
+
+async function applyArea(values = ["0", "10", "0", "20"]) {
+  for (const [index, name] of ["South latitude", "North latitude", "West longitude", "East longitude"].entries()) {
+    fireEvent.change(screen.getByLabelText(name), { target: { value: values[index] } });
+  }
+  await userEvent.click(screen.getByRole("button", { name: "Apply coordinates" }));
+}
+
+test("coordinate selection, replacement, counts, navigation, clear and browser history stay synchronized", async () => {
+  api.getPhotoMapPoints.mockImplementation(async (query) => query.bbox_south === 0 ? [point()] : [point(), point({ id: 18 })]);
+  window.history.replaceState(null, "", "/map?catalog_category=bird");
+  render(<MapBrowser focusPhotoId={17} />);
+  await screen.findByText("2 mapped photos");
+  const map = screen.getByRole("region", { name: "Mock archive map" });
+  await applyArea();
+  await screen.findByText("1 mapped photo matches this area");
+  expect(api.getPhotoMapPoints.mock.lastCall?.[0]).toMatchObject({ bbox_south: 0, bbox_north: 10, bbox_west: 0, bbox_east: 20, category: "bird" });
+  expect(screen.getByRole("link", { name: "View selected area in List" }).getAttribute("href")).toContain("catalog_bbox_south=0");
+  expect(screen.getByRole("link", { name: "List" }).getAttribute("href")).toContain("catalog_bbox_east=20");
+  expect(screen.getByRole("region", { name: "Mock archive map" })).toBe(map);
+  await applyArea(["1", "9", "170", "-170"]);
+  await screen.findByText("2 mapped photos match this area");
+  expect(screen.getByLabelText("Selected geographic area").textContent).toContain("crosses antimeridian");
+  act(() => window.history.back());
+  await screen.findByText("1 mapped photo matches this area");
+  expect(screen.getByLabelText<HTMLInputElement>("South latitude").value).toBe("0");
+  act(() => window.history.forward());
+  await screen.findByText("2 mapped photos match this area");
+  expect(screen.getByLabelText<HTMLInputElement>("West longitude").value).toBe("170");
+  await userEvent.click(screen.getByRole("button", { name: "Clear area" }));
+  await screen.findByText("2 mapped photos");
+  expect(window.location.search).toBe("?catalog_category=bird");
+  expect(screen.getByLabelText<HTMLInputElement>("South latitude").value).toBe("");
+});
+
+test("selection mode can be cancelled by keyboard and invalid coordinate entry is actionable", async () => {
+  api.getPhotoMapPoints.mockResolvedValue([point()]);
+  render(<MapBrowser focusPhotoId={null} />);
+  await screen.findByText("1 mapped photo");
+  await userEvent.click(screen.getByRole("button", { name: "Select area" }));
+  expect(screen.getByRole("status").textContent).toContain("tap the first corner");
+  await userEvent.keyboard("{Escape}");
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Select area" }));
+  await applyArea(["0", "0", "0", "20"]);
+  expect(screen.getByRole("alert").textContent).toContain("South latitude must be less");
+  expect(document.activeElement).toBe(screen.getByLabelText("South latitude"));
+  expect(window.location.search).toBe("");
+});
+
+test.each(["catalog_bbox_south=0", "catalog_bbox_south=NaN&catalog_bbox_north=10&catalog_bbox_west=0&catalog_bbox_east=20"])("invalid area URL blocks API and can be corrected or cleared: %s", async (search) => {
+  window.history.replaceState(null, "", `/map?${search}&catalog_category=bird`);
+  api.getPhotoMapPoints.mockResolvedValue([]);
+  render(<MapBrowser focusPhotoId={null} />);
+  expect(screen.getByText(/Invalid geographic area in URL/)).toBeTruthy();
+  expect(api.getPhotoMapPoints).not.toHaveBeenCalled();
+  await applyArea();
+  await screen.findByText("0 mapped photos match this area");
+  expect(screen.getByRole("region", { name: "Mock archive map" })).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+  await screen.findByText("0 mapped photos");
+  expect(window.location.search).toBe("");
+});
+
+test("rapid area changes abort old requests, ignore late responses, and retry failed selected counts", async () => {
+  let resolveOld: (points: PhotoMapPoint[]) => void = () => undefined;
+  api.getPhotoMapPoints.mockResolvedValueOnce([point()]).mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+    .mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([point(), point({ id: 18 })]);
+  render(<MapBrowser focusPhotoId={null} />);
+  await screen.findByText("1 mapped photo");
+  await applyArea();
+  await waitFor(() => expect(api.getPhotoMapPoints).toHaveBeenCalledTimes(2));
+  const oldSignal = api.getPhotoMapPoints.mock.calls[1][1] as AbortSignal;
+  await applyArea(["1", "9", "1", "19"]);
+  await screen.findByText("Could not load photo locations");
+  expect(oldSignal.aborted).toBe(true);
+  await act(async () => resolveOld([point(), point(), point()]));
+  expect(screen.queryByText("3 mapped photos")).toBeNull();
+  expect(screen.queryByText(/photos match this area/)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await screen.findByText("2 mapped photos match this area");
+  expect(api.getPhotoMapPoints.mock.lastCall?.[0]).toMatchObject({ bbox_south: 1, bbox_east: 19 });
+});
+
+test("unsupported criteria survive area clearing and List navigation; explicit removal retains area", async () => {
+  window.history.replaceState(null, "", "/map?catalog_bbox_south=0&catalog_bbox_north=10&catalog_bbox_west=0&catalog_bbox_east=20&catalog_tag=bird");
+  api.getPhotoMapPoints.mockResolvedValue([point()]);
+  render(<MapBrowser focusPhotoId={null} />);
+  expect(screen.getByRole("link", { name: "View selected area in List" }).getAttribute("href")).toContain("catalog_tag=bird");
+  expect(api.getPhotoMapPoints).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Remove unsupported filters" }));
+  await screen.findByText("1 mapped photo matches this area");
+  expect(window.location.search).toContain("catalog_bbox_south=0");
+  expect(window.location.search).not.toContain("catalog_tag");
+});

@@ -115,6 +115,26 @@ test("active tags visibly block creating and updating version-one Smart Collecti
   await waitFor(() => expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(false));
 });
 
+test("List combines geographic bounds with filters and removes only area; Map round-trip keeps bounds", async () => {
+  window.history.replaceState(null, "", "/?catalog_bbox_south=0&catalog_bbox_north=10&catalog_bbox_west=170&catalog_bbox_east=-170&catalog_category=mammal");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+  expect(screen.getByLabelText("Active geographic filter").textContent).toContain("crosses antimeridian");
+  expect(api.getCatalogPhotos.mock.lastCall?.[0]).toMatchObject({ bbox_south: 0, bbox_east: -170, category: "mammal" });
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Status" }), "classified");
+  await waitFor(() => expect(api.getCatalogPhotos.mock.lastCall?.[0]).toMatchObject({ bbox_south: 0, bbox_east: -170, status: "classified" }));
+  for (const name of ["View on Map", "Map"]) {
+    const href = screen.getByRole("link", { name }).getAttribute("href");
+    expect(href).toContain("catalog_bbox_east=-170");
+    expect(href).toContain("catalog_status=classified");
+  }
+  expect(screen.queryByRole("button", { name: "Save as Smart Collection" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Remove area filter" }));
+  await waitFor(() => expect(window.location.search).not.toContain("bbox"));
+  expect(window.location.search).toContain("catalog_category=mammal");
+  expect(window.location.search).toContain("catalog_status=classified");
+});
+
 test("saves current List criteria without page or layout and includes pending search text", async () => {
   window.history.replaceState(null, "", "/?catalog_page=2&catalog_status=classified&catalog_layout=grouped&catalog_sort=name&catalog_order=asc");
   render(<Home />);

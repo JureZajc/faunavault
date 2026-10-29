@@ -23,11 +23,17 @@ import {
   observeMapSize,
 } from "./leaflet-map-core";
 import styles from "./photo-map.module.css";
+import { AreaBounds, displayAreaBounds } from "../../lib/geographic-bounds";
+import { AREA_STYLE, attachAreaSelection } from "./leaflet-area-selection";
 
 export type ArchivePhotoMapProps = {
   points: PhotoMapPoint[];
   focusPhotoId: number | null;
   mapHref?: string;
+  area?: AreaBounds;
+  selecting?: boolean;
+  onAreaSelect?: (area: AreaBounds) => void;
+  onSelectionError?: (message: string) => void;
 };
 
 function appendText(
@@ -77,11 +83,19 @@ export default function ArchivePhotoMap({
   points,
   focusPhotoId,
   mapHref = "/map",
+  area, selecting = false, onAreaSelect, onSelectionError,
 }: ArchivePhotoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const selectionCleanup = useRef<(() => void) | null>(null);
   const popupPhotoId = useRef<number | null>(null);
   const lastFocusId = useRef<number | null>(null);
+  const selectRef = useRef(onAreaSelect);
+  const errorRef = useRef(onSelectionError);
+  useEffect(() => {
+    selectRef.current = onAreaSelect;
+    errorRef.current = onSelectionError;
+  }, [onAreaSelect, onSelectionError]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -90,11 +104,35 @@ export default function ArchivePhotoMap({
     mapRef.current = map;
     const stopObserving = observeMapSize(map, container);
     return () => {
+      // Restore selection handlers before map.remove() tears down Leaflet;
+      // restoring them afterwards could attach listeners to a retired map.
+      selectionCleanup.current?.();
+      selectionCleanup.current = null;
       mapRef.current = null;
       stopObserving();
       destroyLeafletMap(map);
     };
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !area) return;
+    const rectangle = L.rectangle(displayAreaBounds(area), AREA_STYLE).addTo(map);
+    map.fitBounds(rectangle.getBounds(), { padding: [24, 24], maxZoom: ARCHIVE_BOUNDS_MAX_ZOOM, animate: false });
+    return () => { rectangle.remove(); };
+  }, [area]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selecting) return;
+    map.closePopup();
+    const cleanup = attachAreaSelection(map, (bounds) => selectRef.current?.(bounds), (message) => errorRef.current?.(message));
+    selectionCleanup.current = cleanup;
+    return () => {
+      cleanup();
+      if (selectionCleanup.current === cleanup) selectionCleanup.current = null;
+    };
+  }, [selecting]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -145,7 +183,8 @@ export default function ArchivePhotoMap({
 
     const markers = points.map((point) => {
       const label = photoMapMarkerLabel(point);
-      const marker = L.marker([point.latitude, point.longitude], {
+      const longitude = area && area.bbox_west > area.bbox_east && point.longitude < area.bbox_west ? point.longitude + 360 : point.longitude;
+      const marker = L.marker([point.latitude, longitude], {
         alt: label,
         title: label,
         keyboard: true,
@@ -182,15 +221,17 @@ export default function ArchivePhotoMap({
         : points.find((point) => point.id === selectedId);
     if (focusedPoint) {
       map.setView(
-        [focusedPoint.latitude, focusedPoint.longitude],
+        markersById.get(focusedPoint.id)!.getLatLng(),
         FOCUSED_PHOTO_ZOOM,
       );
-    } else if (points.length === 1) {
+    } else if (points.length === 1 && !area) {
       map.setView([points[0].latitude, points[0].longitude], PHOTO_MAP_ZOOM);
-    } else if (points.length) {
+    } else if (points.length && !area) {
       map.fitBounds(
         L.latLngBounds(points.map((point) => [point.latitude, point.longitude])),
-        { padding: [24, 24], maxZoom: ARCHIVE_BOUNDS_MAX_ZOOM },
+        // A dynamic map can mount with selection mode already enabled. Finish
+        // the initial fit synchronously so corners never use a moving viewport.
+        { padding: [24, 24], maxZoom: ARCHIVE_BOUNDS_MAX_ZOOM, animate: false },
       );
     }
 
@@ -206,7 +247,7 @@ export default function ArchivePhotoMap({
       cluster.off();
       cluster.remove();
     };
-  }, [focusPhotoId, mapHref, points]);
+  }, [area, focusPhotoId, mapHref, points]);
 
   return (
     <div
