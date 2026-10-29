@@ -6,6 +6,16 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Daily Photography Calendar integrated into Timeline with URL-restorable mode
+  and year selection, all twelve Monday-first month grids, accessible daily
+  photo intensity and List drill-down, yearly totals, active days, average Photos
+  per active day, and linked most active day (earliest date breaks ties).
+  Read-only `GET /catalog/calendar` uses camera-local effective capture dates,
+  bounded SQLite aggregates and the existing capture index, without Photo
+  hydration, images, dependencies or migrations. Undated Photos link to Metadata
+  Health; corrections, Trash and Restore update counts on refresh. Includes
+  boundary, cancellation, accessibility and disposable Playwright coverage.
+
 - Metadata Health workspace (`/metadata-health`) with active Photo totals,
   missing capture/GPS groups, complete counts, and completeness percentage from a
   single SQLite aggregate. Effective capture timestamps and complete in-range GPS
@@ -167,6 +177,10 @@ Release entries describe user-visible milestones rather than individual commits.
   culling metadata and detection of changes during backup creation.
 
 ### Fixed
+
+- Inclusive List capture-date filtering now includes the final microsecond of
+  31 December 9999, keeping Calendar drill-down totals consistent at the maximum
+  supported year.
 
 - Windows development reloads no longer interrupt the launcher and stop both
   servers. Combined and standalone backend commands isolate reload signals and

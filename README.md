@@ -44,6 +44,12 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   [Bulk metadata guide](docs/OPERATIONS.md#bulk-capture-and-gps-editing).
 - Search, filters, sorting, Timeline, clustered Map, species Albums, manual
   Collections, and live Smart Collections.
+- **Daily Photography Calendar** within Timeline: choose Calendar and a capture
+  year for a Monday-first, twelve-month overview, daily photo activity, active-day
+  totals, average Photos per active day, and a linked most active day. Click an
+  active date to open its filtered List. Camera-local dates and manual corrections
+  are respected; Trash and undated Photos are excluded. Missing dates can be
+  corrected through Metadata Health. [Calendar guide](docs/OPERATIONS.md#daily-photography-calendar).
 - Wildlife Insights summarizes active photos, verified species, capture activity,
   categories, classification, curation, GPS coverage, and Top 10 cameras/lenses.
   Optional year comparisons show count differences and GPS percentage-point changes;

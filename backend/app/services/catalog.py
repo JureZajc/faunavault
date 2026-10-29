@@ -10,6 +10,8 @@ from app.catalog_query import CatalogQuery, CatalogSavedQuery, MetadataIssue
 from app.metadata_types import CullingFilter
 from app.models import Animal, ArchiveEventPhoto, Photo, Taxon
 from app.schemas import (
+    CalendarDay,
+    CalendarResponse,
     CatalogCategoryFacet,
     CatalogFacets,
     CatalogPhotoPage,
@@ -453,7 +455,11 @@ def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
             if criteria.taken_to == date.max
             else datetime.combine(criteria.taken_to + timedelta(days=1), time.min)
         )
-        conditions.append(Photo.captured_at < upper_bound)
+        conditions.append(
+            Photo.captured_at <= upper_bound
+            if criteria.taken_to == date.max
+            else Photo.captured_at < upper_bound
+        )
     return conditions
 
 
@@ -694,6 +700,60 @@ def list_photo_map_points(
         )
         for row in rows
     ]
+
+
+def get_photo_calendar(session: Session, year: int | None = None) -> CalendarResponse:
+    """Three scalar/grouped queries; no image access or Photo ORM hydration.
+
+    Substrings keep camera-local dates intact. The daily query uses the existing
+    (deleted_at, captured_at, id) index with an inclusive/exclusive year range.
+    Offsets are descriptive metadata, never timezone conversion instructions.
+    """
+    if year is not None and not 1 <= year <= 9999:
+        raise ValueError("year must be between 1 and 9999")
+    capture_year = cast(func.substr(Photo.captured_at, 1, 4), Integer)
+    available_years = list(
+        session.exec(
+            select(capture_year)
+            .where(Photo.deleted_at.is_(None), Photo.captured_at.is_not(None))
+            .group_by(capture_year)
+            .order_by(capture_year)
+        ).all()
+    )
+    unknown = session.exec(
+        select(func.count(Photo.id)).where(
+            Photo.deleted_at.is_(None), Photo.captured_at.is_(None)
+        )
+    ).one()
+    selected = (
+        year if year is not None else (available_years[-1] if available_years else None)
+    )
+    days = []
+    if selected is not None:
+        conditions = [
+            Photo.deleted_at.is_(None),
+            Photo.captured_at >= datetime(selected, 1, 1),
+            Photo.captured_at < datetime(selected + 1, 1, 1)
+            if selected < 9999
+            else Photo.captured_at <= datetime.max,
+        ]
+        capture_day = func.substr(Photo.captured_at, 1, 10)
+        rows = session.exec(
+            select(capture_day, func.count(Photo.id))
+            .where(*conditions)
+            .group_by(capture_day)
+            .order_by(capture_day)
+        ).all()
+        days = [CalendarDay(date=value, photo_count=count) for value, count in rows]
+    return CalendarResponse(
+        year=selected,
+        available_years=available_years,
+        photo_count=sum(day.photo_count for day in days),
+        active_days=len(days),
+        max_daily_count=max((day.photo_count for day in days), default=0),
+        days=days,
+        unknown_capture_count=unknown,
+    )
 
 
 def get_photo_timeline(session: Session) -> TimelineResponse:

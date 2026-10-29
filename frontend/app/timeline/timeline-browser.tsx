@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import CalendarBrowser from "./calendar-browser";
 import TimelinePreview from "../components/photo-thumbnail-preview";
 import ArchiveNavigation from "../components/archive-navigation";
 import { usePhotoTimeline } from "../hooks/use-photo-timeline";
@@ -60,10 +62,66 @@ function TimelineYearSection({ year }: { year: TimelineYear }) {
   );
 }
 
-export default function TimelineBrowser() {
+function TimelineContent() {
   const timeline = usePhotoTimeline();
   const hasKnownCaptures = Boolean(timeline.data?.years.length);
   const unknownCount = timeline.data?.unknown_capture_count ?? 0;
+  return timeline.isLoading ? (
+    <div role="status" className="mt-6 space-y-4">
+      <p className="text-sm text-stone-500">Loading Timeline…</p>
+      <div className="h-44 animate-pulse rounded-xl bg-white" />
+      <div className="h-44 animate-pulse rounded-xl bg-white" />
+    </div>
+  ) : timeline.error ? (
+    <div role="alert" className="mt-6 rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+      <p>{timeline.error}</p>
+      <button
+        type="button"
+        onClick={() => void timeline.retry()}
+        className="mt-3 min-h-11 rounded-md border border-red-200 bg-white px-4 font-semibold"
+      >
+        Retry
+      </button>
+    </div>
+  ) : hasKnownCaptures ? (
+    <div className="mt-8 space-y-10">
+      {timeline.data!.years.map((year) => (
+        <TimelineYearSection key={year.year} year={year} />
+      ))}
+      {unknownCount > 0 ? (
+        <p className="rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">
+          {unknownCount} {unknownCount === 1 ? "photo has" : "photos have"} no
+          capture date.
+        </p>
+      ) : null}
+    </div>
+  ) : unknownCount > 0 ? (
+    <div className="mt-6 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-16 text-center">
+      <h2 className="text-xl font-semibold">No photos with capture dates yet</h2>
+      <p className="mt-2 text-sm text-stone-500">
+        {unknownCount} {unknownCount === 1 ? "photo has" : "photos have"} no
+        capture date.
+      </p>
+    </div>
+  ) : (
+    <div className="mt-6 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-16 text-center">
+      <h2 className="text-xl font-semibold">No photos in Timeline yet</h2>
+      <p className="mt-2 text-sm text-stone-500">
+        Photos with capture dates will appear here automatically.
+      </p>
+    </div>
+  );
+}
+
+export default function TimelineBrowser() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const calendarMode = params.get("view") === "calendar";
+  function selectView(calendar: boolean) {
+    const next = new URLSearchParams(params.toString());
+    if (calendar) next.set("view", "calendar"); else next.delete("view");
+    router.push(next.size ? `/timeline?${next}` : "/timeline", { scroll: false });
+  }
 
   return (
     <main className="min-h-screen min-w-0 overflow-x-hidden bg-[#f7f8f4] text-stone-950">
@@ -81,56 +139,15 @@ export default function TimelineBrowser() {
           </p>
           <h1 className="mt-2 text-3xl font-semibold">Timeline</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
-            Browse your archive by when each photo was taken. Choose a month to
-            open its complete, filtered List.
+            {calendarMode ? "Explore daily photo activity. Choose a year, then an active day to open its filtered List." : "Browse your archive by when each photo was taken. Choose a month to open its complete, filtered List."}
           </p>
         </header>
 
-        {timeline.isLoading ? (
-          <div role="status" className="mt-6 space-y-4">
-            <p className="text-sm text-stone-500">Loading Timeline…</p>
-            <div className="h-44 animate-pulse rounded-xl bg-white" />
-            <div className="h-44 animate-pulse rounded-xl bg-white" />
-          </div>
-        ) : timeline.error ? (
-          <div role="alert" className="mt-6 rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-            <p>{timeline.error}</p>
-            <button
-              type="button"
-              onClick={() => void timeline.retry()}
-              className="mt-3 min-h-11 rounded-md border border-red-200 bg-white px-4 font-semibold"
-            >
-              Retry
-            </button>
-          </div>
-        ) : hasKnownCaptures ? (
-          <div className="mt-8 space-y-10">
-            {timeline.data!.years.map((year) => (
-              <TimelineYearSection key={year.year} year={year} />
-            ))}
-            {unknownCount > 0 ? (
-              <p className="rounded-lg border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">
-                {unknownCount} {unknownCount === 1 ? "photo has" : "photos have"} no
-                capture date.
-              </p>
-            ) : null}
-          </div>
-        ) : unknownCount > 0 ? (
-          <div className="mt-6 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-16 text-center">
-            <h2 className="text-xl font-semibold">No photos with capture dates yet</h2>
-            <p className="mt-2 text-sm text-stone-500">
-              {unknownCount} {unknownCount === 1 ? "photo has" : "photos have"} no
-              capture date.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-6 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-16 text-center">
-            <h2 className="text-xl font-semibold">No photos in Timeline yet</h2>
-            <p className="mt-2 text-sm text-stone-500">
-              Photos with capture dates will appear here automatically.
-            </p>
-          </div>
-        )}
+        <div role="group" aria-label="Timeline view" className="mt-5 inline-flex gap-1 rounded-lg border border-stone-300 bg-white p-1">
+          {[{ label: "Timeline", calendar: false }, { label: "Calendar", calendar: true }].map((view) => <button key={view.label} type="button" aria-pressed={calendarMode === view.calendar} onClick={() => selectView(view.calendar)} className={`min-h-11 rounded-md px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${calendarMode === view.calendar ? "bg-emerald-800 text-white" : "text-stone-700 hover:bg-stone-100"}`}>{view.label}</button>)}
+        </div>
+        {calendarMode ? <CalendarBrowser /> : <TimelineContent />}
+
       </div>
     </main>
   );

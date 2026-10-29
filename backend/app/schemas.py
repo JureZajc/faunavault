@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from fastapi import HTTPException
@@ -848,6 +848,21 @@ class TimelineYear(SQLModel):
 
 class TimelineResponse(SQLModel):
     years: list[TimelineYear]
+    unknown_capture_count: int = Field(ge=0)
+
+
+class CalendarDay(SQLModel):
+    date: date
+    photo_count: int = Field(ge=1)
+
+
+class CalendarResponse(SQLModel):
+    year: int | None = Field(default=None, ge=1, le=9999)
+    available_years: list[int]
+    photo_count: int = Field(ge=0)
+    active_days: int = Field(ge=0, le=366)
+    max_daily_count: int = Field(ge=0)
+    days: list[CalendarDay]
     unknown_capture_count: int = Field(ge=0)
 
 

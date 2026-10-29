@@ -201,6 +201,37 @@ links start from fresh URL parameters and open the existing List with
 Timeline previews use existing thumbnail derivatives and remain non-interactive,
 leaving detail navigation, pagination, search, selection, and actions to List.
 
+Timeline also offers **Calendar** at `/timeline?view=calendar&year=2026`.
+Timeline remains the default, with one archive navigation entry. The segmented
+control keeps the selected year across modes; reload and Back/Forward restore
+the URL. Calendar alone loads `GET /catalog/calendar?year=2026`, through an
+abortable hook that hides stale data and ignores obsolete responses. Without a
+year the API chooses the latest capture year, which the UI pins in the URL.
+Invalid URL years fall back gracefully; valid empty years show twelve empty months.
+
+The reusable `PhotographyCalendar` renders Monday-first Gregorian month grids,
+including leap years and years 1–99 without JavaScript's Date.UTC shortcuts.
+Active days are keyboard-focusable List links with full date/count labels;
+inactive dates do not navigate. Emerald intensity uses thirds of this year's
+maximum, with at least one Photo in the Low band and two in the Medium band,
+so a sparse one-photo year never appears High. The legend lists numeric bands;
+colors are local to the selected year, not comparable across years. Summary
+cards show Photos, active days, average Photos per active day, and the earliest
+date tied for the maximum. Exact-date links use the shared catalog URL writer,
+capture sorting, existing pagination, and fresh filters (default descending order
+may be omitted from the URL).
+
+Photos without capture dates are excluded and link to Metadata Health. Effective
+camera-local capture timestamps drive dates; offsets never shift them. Trash
+reduces counts, Restore returns them, and capture corrections appear on refresh.
+Original files and EXIF remain untouched. No calendar/chart dependencies are added.
+
+Focused checks: `npm test -- __tests__/photo-calendar.test.tsx __tests__/photo-timeline.test.tsx`
+and `npm run test:e2e -- photo-calendar.e2e.ts`. E2E uses disposable storage,
+deterministic corrected dates, desktop/mobile screenshots, keyboard navigation,
+List drill-down, history, Trash and Restore. See the Operations guide for the
+pre-existing master CI smoke failures.
+
 Photo cards explicitly label their display date as `Taken` when capture metadata
 exists and `Added` otherwise. Detail metadata formats capture timestamps as
 camera-local wall time without passing them through JavaScript timezone
