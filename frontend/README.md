@@ -192,6 +192,35 @@ adds chunked clustering and exact-coordinate spiderfying, while Photo detail use
 the same core for one non-clustered marker and coordinates already in its Photo
 response.
 
+Photo Map includes **Select area**: drag a rectangle on desktop or tap two
+opposite corners on mobile. **Cancel selection** or Escape restores normal map
+interactions. The orange dashed rectangle can be replaced or cleared. Keyboard
+users can enter South/North latitude and West/East longitude, then **Apply
+coordinates**; errors are announced and focus returns to the first input.
+Committed coordinates and the rectangle follow the URL, including reload and
+Back/Forward. Empty selected areas keep a map available for replacement.
+
+Both catalog APIs accept `bbox_south`, `bbox_north`, `bbox_west`, `bbox_east`;
+browser URLs use the `catalog_` prefix. All four finite numbers are required,
+latitudes must be in [-90,90], longitudes in [-180,180], South < North, and
+longitude width must be non-zero. West > East crosses the antimeridian, retaining
+the narrow wrapped region. Bounds are inclusive and serialize as JavaScript's
+round-trip numeric strings without display rounding. Invalid URL bounds block
+Map requests and offer correction or clearing. `(0,0)` is valid GPS; missing or
+invalid GPS never matches an area, including in List.
+
+**View selected area in List** resets pagination while preserving compatible
+criteria. List's active geographic indicator removes only the area. List's
+additional filters continue to combine with bounds; unsupported Map filters
+keep their existing explicit explanation/removal flow. Navigation never silently
+removes these filters. Popup detail `returnTo` links preserve bounds and focused
+Photo IDs. Areas are live criteria and cannot be saved in v1 Smart Collections.
+Selection uses Leaflet rectangles and Pointer Events, with pointer capture,
+listener/layer cleanup, handler restoration, and no new drawing dependency.
+The existing abortable Map hook cancels stale requests and displays counts only
+from the matching response. See `e2e/map-area.e2e.ts` for disposable desktop and
+mobile coverage independent of external map tiles.
+
 The dedicated `/timeline` route follows the same focused client-data boundary:
 an abortable hook loads one typed `GET /catalog/timeline` projection and the
 route renders loading, error, empty, unknown-date, year, and month states. Month

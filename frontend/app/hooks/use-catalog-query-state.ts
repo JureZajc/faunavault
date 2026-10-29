@@ -14,6 +14,7 @@ import {
   writeMapCatalogState,
 } from "../lib/catalog-query";
 import { PhotoStatus, PhotoRating, CullingFilter } from "../lib/api";
+import { AreaBounds, EMPTY_BOUNDS } from "../lib/geographic-bounds";
 
 export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
   const router = useRouter();
@@ -166,6 +167,17 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     updateCatalog({ ...catalogState, page });
   }
 
+  function setArea(area?: AreaBounds) {
+    cancelPendingSearch();
+    // Area editing must preserve every existing criterion, including unsupported
+    // Map filters until the user explicitly removes those filters.
+    const next = { ...latestCatalogState.current,
+      search: mode === "map" ? latestCatalogState.current.search : searchInput.trim() || undefined,
+      ...EMPTY_BOUNDS, ...area, page: 1 };
+    latestCatalogState.current = next;
+    navigate(writeCatalogState(new URLSearchParams(paramsString), next));
+  }
+
   const correctPage = useCallback(
     (page: number) => updateCatalog({ ...catalogState, page }, true),
     [catalogState, updateCatalog],
@@ -178,6 +190,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     updateCatalog(
       {
         ...catalogState,
+        ...EMPTY_BOUNDS,
         page: 1,
         favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
         metadata_issue: undefined,
@@ -229,6 +242,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     setTakenFrom,
     setTakenTo,
     setPage,
+    setArea,
     correctPage,
     clearFilters,
     setHomeView,

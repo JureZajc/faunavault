@@ -534,8 +534,66 @@ The mapped-photo count includes only matching active Photos with complete
 location data. Manual GPS and capture corrections, clears, and Restore original
 metadata use the same effective values as List. Trash Photos remain excluded.
 Popup Photo links preserve filters when returning to Map. Filters update cluster
-contents without rebuilding the map. Map filters do not save viewport/zoom,
-selection, or Smart Collection definitions.
+contents without rebuilding the map. Map filters do not save viewport/zoom
+or Smart Collection definitions. Geographic selections persist as described below.
+
+### Geographic area selection
+
+Choose **Select area**, then drag a rectangle or tap two opposite corners.
+An orange dashed rectangle shows the selection. **Select another area** replaces
+it; **Clear area** removes only the geographic criterion. Normal pan/zoom resumes
+after confirmation, cancellation, or Escape. Keyboard users can enter all four
+bounds in the labeled fields and choose **Apply coordinates**. Errors explain
+corrections and return focus to the coordinate inputs.
+
+`GET /catalog/photos`, `GET /catalog/map`, and the List culling source accept
+`bbox_south`, `bbox_north`, `bbox_west`, `bbox_east`. Supply all four together:
+finite latitude values in [-90,90], longitude values in [-180,180], South < North,
+and non-zero longitude width. Equal West/East and West=180/East=-180 are rejected;
+West=-180/East=180 explicitly selects all longitudes. A reversed longitude pair
+(for example West=170/East=-170) selects across the antimeridian with
+`longitude >= west OR longitude <= east`. Latitude and longitude edges are
+inclusive. Backend validation rejects incomplete, invalid, NaN, and infinite
+coordinates with HTTP 422. Zero coordinates are valid and never treated as absent.
+
+Example API and equivalent persistent browser URL:
+
+```text
+/catalog/photos?bbox_south=45&bbox_north=46&bbox_west=14&bbox_east=16
+/map?catalog_bbox_south=45&catalog_bbox_north=46&catalog_bbox_west=14&catalog_bbox_east=16
+```
+
+Reload, copied URLs, and Back/Forward restore the bounds. Invalid Map URLs show
+an actionable error with coordinate editing and clearing, instead of widening
+the region. The coordinate summary is approximate; URL values retain numeric
+precision. **View selected area in List** carries the bounds and existing criteria
+with page reset to 1. Its geographic toolbar indicator supports **Remove area
+filter** independently of other filters; Reset filters removes the bounds too.
+Return to Map with supported filters to keep the area. Unsupported Map filters
+remain explicit, and List links retain them until the user removes them.
+Photo popup/detail return links also retain the geographic filter and focus.
+
+Area counts come from the filtered Map response, including empty, loading,
+failure, and Retry states. Both Map and area-filtered List exclude Trash and
+Photos without complete valid effective GPS. Effective metadata corrections,
+Trash, and Restore change membership on refresh. List combines bounds with
+tags, equipment, dates, verified Taxon, category, status, Event membership,
+rating, Favorite, and Culling filters. An area cannot be saved to a v1 Smart
+Collection. No images or original files are read by area filtering.
+
+The shared catalog SQL predicate applies before projection, sorting, counting,
+and pagination; no Python archive scan is used. Map still selects scalar columns,
+orders by Photo ID, and hydrates no Photo ORM objects. One Map request performs
+one SQL query (Event validation adds the existing Event lookup). Clustering and
+the map instance are reused; obsolete network requests, draft rectangles, and
+selection listeners are cleaned up.
+
+On Windows, a disposable 100,000-record synthetic archive measured approximately
+35 ms median for a selective empty bounding box and 317 ms for a whole-world
+area returning 33,287 points (seven warm iterations, service time, no HTTP/image
+cost). `EXPLAIN QUERY PLAN` used `ix_photo_deleted_at` to restrict active rows;
+the current schema has no GPS index. These measurements do not justify a new
+index or migration. Larger outputs still cost proportionally to returned points.
 
 ## Exact and possible visual duplicates
 

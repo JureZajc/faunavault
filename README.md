@@ -62,7 +62,10 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   the newest active member. Trash temporarily hides a custom cover; Restore
   reactivates it. Membership removal and permanent deletion clear the choice.
   [Trips & Events guide](docs/OPERATIONS.md#trips--events-v03).
-- URL-restorable Map filters and compatible List navigation.
+- URL-restorable Map filters and compatible List navigation, including geographic
+  rectangles drawn by dragging, two-corner tapping, or accessible coordinate inputs.
+  Selected-area counts include only mapped Photos; List can combine the same area
+  with its other filters and remove the area independently.
   [Map guide](docs/OPERATIONS.md#map-filters-and-list-navigation).
 - Personal Favorites and 1–5-star Ratings, with List filters, rating sorting,
   Smart Collection criteria, and bulk actions. [Curation guide](docs/OPERATIONS.md#photo-favorites-and-ratings).

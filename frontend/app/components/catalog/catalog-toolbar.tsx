@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { areaSummary, BoundsQuery, boundsError, hasArea } from "../../lib/geographic-bounds";
 import CatalogGearFilter from "./catalog-gear-filter";
 import { EquipmentQuery, MetadataIssue } from "../../lib/api";
 import CatalogTagFilter from "./catalog-tag-filter";
@@ -32,6 +33,8 @@ const sortLabels: Record<CatalogSortOption, string> = {
 };
 
 type CatalogToolbarProps = {
+  area?: BoundsQuery;
+  onClearArea?: () => void;
   metadataIssue?: MetadataIssue;
   onMetadataIssueChange?: (value?: MetadataIssue) => void;
   equipment?: EquipmentQuery;
@@ -84,6 +87,7 @@ type CatalogToolbarProps = {
 };
 
 export default function CatalogToolbar({
+  area, onClearArea,
   metadataIssue, onMetadataIssueChange,
   equipment, onEquipmentChange,
   tags, untagged, onTagFiltersChange,
@@ -132,6 +136,11 @@ export default function CatalogToolbar({
   };
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+      {area && hasArea(area) && <div aria-label="Active geographic filter" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+        <p>Geographic area: {areaSummary(area)}. Only Photos with complete valid GPS match.</p>
+        {boundsError(area) && <p role="alert">{boundsError(area)}</p>}
+        <button type="button" onClick={onClearArea} className="mt-2 min-h-11 rounded-md border border-amber-700 bg-white px-4 font-semibold">Remove area filter</button>
+      </div>}
       {equipment && onEquipmentChange && <CatalogGearFilter value={equipment} onChange={onEquipmentChange} />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
         <label className="block sm:col-span-2 lg:col-span-1">

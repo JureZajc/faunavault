@@ -85,6 +85,25 @@ class CatalogQuery(CatalogSavedQuery):
     """Live criteria; Events, tags and equipment cannot be saved in v1 Smart queries."""
 
     metadata_issue: MetadataIssue | None = None
+    bbox_south: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    bbox_north: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    bbox_west: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    bbox_east: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> CatalogQuery:
+        values = (self.bbox_south, self.bbox_north, self.bbox_west, self.bbox_east)
+        if any(value is not None for value in values):
+            if any(value is None for value in values):
+                raise ValueError("provide all four bbox coordinates together")
+            if self.bbox_south >= self.bbox_north:
+                raise ValueError("bbox_south must be less than bbox_north")
+            if self.bbox_west == self.bbox_east or (
+                self.bbox_west == 180 and self.bbox_east == -180
+            ):
+                raise ValueError("bounding box must have non-zero longitude width")
+        return self
+
     event_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
     tags: list[str] = Field(default_factory=list, max_length=20)
     untagged: bool = False

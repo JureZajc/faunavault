@@ -1,7 +1,9 @@
 import { SmartCollectionQuery } from "./api";
+import { hasArea } from "./geographic-bounds";
 import { CatalogState, DEFAULT_CATALOG_STATE, hasEquipmentFilters, hasTagFilters, writeCatalogState } from "./catalog-query";
 
 export function savedQueryFromState(state: CatalogState, searchInput: string): SmartCollectionQuery {
+  if (hasArea(state)) throw new Error("Geographic area filters cannot be saved in version-1 Smart Collections. Clear the area filter before saving or updating.");
   if (state.metadata_issue) throw new Error("Metadata completeness filters cannot be saved in version-1 Smart Collections. Clear the metadata filter before saving or updating.");
   if (hasEquipmentFilters(state)) throw new Error("Equipment filters cannot be saved in version-1 Smart Collections. Clear equipment filters before saving or updating.");
   if (hasTagFilters(state)) throw new Error("Exact tag and untagged filters are live catalog filters and cannot be saved in version-1 Smart Collections. Clear the tag filters before saving.");
