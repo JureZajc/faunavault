@@ -20,6 +20,35 @@ bind addresses, `NEXT_PUBLIC_API_URL`, and backend CORS origins. Localhost bindi
 does not replace authentication or other protections for intentional network
 deployment. See the [root startup instructions](../README.md#starting-faunavault).
 
+## Nearby Photos
+
+Photo details with valid effective GPS show **Nearby Photos** below Location map.
+Choose 1, 5 (default), 10 or 25 km using the keyboard-accessible Search radius
+selector. The `nearby_radius` query parameter preserves the selection through
+reload; changing it keeps existing `returnTo` navigation and the current detail
+view. Requests are cancelled on changes/unmount and obsolete replies ignored.
+Loading, empty, unavailable, error and Retry states are included.
+
+Up to 12 nearest active previews use the shared thumbnail component, title/filename
+fallbacks, capture dates, meters below 1 km and rounded kilometers otherwise.
+Links return to the source Photo and its radius with one local `returnTo` hop;
+the source's earlier catalog/Map return context is intentionally not nested.
+Distances use spherical Haversine (mean Earth radius 6,371,008.8 m), depend on GPS
+accuracy, and do not indicate travel distance or wildlife observations. Missing
+or invalid GPS hides the section; `(0,0)` remains valid. GPS corrections, clearing,
+Trash, Restore and permanent deletion affect subsequent requests. Refresh an
+open page after changes elsewhere. Search does not access originals or tile services.
+The existing Location map may still load its configured tiles.
+
+Nearby searches are circular; Map's geographic selections are rectangles and
+can contain different Photos. **View on map** retains its existing behavior.
+
+Coverage: `npm test -- __tests__/nearby-photos.test.tsx
+__tests__/nearby-photos-api.test.ts __tests__/photo-detail.test.tsx` and
+`npm run test:e2e -- nearby-photos.e2e.ts` (disposable desktop/touch mobile
+archives, synthetic GPS, locally fulfilled map tiles, radius/return navigation,
+Trash/Restore, GPS clearing, keyboard focus and overflow checks).
+
 ## Camera & Lens Explorer
 
 Open **Gear** (`/gear`) to explore active Photos by camera or lens. The overview

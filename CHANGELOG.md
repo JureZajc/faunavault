@@ -6,6 +6,17 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Nearby Photos below the Photo detail Location map, with 1/5/10/25 km circular
+  searches (default 5 km), URL-preserved radius, cancellable requests, nearest
+  thumbnail cards, distance/capture labels, local source return links and retry.
+  Read-only `GET /photos/{photo_id}/nearby` uses effective GPS, SQLite geographic
+  bounds and batched Haversine filtering with a bounded nearest-results heap.
+  Supports zero coordinates, antimeridian crossings and poles; excludes Trash
+  and invalid/missing GPS. Corrections and Restore affect subsequent requests.
+  Circular results differ from rectangular Map selections; GPS accuracy limits
+  distance accuracy. Includes backend, Vitest and disposable Playwright coverage.
+  No new tables, migrations, dependencies or original-file changes.
+
 - Photo Map geographic area selection by desktop drag, mobile two-corner taps,
   or accessible coordinate fields, with a visible rectangle, mapped Photo counts,
   replacement, clearing, and Map/List navigation. Inclusive validated bounding-box

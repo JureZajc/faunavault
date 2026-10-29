@@ -8,6 +8,7 @@ import { formatCameraLocalDate, parseCaptureFields, parseLocationFields } from "
 
 const api = vi.hoisted(() => ({
   getPhoto: vi.fn(),
+  getNearbyPhotos: vi.fn(),
   getCatalogPhotos: vi.fn(),
   getAnimal: vi.fn(),
   getClassificationJobs: vi.fn(),
@@ -99,6 +100,7 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/photos/44");
   window.sessionStorage.clear();
   api.getPhoto.mockResolvedValue(photo());
+  api.getNearbyPhotos.mockResolvedValue({ source_photo_id: 44, radius_km: 5, availability: "available", unavailable_reason: null, total: 0, items: [] });
   api.getAnimal.mockResolvedValue(animal());
   api.getClassificationJobs.mockResolvedValue({
     jobs: [],
@@ -149,6 +151,12 @@ test("curates a photo directly with accessible Favorite and rating controls", as
   expect(current.status).toBe("needs_review");
   expect(current.reviewed_at).toBeNull();
   expect(screen.queryByRole("button", { name: "Editing metadata" })).toBeNull();
+});
+
+test("nearby navigation offers a local return link to the source Photo", async () => {
+  render(<PhotoDetail id="44" returnTo="/photos/43?nearby_radius=10" />);
+  await screen.findByRole("heading", { name: "Lion", level: 1 });
+  expect(screen.getByRole("link", { name: "Back to source photo" }).getAttribute("href")).toBe("/photos/43?nearby_radius=10");
 });
 
 test("detail culling decisions use the guarded PATCH independently of Favorite and Rating", async () => {

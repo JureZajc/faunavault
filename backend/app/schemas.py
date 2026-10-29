@@ -381,6 +381,24 @@ class PhotoMapPoint(SQLModel):
     captured_at: datetime | None
 
 
+class NearbyPhotoPreview(SQLModel):
+    id: int
+    thumbnail_filename: str
+    original_filename: str
+    display_title: str | None
+    captured_at: datetime | None
+    distance_m: float
+
+
+class NearbyPhotosResponse(SQLModel):
+    source_photo_id: int
+    radius_km: int
+    availability: Literal["available", "unavailable"] = "available"
+    unavailable_reason: Literal["missing_or_invalid_gps"] | None = None
+    total: int = 0
+    items: list[NearbyPhotoPreview] = Field(default_factory=list)
+
+
 class ClassifyPendingRequest(SQLModel):
     limit: int | None = None
     photo_ids: list[int] | None = None

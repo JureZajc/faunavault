@@ -7,6 +7,7 @@ import PhotoCuration from "./photo-curation";
 import PhotoAnimalSection from "./photo-animal-section";
 import PhotoClassificationPanel from "./photo-classification-panel";
 import PhotoLocationSection from "./photo-location-section";
+import NearbyPhotosSection from "./nearby-photos-section";
 import {
   confidenceLabel,
   PhotoMetadataDetails,
@@ -132,6 +133,7 @@ export default function PhotoSidebar({
         <>
           <PhotoMetadataDetails photo={photo} />
           <PhotoLocationSection photo={photo} />
+          <NearbyPhotosSection photo={photo} />
           {photo.animal_id ? (
             <PhotoAnimalSection animalId={photo.animal_id} />
           ) : null}
