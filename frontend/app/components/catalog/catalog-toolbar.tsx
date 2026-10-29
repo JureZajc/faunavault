@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import CatalogGearFilter from "./catalog-gear-filter";
-import { EquipmentQuery } from "../../lib/api";
+import { EquipmentQuery, MetadataIssue } from "../../lib/api";
 import CatalogTagFilter from "./catalog-tag-filter";
 import { CatalogTaxonOption, CullingFilter } from "../../lib/api";
-import { CatalogLayout, CatalogSortOption, REJECTED_PHOTOS_HREF } from "../../lib/catalog-query";
+import { CatalogLayout, CatalogSortOption, metadataIssueLabels, REJECTED_PHOTOS_HREF } from "../../lib/catalog-query";
 
 import {
   CatalogCurationFilters, CatalogCategoryFilter, CatalogDateFilters, CatalogStatusFilter, CatalogTaxonFilter,
@@ -32,6 +32,8 @@ const sortLabels: Record<CatalogSortOption, string> = {
 };
 
 type CatalogToolbarProps = {
+  metadataIssue?: MetadataIssue;
+  onMetadataIssueChange?: (value?: MetadataIssue) => void;
   equipment?: EquipmentQuery;
   onEquipmentChange?: (value: EquipmentQuery) => void;
   tags?: string[];
@@ -82,6 +84,7 @@ type CatalogToolbarProps = {
 };
 
 export default function CatalogToolbar({
+  metadataIssue, onMetadataIssueChange,
   equipment, onEquipmentChange,
   tags, untagged, onTagFiltersChange,
   rejectedHref,
@@ -177,6 +180,12 @@ export default function CatalogToolbar({
           <option value="">All culling states</option><option value="pick">Picked</option><option value="reject">Rejected</option><option value="undecided">Undecided</option>
         </select>
       </label>
+      {onMetadataIssueChange && <label className="mt-4 block text-sm font-medium text-stone-700">Metadata completeness
+        <select value={metadataIssue ?? ""} onChange={(event) => onMetadataIssueChange(event.target.value as MetadataIssue || undefined)} className="mt-2 block min-h-11 w-full rounded-md border border-stone-200 bg-stone-50 px-3 text-sm focus-visible:outline-2 focus-visible:outline-emerald-700 sm:max-w-xs">
+          <option value="">All Photos</option>
+          {Object.entries(metadataIssueLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>}
       <CatalogDateFilters {...filterProps} />
 
       <div className="mt-4 flex flex-col gap-3 border-t border-stone-100 pt-4 text-sm text-stone-500 lg:flex-row lg:items-center lg:justify-between">
@@ -192,7 +201,7 @@ export default function CatalogToolbar({
           {mapHref ? <div>
             {mapDisabled ? <button type="button" disabled aria-describedby="map-search-explanation" className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold opacity-50">View on Map</button>
               : <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">View on Map</Link>}
-            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear equipment, exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.</p> : null}
+            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear metadata completeness, equipment, exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.</p> : null}
           </div> : null}
           {onSaveSmartCollection ? <button type="button" onClick={onSaveSmartCollection} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Save as Smart Collection</button> : null}
           {hasActiveFilters ? (

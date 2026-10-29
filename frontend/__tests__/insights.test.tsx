@@ -62,6 +62,8 @@ test("renders summary definitions, accessible bars and isolated drill-down links
   expect(screen.getByRole("link", { name: /^mammal/ }).getAttribute("href")).toBe("/?catalog_category=mammal");
   expect(screen.getByRole("link", { name: /^2025/ }).getAttribute("href")).toContain("catalog_taken_from=2025-01-01");
   expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toBe("/map");
+  expect(screen.getByRole("link", { name: "Undated photos" }).getAttribute("href")).toBe("/?catalog_metadata_issue=missing_capture");
+  expect(screen.getByRole("link", { name: "Without valid GPS" }).getAttribute("href")).toBe("/?catalog_metadata_issue=missing_gps");
   expect(screen.getByText(/2 photos without linked verified taxonomy/)).toBeTruthy();
   expect(screen.getByText(/2 photos without capture dates in this period/)).toBeTruthy();
   expect(screen.getByRole("link", { name: "Insights" }).getAttribute("aria-current")).toBe("page");
@@ -74,6 +76,8 @@ test("restores year from URL and keeps drill-down periods consistent", async () 
   await screen.findByRole("link", { name: /February/ });
   expect(api.getInsights).toHaveBeenCalledWith(2026, expect.any(AbortSignal));
   expect((screen.getByLabelText("Capture year") as HTMLSelectElement).value).toBe("2026");
+  expect(screen.queryByRole("link", { name: "Undated photos" })).toBeNull();
+  expect(screen.getByRole("link", { name: "Without valid GPS" }).getAttribute("href")).toBe("/?catalog_metadata_issue=missing_gps&catalog_taken_from=2026-01-01&catalog_taken_to=2026-12-31");
   expect(screen.getByRole("link", { name: /February/ }).getAttribute("href")).toContain("catalog_taken_to=2026-02-28");
   expect(screen.getByRole("link", { name: /January/ }).textContent).toContain("0 photos");
   expect(screen.getByRole("link", { name: /Red fox/ }).getAttribute("href")).toContain("catalog_taxon=12&catalog_taken_from=2026-01-01&catalog_taken_to=2026-12-31");

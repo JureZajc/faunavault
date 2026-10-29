@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta
 from sqlalchemy import Integer, String, and_, case, cast, func, or_, true
 from sqlmodel import Session, select
 
-from app.catalog_query import CatalogQuery, CatalogSavedQuery
+from app.catalog_query import CatalogQuery, CatalogSavedQuery, MetadataIssue
 from app.metadata_types import CullingFilter
 from app.models import Animal, ArchiveEventPhoto, Photo, Taxon
 from app.schemas import (
@@ -24,6 +24,7 @@ from app.schemas import (
     TimelineYear,
 )
 from app.services.events import event_or_404
+from app.services.metadata_health import metadata_condition
 
 TIMELINE_PREVIEW_LIMIT = 4
 
@@ -392,6 +393,8 @@ def _catalog_joins(query, criteria: CatalogSavedQuery):
 def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
     conditions = [Photo.deleted_at.is_(None)]
     if isinstance(criteria, CatalogQuery):
+        if criteria.metadata_issue is not None:
+            conditions.append(metadata_condition(criteria.metadata_issue))
         conditions.extend(_tag_conditions(criteria))
         for field in ("camera_make", "camera_model", "lens_model"):
             value = getattr(criteria, field)
@@ -482,10 +485,12 @@ def list_catalog_photos(
     lens_model: str | None = None,
     unknown_camera: bool = False,
     unknown_lens: bool = False,
+    metadata_issue: MetadataIssue | None = None,
 ) -> CatalogPhotoPage:
     if event_id is not None:
         event_or_404(event_id, session)
     criteria = CatalogQuery(
+        metadata_issue=metadata_issue,
         camera_make=camera_make,
         camera_model=camera_model,
         lens_model=lens_model,
@@ -524,6 +529,7 @@ def list_catalog_photos(
         or lens_model is not None
         or unknown_camera
         or unknown_lens
+        or metadata_issue is not None
         or criteria.tags
         or criteria.untagged
         or event_id is not None

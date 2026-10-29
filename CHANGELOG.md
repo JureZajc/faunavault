@@ -6,6 +6,15 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Metadata Health workspace (`/metadata-health`) with active Photo totals,
+  missing capture/GPS groups, complete counts, and completeness percentage from a
+  single SQLite aggregate. Effective capture timestamps and complete in-range GPS
+  pairs (including `(0,0)`) define completeness; Trash and import timestamps do not
+  contribute. Linked metrics and a URL-backed List filter reuse individual/bulk
+  metadata editing and verified original restoration, with explicit Map and v1
+  Smart Collection limitations. Wildlife Insights adds undated and missing-GPS
+  drill-downs, retaining capture-year ranges for GPS. No migration or dependency.
+
 - Wildlife Insights v2 adds scoped Top 10 cameras/lenses, identifiable/missing
   equipment coverage, and exact equipment/unknown drill-downs into List that
   retain the capture year. Optional explicit year comparisons restore through

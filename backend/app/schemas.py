@@ -808,6 +808,16 @@ class CatalogCategoryFacet(SQLModel):
     count: int
 
 
+class MetadataHealth(SQLModel):
+    active_total: int
+    missing_capture: int
+    missing_gps: int
+    missing_both: int
+    missing_either: int
+    complete: int
+    completeness_percentage: float
+
+
 class CatalogFacets(SQLModel):
     active_total: int
     status_counts: CatalogStatusCounts

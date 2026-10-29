@@ -273,7 +273,7 @@ test("preserves catalog parameters while switching collection views", async () =
   const navigation = screen.getByRole("navigation", { name: "Archive views" });
   expect(
     Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
-  ).toEqual(["List", "Gear", "Tags", "Timeline", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash"]);
+  ).toEqual(["List", "Gear", "Tags", "Timeline", "Metadata Health", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash"]);
   expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("href"))
     .toBe("/timeline");
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))
@@ -288,7 +288,7 @@ test("List opens Map with supported membership filters and disables pending text
   expect(screen.getByRole("link", { name: "View on Map" }).getAttribute("href")).toBe("/map?catalog_status=classified&catalog_category=bird&catalog_taxon=7&catalog_taken_from=2026-01-01");
   await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "f");
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "View on Map" }).disabled).toBe(true);
-  expect(screen.getByText("Clear equipment, exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.")).toBeTruthy();
+  expect(screen.getByText("Clear metadata completeness, equipment, exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.")).toBeTruthy();
 });
 
 test("List Event membership survives filters and prevents saving Smart criteria", async () => {

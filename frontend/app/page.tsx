@@ -179,7 +179,7 @@ function HomeContent() {
     : query.catalogState.category ?? "all";
   const sortOption = catalogSortOption(query.catalogState);
   const hasActiveViewFilters =
-    (hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ||
+    (Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ||
     query.catalogState.import_session_id !== undefined ||
     query.catalogState.event_id !== undefined ||
     query.searchInput.trim() !== "" ||
@@ -323,6 +323,7 @@ function HomeContent() {
                 section === "cull" ||
                 section === "duplicates" ||
                 section === "map" ||
+                section === "metadata-health" ||
                 section === "insights" ||
                 section === "timeline"
               ) {
@@ -345,7 +346,7 @@ function HomeContent() {
           </p>
         </div>
 
-        {query.homeView !== "list" && (hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-4 text-sm">Exact tag and equipment filters are available in List and Culling. This view shows its own records. <a className="underline" href={catalogListHref(query.catalogState)}>Return to the filtered List</a>.</p>}
+        {query.homeView !== "list" && (Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-4 text-sm">Metadata completeness, exact tag and equipment filters are available in List and Culling. This view shows its own records. <a className="underline" href={catalogListHref(query.catalogState)}>Return to the filtered List</a>.</p>}
         {query.homeView === "album" ? (
           <AlbumBrowser />
         ) : query.homeView === "trash" ? (
@@ -355,20 +356,23 @@ function HomeContent() {
           />
         ) : (
           <>
-            {editId !== null ? <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection ? ` “${editCollection.name}”` : ""}</p><p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>{editError ? <p role="alert" className="mt-2 text-sm text-red-700">{editError} <button type="button" onClick={() => { setEditError(null); void getSmartCollection(editId).then(setEditCollection).catch((error) => setEditError(error instanceof Error ? error.message : "Could not load Smart Collection")); }} className="underline">Retry</button></p> : null}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!editCollection || savingCriteria || query.catalogState.event_id !== undefined || (hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState))} onClick={async () => { setSavingCriteria(true); setEditError(null); try { await updateSmartCollection(editId, { query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); } catch (nextError) { setEditError(nextError instanceof Error ? nextError.message : "Could not save criteria"); } finally { setSavingCriteria(false); } }} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button><button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button></div></div> : null}
+            {editId !== null ? <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection ? ` “${editCollection.name}”` : ""}</p><p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>{editError ? <p role="alert" className="mt-2 text-sm text-red-700">{editError} <button type="button" onClick={() => { setEditError(null); void getSmartCollection(editId).then(setEditCollection).catch((error) => setEditError(error instanceof Error ? error.message : "Could not load Smart Collection")); }} className="underline">Retry</button></p> : null}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!editCollection || savingCriteria || query.catalogState.event_id !== undefined || (Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState))} onClick={async () => { setSavingCriteria(true); setEditError(null); try { await updateSmartCollection(editId, { query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); } catch (nextError) { setEditError(nextError instanceof Error ? nextError.message : "Could not save criteria"); } finally { setSavingCriteria(false); } }} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button><button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button></div></div> : null}
             {query.catalogState.event_id !== undefined ? <EventListContext key={`source-${query.catalogState.event_id}`} id={String(query.catalogState.event_id)} revision={catalog} /> : null}
             {addToEvent !== null ? <EventListContext key={`add-${addToEvent}`} id={addToEvent} adding selectedIds={selection.selectedIds} busy={bulkActions.isBusy || eventBusy} onBusyChange={setEventBusy} onSelect={selection.enter} onDates={(start, end) => { selection.reset(); query.setTakenRange(start, end); }} onAdded={(message) => { selection.reset(); setSuccessNotice(message); }} /> : null}
             {query.catalogState.event_id !== undefined ? <p className="mb-3 text-sm text-stone-600">Trip/Event membership cannot be saved as Smart Collection criteria. Clear the Trip/Event filter to save a date or metadata query.</p> : null}
             {query.catalogState.import_session_id ? <ImportSessionSummary id={query.catalogState.import_session_id} revision={catalog} /> : null}
             {hasTagFilters(query.catalogState) && <p role="status" className="mb-3 text-sm text-amber-900">Exact tag and untagged filters are live catalog filters. Version-1 Smart Collections cannot save them. Clear tag filters before saving or updating a Smart Collection.</p>}
+            {query.catalogState.metadata_issue && <p role="status" className="mb-3 text-sm text-amber-900">Metadata completeness is a live List filter. Clear it before saving or updating a version-1 Smart Collection. Map does not support it.</p>}
             {hasEquipmentFilters(query.catalogState) && <p role="status" className="mb-3 text-sm text-amber-900">Equipment filters cannot be saved in version-1 Smart Collections. Clear equipment filters before saving or updating.</p>}
             <CatalogToolbar
               equipment={query.catalogState}
+              metadataIssue={query.catalogState.metadata_issue}
+              onMetadataIssueChange={(value) => { selection.reset(); query.setMetadataIssue(value); }}
               onEquipmentChange={(equipment) => { selection.reset(); query.setEquipmentFilters(equipment); }}
               tags={query.catalogState.tags}
               untagged={query.catalogState.untagged}
               onTagFiltersChange={query.setTagFilters}
-              rejectedHref={(hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ? catalogListHref({ ...query.catalogState, page: 1, culling_state: "reject" }) : query.catalogState.import_session_id ? importRejectedHref(query.catalogState.import_session_id) : undefined}
+              rejectedHref={(Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ? catalogListHref({ ...query.catalogState, page: 1, culling_state: "reject" }) : query.catalogState.import_session_id ? importRejectedHref(query.catalogState.import_session_id) : undefined}
               onReviewRejected={() => { query.cancelPendingSearch(); selection.reset(); }}
               cullingState={query.catalogState.culling_state}
               onCullingStateChange={(value) => { selection.reset(); query.setCullingState(value); }}
@@ -378,7 +382,7 @@ function HomeContent() {
               onFavoritesOnlyChange={query.setFavoritesOnly}
               onRatingFilterChange={query.setRatingFilter}
               mapHref={mapCatalogHref(query.catalogState)}
-              mapDisabled={Boolean((hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) || query.catalogState.import_session_id || query.catalogState.search || query.searchInput.trim() || hasCurationFilters(query.catalogState))}
+              mapDisabled={Boolean((Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) || query.catalogState.import_session_id || query.catalogState.search || query.searchInput.trim() || hasCurationFilters(query.catalogState))}
               searchQuery={query.searchInput}
               statusFilter={statusFilter}
               categoryFilter={categoryFilter}
@@ -440,7 +444,7 @@ function HomeContent() {
                 query.clearFilters();
               }}
               onEnterSelectionMode={selection.enter}
-              onSaveSmartCollection={editId === null && query.catalogState.event_id === undefined && !(hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ? () => setSaveSmartOpen(true) : undefined}
+              onSaveSmartCollection={editId === null && query.catalogState.event_id === undefined && !(Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ? () => setSaveSmartOpen(true) : undefined}
             />
 
             {rejectedReview ? (
