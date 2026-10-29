@@ -356,6 +356,92 @@ sorting. Photos without capture metadata are reported separately and are never
 assigned an import date or fabricated month; JPEG, PNG, WebP, HEIC, and HEIF
 participate identically when capture metadata exists.
 
+### Daily Photography Calendar
+
+Open Timeline (`/timeline`) and choose **Calendar**. Timeline's existing year/month
+browser remains the default, and both modes share the same archive navigation
+entry. `/timeline?view=calendar&year=2026` restores the mode and capture year on
+reload and browser Back/Forward. The selector uses available active capture years;
+without a year, the most recent available year is selected and saved in the URL.
+Switching modes retains the year. Invalid URL years fall back to the latest year;
+a valid year without Photos displays an empty twelve-month calendar. With no known
+capture dates and no requested year, no data year is invented.
+
+All twelve months use Monday-first calendar grids. Active dates link to List with
+the exact same inclusive capture date for `catalog_taken_from` and
+`catalog_taken_to`, and `catalog_sort=captured_at`. The shared catalog writer omits
+the default descending order. List retains its usual sorting and pagination;
+no adjacent dates, old List filters or import timestamps are included. Inactive
+dates do not navigate. Full date and Photo count labels support screen readers,
+tooltips, keyboard Tab/Enter, and focus indicators; color is supplementary.
+
+Emerald intensity compares daily Photo volume within the selected year. Let
+`low = max(1, ceil(max_daily_count / 3))` and
+`medium = max(low + 1, ceil(2 * max_daily_count / 3))`. Zero means No Photos;
+1 through `low` is Low, `low + 1` through `medium` is Medium, and larger counts
+are High. The legend shows the actual count bands. A single exposure always
+stays Low, including in sparse archives. Bands can change when selecting years,
+correcting metadata or changing Trash, so colors are not cross-year comparisons.
+
+The summary shows this year's active Photo total, distinct active photography
+days, average Photos per active day (`total / active days`, or zero), and a link
+to the most active day. Equal maximum counts use the earliest date. These are
+Photo counts, not wildlife sightings or time spent photographing.
+
+Dates come exclusively from effective `Photo.captured_at` camera-local wall time.
+Recorded UTC offsets are never applied to day boundaries. Photos without capture
+dates are excluded and counted separately, with a link to Metadata Health.
+Use its existing Edit metadata or Restore original metadata workflows; dates are
+never assigned automatically. Refresh Calendar after corrections, Trash or
+Restore to see new totals. Original images and EXIF remain untouched.
+
+`GET /catalog/calendar?year=2026` is a read-only, typed projection returning:
+
+- `year` (1–9999; null only when no year was requested and no dated active Photos exist).
+- `available_years` in ascending order, independent of selection and excluding Trash.
+- `photo_count`, `active_days`, `max_daily_count`, and the archive-wide active
+  `unknown_capture_count` (independent of selection).
+- `days`, chronological `{date: "YYYY-MM-DD", photo_count: N}` totals for active dates.
+
+The sum of daily counts is the selected year's Photo total. At most 366 day rows
+are returned, without Photo objects, paths or thumbnails. Two scalar/grouped SQL
+queries provide available years and undated counts; a third groups only the
+selected year's dates. Substrings preserve camera-local dates without SQLite
+timezone normalization. The daily query uses a lower/upper capture range and
+the existing `ix_photo_catalog_active_captured (deleted_at, captured_at, id)`
+covering index. Year 9999 uses an inclusive `datetime.max` upper boundary.
+No image decoding, ORM Photo hydration, N+1 queries, new dependencies or migrations
+are needed. Only Calendar mode loads this endpoint; obsolete requests are aborted
+and late responses ignored. Aggregates reflect live state on request, not pushed
+updates from other tabs.
+
+Focused validation: `cd backend` then
+`uv run --no-sync pytest tests/test_photo_calendar.py tests/test_catalog.py`, and
+`cd frontend` then `npm run test:e2e -- photo-calendar.e2e.ts`.
+
+#### Existing master smoke baseline
+
+Before this feature, master commit `afcca89061e71dd2f37633b13f6570dffe8a1be7`
+already failed [CI run 40846278837](https://github.com/JureZajc/faunavault/actions/runs/40846278837).
+Backend, frontend and all three HEIC jobs passed; smoke reported 31 passing and
+three failing tests. The job logs show:
+
+- `faunavault-smoke.e2e.ts:48`, Trips & Events: expected 13 Archive views links,
+  received 14. Metadata Health added a navigation entry while this assertion
+  retained the old count. Calendar adds no navigation entry.
+- `metadata-health.e2e.ts:43`, desktop and mobile: after editing GPS and returning
+  to List, `No matching records` never appears. Logs show a successful PATCH and
+  subsequent List requests with `metadata_issue=missing_gps` but without the
+  test's intended `search=metadata-health-...` scope. The likely cause is opening
+  the card before the debounced search reaches the URL, leaving other undated/
+  missing-GPS fixtures visible. This is an existing search/test timing issue.
+
+Reproduce with `npm run test:e2e -- faunavault-smoke.e2e.ts metadata-health.e2e.ts`
+from frontend, using the runner's disposable archive. To isolate the stale count,
+use `npm run test:e2e -- faunavault-smoke.e2e.ts -g "Trips & Events"`.
+The existing tests and assertions are preserved; these failures are separate
+from Calendar coverage and do not require a CI workflow rewrite.
+
 Map has its own `/map` route and reads a lightweight, deterministic
 `GET /catalog/map` projection containing only active geotagged Photos and the
 metadata needed for markers and previews. Nearby points cluster, exact-coordinate

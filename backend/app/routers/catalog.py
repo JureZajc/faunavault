@@ -10,6 +10,7 @@ from app.catalog_query import CatalogQuery, MetadataIssue
 from app.db import SessionDep
 from app.metadata_types import CullingFilter
 from app.schemas import (
+    CalendarResponse,
     CatalogFacets,
     CatalogGear,
     CatalogPhotoPage,
@@ -25,6 +26,7 @@ from app.services.catalog import (
     get_catalog_facets,
     get_catalog_gear,
     get_catalog_tags,
+    get_photo_calendar,
     get_photo_timeline,
     list_catalog_photos,
     list_catalog_taxa,
@@ -52,6 +54,12 @@ def create_catalog_router() -> APIRouter:
     @router.get("/timeline", response_model=TimelineResponse)
     def get_timeline(session: SessionDep) -> TimelineResponse:
         return get_photo_timeline(session)
+
+    @router.get("/calendar", response_model=CalendarResponse)
+    def get_calendar(
+        session: SessionDep, year: int | None = Query(default=None, ge=1, le=9999)
+    ) -> CalendarResponse:
+        return get_photo_calendar(session, year)
 
     @router.get("/facets", response_model=CatalogFacets)
     def get_facets(session: SessionDep) -> CatalogFacets:

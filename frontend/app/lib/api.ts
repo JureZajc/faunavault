@@ -113,6 +113,17 @@ export type TimelineResponse = {
   unknown_capture_count: number;
 };
 
+export type CalendarDay = { date: string; photo_count: number };
+export type CalendarResponse = {
+  year: number | null;
+  available_years: number[];
+  photo_count: number;
+  active_days: number;
+  max_daily_count: number;
+  days: CalendarDay[];
+  unknown_capture_count: number;
+};
+
 export type TaxonCandidate = {
   provider: "gbif";
   external_taxon_id: number;
@@ -1066,6 +1077,10 @@ export function getPhotoMapPoints(
 
 export function getPhotoTimeline(signal?: AbortSignal) {
   return request<TimelineResponse>("/catalog/timeline", { signal });
+}
+
+export function getPhotoCalendar(year?: number, signal?: AbortSignal) {
+  return request<CalendarResponse>(`/catalog/calendar${year === undefined ? "" : `?year=${year}`}`, { signal });
 }
 
 export function getCatalogTaxa(
