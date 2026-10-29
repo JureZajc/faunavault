@@ -45,7 +45,10 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
       ids.push((await upload.json()).id);
     }
     await page.goto("/events");
-    await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveCount(13);
+    await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveText([
+      "List", "Gear", "Tags", "Timeline", "Metadata Health", "Insights", "Map",
+      "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash",
+    ]);
     await page.getByRole("button", { name: "Create Trip/Event" }).click();
     const form = page.getByRole("dialog");
     await form.getByLabel("Title", { exact: true }).fill("E2E Valencia Trip");
@@ -490,7 +493,18 @@ test("Recent Imports preserves one batch through reload and scoped Culling", asy
     await page.reload();
     for (const filename of filenames) await expect(catalogCard(page, filename)).toHaveCount(1);
     await expect(page.getByRole("article")).toHaveCount(2);
+    // Culling first resolves a Photo, then focuses it in the URL and reloads
+    // that workspace. Do not save a decision during that initial navigation.
+    const focusedWorkspace = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.ok() && url.origin === new URL(backend).origin
+        && url.pathname === "/catalog/culling"
+        && url.searchParams.get("import_session_id") === sessionId
+        && url.searchParams.has("photo_id");
+    });
     await page.getByRole("region", { name: "Import Session" }).getByRole("link", { name: "Cull this import" }).click();
+    const focused = await (await focusedWorkspace).json();
+    await expect(page).toHaveURL((url) => url.searchParams.get("photo") === String(focused.photo.id));
     await expect(page).toHaveURL(/source=list/);
     await expect(page.getByRole("heading", { name: filenames[1] })).toBeVisible();
     await page.getByRole("button", { name: "Pick (P)" }).click();

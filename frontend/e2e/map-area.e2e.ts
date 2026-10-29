@@ -9,6 +9,8 @@ for (const mobile of [false, true]) {
   test.describe(mobile ? "Touch device" : "Desktop", () => {
   test.use(mobile ? { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true } : {});
   test(`Map area: ${mobile ? "mobile taps and keyboard coordinates" : "desktop drag"}, List round-trip, history, reload and clear`, async ({ page, request }, testInfo) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
     const root = process.env.FAUNAVAULT_E2E_ROOT;
     if (!root) throw new Error("Run with npm run test:e2e for disposable storage.");
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
@@ -103,6 +105,7 @@ for (const mobile of [false, true]) {
       await page.goto(selectedUrl);
       await expect(page.getByText("2 mapped photos match this area", { exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      expect(pageErrors).toEqual([]);
     } finally {
       for (const id of ids) {
         await request.delete(`${backend}/photos/${id}`);
