@@ -115,6 +115,26 @@ chart library. Top species are limited to ten; category charts show twenty named
 categories plus Uncategorized and an exact Other remainder when necessary.
 See [metric definitions and limitations](../docs/OPERATIONS.md#wildlife-insights).
 
+Insights also shows Top 10 cameras (exact manufacturer/model pairs), Top 10 lens
+models, and known/missing equipment coverage. Partial cameras remain identifiable;
+only missing/blank manufacturer AND model mean unknown camera. Missing/blank lens
+models mean unknown lens. Missing EXIF is never inferred. All shares use the
+selected period's entire active Photo total, including Photos with unknown gear.
+Equipment and unknown-gear links reuse catalog URL helpers and retain the selected
+year's inclusive capture-date range in List.
+
+Select a primary capture year, then explicitly select **Compare with** to compare
+active Photos, distinct linked verified species-rank taxa, Favorites, Picks,
+Rejects, and GPS coverage. `/insights?year=2026&compare=2025` restores both selectors
+on reload and Back/Forward. All Time and identical years cannot be compared;
+changing the primary year clears an incompatible comparison. Count differences
+are primary minus comparison, relative changes use the comparison baseline
+(`N/A` for zero), and GPS differences are percentage points. Counts never imply
+wildlife sightings or newly observed species. The primary response is reused;
+the comparison fetches the same endpoint for its year, with independent loading,
+error/retry and empty states. Changes cancel stale requests. No new chart library
+or comparison endpoint is needed.
+
 `/imports` is contextual Recent Imports, linked from upload, List, and Culling.
 The upload hook retains one UUID across sequential uploads, duplicate resolution,
 and retries, with separate session lifecycle errors. Session cards fetch bounded

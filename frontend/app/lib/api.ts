@@ -15,12 +15,18 @@ export type InsightsOverview = {
 export type InsightsDistribution = {
   value: string | null; label: string; photo_count: number; percentage: number; other: boolean;
 };
+export type InsightsEquipment = {
+  camera: InsightsCoverage; lens: InsightsCoverage;
+  top_cameras: { camera_make: string | null; camera_model: string | null; photo_count: number; percentage: number }[];
+  top_lenses: { lens_model: string; photo_count: number; percentage: number }[];
+};
 export type InsightsResponse = {
   year: number | null; overview: InsightsOverview; available_years: number[];
   monthly: { period: number; photo_count: number }[];
   yearly: { period: number; photo_count: number }[];
   top_species: { taxon_id: number; common_name: string | null; scientific_name: string; photo_count: number; percentage: number }[];
   categories: InsightsDistribution[]; classification: InsightsDistribution[];
+  equipment?: InsightsEquipment | null;
 };
 
 export function getInsights(year?: number, signal?: AbortSignal) {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { InsightsDistribution, InsightsOverview, InsightsResponse, PhotoStatus } from "../lib/api";
-import { mapCatalogHref } from "../lib/catalog-query";
+import { cameraLabel, mapCatalogHref } from "../lib/catalog-query";
 import { insightsCount as count, insightsPercent as percent, insightsListHref, insightsYearRange } from "../lib/insights";
 import { timelineMonthHref, timelineMonthName } from "../lib/photo-timeline";
 
@@ -45,7 +45,7 @@ function PhotoBars({ rows }: { rows: BarRow[] }) {
     {rows.map((row) => {
       const content = <>
         <div className="flex min-h-11 items-center justify-between gap-3 text-sm">
-          <span className="min-w-0 break-words font-medium">{row.label}{row.detail && <span className="mt-0.5 block text-xs font-normal italic text-stone-500">{row.detail}</span>}</span>
+          <span className="min-w-0 [overflow-wrap:anywhere] font-medium">{row.label}{row.detail && <span className="mt-0.5 block text-xs font-normal italic text-stone-500">{row.detail}</span>}</span>
           <span className="shrink-0 text-right tabular-nums text-stone-600">{count(row.photoCount)} {row.photoCount === 1 ? "photo" : "photos"}{row.percentage !== undefined && <span className="ml-2 text-xs text-stone-500">{percent(row.percentage)}</span>}</span>
         </div>
         <div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-stone-100"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${100 * row.photoCount / maximum}%` }} /></div>
@@ -123,4 +123,39 @@ export function LocationCoverage({ data }: { data: InsightsResponse }) {
     <dl className="mt-5 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-stone-500">With GPS</dt><dd className="mt-1 font-semibold">{count(gps.known)} {gps.known === 1 ? "photo" : "photos"}</dd></div><div><dt className="text-stone-500">Without valid GPS</dt><dd className="mt-1 font-semibold">{count(gps.missing)} {gps.missing === 1 ? "photo" : "photos"}</dd></div></dl>
     <Link href={mapCatalogHref(insightsYearRange(data.year ?? undefined))} className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-emerald-800 px-4 text-sm font-semibold text-white hover:bg-emerald-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700">View on Map</Link>
   </InsightsPanel>;
+}
+
+export function EquipmentCharts({ data }: { data: InsightsResponse }) {
+  const gear = data.equipment;
+  if (!gear) return null;
+  const year = data.year ?? undefined;
+  return <>
+    <InsightsPanel title="Top Cameras" description="Top 10 stored manufacturer/model combinations. Brands and missing components are never inferred.">
+      {gear.top_cameras.length ? <PhotoBars rows={gear.top_cameras.map((item) => ({
+        key: JSON.stringify([item.camera_make, item.camera_model]), label: cameraLabel(item),
+        detail: `Manufacturer: ${item.camera_make ?? "Missing"} · Model: ${item.camera_model ?? "Missing"}`,
+        photoCount: item.photo_count, percentage: item.percentage,
+        href: insightsListHref(year, { camera_make: item.camera_make ?? "", camera_model: item.camera_model ?? "" }),
+      }))} /> : <p className="text-sm text-stone-500">No identifiable cameras in this period.</p>}
+    </InsightsPanel>
+    <InsightsPanel title="Top Lenses" description="Top 10 stored lens models by photo count. Percentages use this period’s active photo total.">
+      {gear.top_lenses.length ? <PhotoBars rows={gear.top_lenses.map((item) => ({
+        key: item.lens_model, label: item.lens_model, photoCount: item.photo_count, percentage: item.percentage,
+        href: insightsListHref(year, { lens_model: item.lens_model }),
+      }))} /> : <p className="text-sm text-stone-500">No identifiable lenses in this period.</p>}
+    </InsightsPanel>
+    <InsightsPanel title="Equipment coverage" description="A camera is unknown only when both manufacturer and model are missing or blank. A lens is unknown when its model is missing or blank. Missing EXIF is never inferred.">
+      <dl className="grid gap-4 text-sm sm:grid-cols-2">
+        {([
+          ["With identifiable camera information", gear.camera.known, gear.camera.percentage, undefined],
+          ["Without identifiable camera information", gear.camera.missing, data.overview.total_photos ? 100 * gear.camera.missing / data.overview.total_photos : 0, { unknown_camera: true }],
+          ["With lens information", gear.lens.known, gear.lens.percentage, undefined],
+          ["Without lens information", gear.lens.missing, data.overview.total_photos ? 100 * gear.lens.missing / data.overview.total_photos : 0, { unknown_lens: true }],
+        ] as const).map(([label, value, share, filters]) => <div key={label}>
+          <dt className="text-stone-500">{filters ? <Link className={`${linkClass} flex min-h-11 items-center underline`} href={insightsListHref(year, filters)}>{label}</Link> : label}</dt>
+          <dd className="mt-1 font-semibold">{count(value)} {value === 1 ? "photo" : "photos"} · {percent(share)}</dd>
+        </div>)}
+      </dl>
+    </InsightsPanel>
+  </>;
 }

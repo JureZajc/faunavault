@@ -7,6 +7,19 @@ export function parseInsightsYear(value: string | null): number | undefined {
   return year >= 1 && year <= 9999 ? year : undefined;
 }
 
+export function parseComparisonYear(value: string | null, year?: number): number | undefined {
+  const comparison = parseInsightsYear(value);
+  return year !== undefined && comparison !== year ? comparison : undefined;
+}
+
+export function insightsDifference(primary: number, baseline: number, percentagePoints = false) {
+  const difference = Math.round((primary - baseline) * 100) / 100;
+  const signed = (value: number) => `${value > 0 ? "+" : ""}${new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(value)}`;
+  if (percentagePoints) return `${signed(difference)} percentage points`;
+  const change = baseline === 0 ? "N/A — zero baseline" : `${signed(100 * difference / baseline)}%`;
+  return `${signed(difference)} (${change})`;
+}
+
 export function insightsYearRange(year?: number): Pick<CatalogQuery, "taken_from" | "taken_to"> {
   if (year === undefined) return {};
   const value = String(year).padStart(4, "0");
