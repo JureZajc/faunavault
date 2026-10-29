@@ -505,8 +505,13 @@ three failing tests. The job logs show:
 Reproduce with `npm run test:e2e -- faunavault-smoke.e2e.ts metadata-health.e2e.ts`
 from frontend, using the runner's disposable archive. To isolate the stale count,
 use `npm run test:e2e -- faunavault-smoke.e2e.ts -g "Trips & Events"`.
-The existing tests and assertions are preserved; these failures are separate
-from Calendar coverage and do not require a CI workflow rewrite.
+These failures were separate from Calendar coverage. A subsequent focused CI
+repair updates Trips & Events to assert the complete current navigation labels
+(14 links, including Metadata Health). Metadata Health now waits for the applied
+search URL and rendered scoped return link before opening each Photo, asserts
+that the same URL is restored, and keeps an unrelated incomplete Photo active
+to expose lost search scope even in isolated runs. The GPS/capture empty-result
+and reload assertions remain. No CI workflow change is needed.
 
 Map has its own `/map` route and reads a lightweight, deterministic
 `GET /catalog/map` projection containing only active geotagged Photos and the

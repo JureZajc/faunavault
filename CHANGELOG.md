@@ -197,6 +197,16 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Fixed
 
+- Browser smoke coverage now checks all 14 current Archive views by label.
+  Metadata Health journeys wait for the debounced search and scoped detail return
+  link, retaining empty-result assertions after GPS/capture corrections. An
+  unrelated incomplete Photo makes lost search scope detectable in isolated runs.
+  Recent Imports waits for the initial focused Culling workspace before saving
+  its first decision, avoiding a race with the initial URL update.
+- Map filter/history changes remove pending markercluster focus listeners before
+  clearing retired markers, preventing a stale callback from crashing the map
+  when it tries to read a deleted marker parent.
+
 - Inclusive List capture-date filtering now includes the final microsecond of
   31 December 9999, keeping Calendar drill-down totals consistent at the maximum
   supported year.

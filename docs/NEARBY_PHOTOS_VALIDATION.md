@@ -93,6 +93,49 @@ Windows sandbox attempts failed on uv cache writes, pytest temporary paths and
 Vite transform-cache renames. Validation therefore uses the permitted unsandboxed
 executor and isolated loopback E2E ports 3109/8109 with disposable archives.
 
+## CI smoke baseline repair follow-up
+
+The three reported hosted-CI failures were repaired after the initial feature
+validation above:
+
+- Trips & Events asserts all 14 current Archive views by exact label, including
+  Metadata Health, rather than the obsolete count of 13.
+- Metadata Health desktop/mobile waits for the debounced search URL and the
+  rendered scoped Photo link before navigation. It verifies the detail return
+  link and restored catalog URL, and retains the empty-result and reload
+  assertions after both GPS and capture corrections. Each journey now keeps an
+  unrelated incomplete Photo active so losing search scope fails in isolation.
+- An initial full rerun exposed a Recent Imports timing failure: a Pick could be
+  sent while Culling was still canonicalizing its initial Photo URL. That journey
+  now awaits the focused workspace response and matching URL before deciding.
+- Further full reruns exposed a Map history crash. The trace showed
+  `Cannot use 'in' operator to search for '_leaflet_id' in undefined` inside
+  markercluster's `zoomToShowLayer` callback. The plugin left a map `moveend`
+  listener alive after cluster replacement deleted the marker's `__parent`.
+  Cleanup now detaches listeners owned by the retiring cluster before removing
+  its markers. Other map listeners remain registered. A unit regression fires
+  the remaining listeners after replacement and verifies no retired callback
+  runs; both Map Area journeys now also assert no uncaught JavaScript errors.
+
+The cleanup reads Leaflet 1.9.4's event registry to retain callback references:
+markercluster 1.5.3 exposes no focus cancellation handle, and Leaflet's public
+`off` needs the callback to remove a single context's listener. Removal itself
+uses `map.off` and is scoped to the retired cluster. This behavior should be
+rechecked when upgrading either pinned dependency.
+
+Follow-up validation: full Playwright **39 passed**; final focused Trips & Events,
+Recent Imports, Metadata Health desktop/mobile and Map Area desktop/mobile
+**6 passed**. Frontend Vitest **437 passed in 43 files**, TypeScript and production
+build passed, lint zero errors with the
+same existing album-navigation warning. Earlier follow-up full runs reported
+38 passes and the Recent Imports or Map failure described above; neither was
+hidden by retries, sleeps, skipped assertions or increased timeouts.
+
+Follow-up changes are limited to the smoke/Metadata Health/Map Area journeys,
+archive Map cleanup and its lifecycle regression, this report, Operations and
+Changelog. No backend, CI workflow, dependencies or release versions changed.
+Command logs are retained under ignored `frontend/playwright-report/ci-baseline-repair/`.
+
 ## Limits
 
 - Distances approximate a sphere and inherit GPS accuracy; they are not travel

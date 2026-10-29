@@ -8,7 +8,11 @@ type MockMarker = { coordinates: number[]; events: Record<string, () => void>; o
 type MockCluster = { options: ClusterOptions; addLayers: ReturnType<typeof vi.fn>; clearLayers: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> };
 
 const fake = vi.hoisted(() => {
-  const map = { hasLayer: () => true, setView: vi.fn(), fitBounds: vi.fn(), closePopup: vi.fn() };
+  const map = {
+    hasLayer: () => true, setView: vi.fn(), fitBounds: vi.fn(), closePopup: vi.fn(),
+    _events: { moveend: [] as Array<{ fn: () => void; ctx: unknown }> },
+    off: vi.fn(),
+  };
   return { map, createMap: vi.fn(() => map), destroyMap: vi.fn(),
     selectionDisposed: vi.fn(),
     clusters: [] as MockCluster[], markers: [] as MockMarker[], rectangles: [] as Array<{ remove: ReturnType<typeof vi.fn> }> };
@@ -52,7 +56,33 @@ function point(id: number, latitude = 0): PhotoMapPoint {
   return { id, latitude, longitude: 0, thumbnail_filename: "thumb.jpg", original_filename: `photo-${id}.jpg`,
     display_title: null, common_name: null, species_guess: null, captured_at: null };
 }
-beforeEach(() => { vi.clearAllMocks(); fake.clusters.length = 0; fake.markers.length = 0; fake.rectangles.length = 0; });
+beforeEach(() => {
+  vi.clearAllMocks(); fake.clusters.length = 0; fake.markers.length = 0; fake.rectangles.length = 0;
+  fake.map._events.moveend = [];
+  fake.map.off.mockImplementation((type: string, fn: () => void, ctx: unknown) => {
+    if (type === "moveend") fake.map._events.moveend = fake.map._events.moveend.filter((listener) => listener.fn !== fn || listener.ctx !== ctx);
+  });
+});
+
+test("filter replacement detaches pending cluster focus callbacks before markers lose their parents", () => {
+  const points = [point(1), point(2)];
+  const view = render(<ArchivePhotoMap points={points} focusPhotoId={null} />);
+  const retired = fake.clusters[0];
+  const staleFocus = vi.fn(() => {
+    if (retired.clearLayers.mock.calls.length) throw new Error("Retired marker parent was deleted");
+  });
+  const otherLayerMove = vi.fn();
+  fake.map._events.moveend = [
+    { fn: staleFocus, ctx: retired },
+    { fn: otherLayerMove, ctx: {} },
+  ];
+  view.rerender(<ArchivePhotoMap points={[point(2)]} focusPhotoId={null} />);
+  expect(fake.map.off.mock.invocationCallOrder[0]).toBeLessThan(retired.clearLayers.mock.invocationCallOrder[0]);
+  act(() => fake.map._events.moveend.forEach((listener) => listener.fn()));
+  expect(staleFocus).not.toHaveBeenCalled();
+  expect(otherLayerMove).toHaveBeenCalledOnce();
+  view.unmount();
+});
 
 test("updates clustered membership and GPS without recreating map or retaining retired callbacks", async () => {
   const view = render(<ArchivePhotoMap points={[point(1), point(2)]} focusPhotoId={1} />);
