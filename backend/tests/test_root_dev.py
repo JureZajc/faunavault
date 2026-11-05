@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import errno
 import importlib.util
 import io
 import json
 import shlex
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -573,7 +575,10 @@ def dev_runtime(dev, tmp_path, monkeypatch):
     monkeypatch.setattr(dev.signal, "CTRL_BREAK_EVENT", 1, raising=False)
     monkeypatch.setattr(dev.signal, "SIGKILL", 9, raising=False)
     monkeypatch.setattr(dev.time, "sleep", Mock(side_effect=KeyboardInterrupt))
-    monkeypatch.setattr(dev, "os", SimpleNamespace(name="posix", killpg=Mock()))
+    monkeypatch.setattr(dev, "probe_dev_port", Mock())
+    monkeypatch.setattr(
+        dev, "os", SimpleNamespace(name="posix", killpg=Mock(), environ={})
+    )
     return SimpleNamespace(
         processes=processes,
         popen=popen,
@@ -602,7 +607,10 @@ def test_dev_starts_both_services_and_ctrl_c_stops_their_trees(
                 *step.arguments[3:],
             ]
         else:
-            assert call.args[0] == [f"resolved-{step.tool}", *step.arguments]
+            expected = [f"resolved-{step.tool}", *step.arguments]
+            if step.tool == "npm":
+                expected.extend(["--", "--port", "3000"])
+            assert call.args[0] == expected
         assert call.kwargs["cwd"] == step.cwd
         assert call.kwargs["shell"] is False
         assert call.kwargs["stdout"] == subprocess.PIPE
@@ -671,6 +679,53 @@ def test_dev_starts_both_services_and_ctrl_c_stops_their_trees(
     ):
         assert line in captured.out.splitlines()
     assert "stopping both servers" in captured.err
+
+
+def test_dev_skips_blocked_ports_and_connects_both_services(dev, dev_runtime, capsys):
+    denied = OSError("Windows refused the bind")
+    denied.winerror = 10013
+    busy = OSError(errno.EADDRINUSE, "Port already in use")
+    dev.probe_dev_port.side_effect = [denied, None, busy, busy, None]
+    dev.os.environ["NEXT_PUBLIC_API_URL"] = "http://localhost:8000"
+
+    assert dev_runtime.run() == 130
+
+    backend, frontend = dev_runtime.popen.call_args_list
+    assert backend.args[0][-2:] == ["--port", "8001"]
+    assert backend.kwargs["env"]["FAUNAVAULT_DEV_FRONTEND_PORT"] == "3002"
+    assert frontend.args[0][-3:] == ["--", "--port", "3002"]
+    assert frontend.kwargs["env"]["NEXT_PUBLIC_API_URL"] == "http://localhost:8001"
+    assert dev.os.environ["NEXT_PUBLIC_API_URL"] == "http://localhost:8000"
+    output = capsys.readouterr().out
+    assert "http://localhost:3002" in output
+    assert "http://localhost:8001/health" in output
+
+
+def test_dev_does_not_change_an_explicitly_requested_busy_port(
+    dev, dev_runtime, capsys
+):
+    dev.probe_dev_port.side_effect = OSError(errno.EADDRINUSE, "Port already in use")
+
+    assert (
+        dev.run_dev(
+            backend_port=9000, which=lambda name: name, runner=dev_runtime.runner
+        )
+        == 1
+    )
+
+    dev.probe_dev_port.assert_called_once_with("backend", 9000)
+    dev_runtime.popen.assert_not_called()
+    assert "Cannot listen on 127.0.0.1:9000" in capsys.readouterr().err
+
+
+def test_port_probe_does_not_reuse_an_existing_backend_listener(dev):
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind((dev.LOOPBACK_HOST, 0))
+        listener.listen()
+
+        with pytest.raises(OSError):
+            dev.probe_dev_port("backend", listener.getsockname()[1])
 
 
 @pytest.mark.parametrize("platform", ["nt", "posix"])
@@ -847,15 +902,15 @@ def test_dev_main_dispatches_to_concurrent_runner(dev, monkeypatch):
     run_dev = Mock(return_value=130)
     monkeypatch.setattr(dev, "run_dev", run_dev)
 
-    assert dev.main(["dev"]) == 130
-    run_dev.assert_called_once_with()
+    assert dev.main(["dev", "--backend-port", "8001", "--frontend-port", "3002"]) == 130
+    run_dev.assert_called_once_with(backend_port=8001, frontend_port=3002)
 
 
 def test_backend_main_uses_managed_server_lifecycle(dev, monkeypatch):
     run_dev = Mock(return_value=130)
     monkeypatch.setattr(dev, "run_dev", run_dev)
     assert dev.main(["backend"]) == 130
-    run_dev.assert_called_once_with(backend_only=True)
+    run_dev.assert_called_once_with(backend_only=True, backend_port=None)
 
 
 @pytest.mark.parametrize("platform", ["nt", "posix"])

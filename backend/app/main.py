@@ -162,13 +162,15 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="FaunaVault API", version=APP_VERSION, lifespan=lifespan)
+frontend_ports = {3000, 3001}
+if settings.dev_frontend_port is not None:
+    frontend_ports.add(settings.dev_frontend_port)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
+        f"http://{host}:{port}"
+        for port in sorted(frontend_ports)
+        for host in ("localhost", "127.0.0.1")
     ],
     allow_credentials=True,
     allow_methods=["*"],

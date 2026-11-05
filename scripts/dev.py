@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -16,6 +18,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MINIMUM_PYTHON = (3, 12)
+LOOPBACK_HOST = "127.0.0.1"
+DEFAULT_BACKEND_PORT = 8000
+DEFAULT_FRONTEND_PORT = 3000
+DEV_PORT_RETRIES = 10
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPOSITORY_ROOT / "backend"
 FRONTEND_DIR = REPOSITORY_ROOT / "frontend"
@@ -91,9 +97,9 @@ BACKEND_STEPS = (
             "--reload-dir",
             "app",
             "--host",
-            "127.0.0.1",
+            LOOPBACK_HOST,
             "--port",
-            "8000",
+            str(DEFAULT_BACKEND_PORT),
         ),
         BACKEND_DIR,
     ),
@@ -140,9 +146,24 @@ def build_parser() -> argparse.ArgumentParser:
         "check-clean",
         help="Run clean CI-equivalent validation, including dependency reinstall/sync.",
     )
-    subparsers.add_parser("backend", help="Start the FastAPI development server.")
+    backend = subparsers.add_parser(
+        "backend", help="Start the FastAPI development server."
+    )
     subparsers.add_parser("frontend", help="Start the Next.js development server.")
-    subparsers.add_parser("dev", help="Start both development servers in one terminal.")
+    dev = subparsers.add_parser(
+        "dev", help="Start both development servers in one terminal."
+    )
+    for server in (backend, dev):
+        server.add_argument(
+            "--backend-port",
+            type=tcp_port,
+            help=f"Pin the FastAPI port instead of trying from {DEFAULT_BACKEND_PORT}.",
+        )
+    dev.add_argument(
+        "--frontend-port",
+        type=tcp_port,
+        help=f"Pin the Next.js port instead of trying from {DEFAULT_FRONTEND_PORT}.",
+    )
     benchmark = subparsers.add_parser(
         "benchmark-catalog",
         help="Profile production queries on disposable synthetic data.",
@@ -307,6 +328,13 @@ def positive_int(value: str) -> int:
     if parsed < 1:
         raise argparse.ArgumentTypeError("must be a positive integer")
     return parsed
+
+
+def tcp_port(value: str) -> int:
+    port = positive_int(value)
+    if port > 65535:
+        raise argparse.ArgumentTypeError("must be a TCP port between 1 and 65535")
+    return port
 
 
 def run_benchmark(arguments: argparse.Namespace) -> int:
@@ -552,16 +580,76 @@ def dev_process_options(name: str) -> dict:
 
 
 def dev_process_command(
-    name: str, step: Step, executables: dict[str, str]
+    name: str, step: Step, executables: dict[str, str], port: int
 ) -> list[str]:
-    if os.name == "nt" and name == "backend":
-        # The shared step starts with uv run --no-sync uvicorn.
-        return [
-            str(backend_python()),
-            str(Path(__file__).with_name("windows_backend.py")),
-            *step.arguments[3:],
-        ]
-    return [executables[step.tool], *step.arguments]
+    arguments = list(step.arguments)
+    if name == "backend":
+        arguments[arguments.index("--port") + 1] = str(port)
+        if os.name == "nt":
+            # The shared step starts with uv run --no-sync uvicorn.
+            return [
+                str(backend_python()),
+                str(Path(__file__).with_name("windows_backend.py")),
+                *arguments[3:],
+            ]
+    else:
+        # Pin Next's port so it can't retry on a different origin than the API allows.
+        arguments.extend(("--", "--port", str(port)))
+    return [executables[step.tool], *arguments]
+
+
+def probe_dev_port(name: str, port: int) -> None:
+    if os.name == "nt":
+        # Windows can let two listeners share a port with SO_REUSEADDR. Check
+        # for existing listeners with an exclusive bind before testing Uvicorn.
+        with socket.socket() as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            sock.bind((LOOPBACK_HOST, port))
+            sock.listen()
+        if name == "frontend":
+            return
+
+    with socket.socket() as sock:
+        # Match Uvicorn's reload socket and Next's Unix listener.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((LOOPBACK_HOST, port))
+        sock.listen()
+
+
+def select_dev_port(
+    name: str, default: int, requested: int | None, *, exclude: int | None = None
+) -> int | None:
+    candidates = (
+        (requested,)
+        if requested is not None
+        else range(default, default + DEV_PORT_RETRIES + 1)
+    )
+    for port in candidates:
+        if port == exclude:
+            continue
+        try:
+            probe_dev_port(name, port)
+        except OSError as error:
+            unavailable = error.errno in (errno.EADDRINUSE, errno.EACCES) or getattr(
+                error, "winerror", None
+            ) in (10013, 10048)  # WSAEACCES / WSAEADDRINUSE
+            if requested is None and unavailable:
+                continue
+            dev_log(
+                f"[{name}] Cannot listen on {LOOPBACK_HOST}:{port}: {error}.",
+                error=True,
+            )
+            return None
+        if requested is None and port != default:
+            dev_log(f"[{name}] Port {default} is unavailable; using {port}.")
+        return port
+
+    dev_log(
+        f"[{name}] No available loopback port from {default} to {candidates[-1]}. "
+        f"Choose another with --{name}-port.",
+        error=True,
+    )
+    return None
 
 
 def interrupt_windows_console(pid: int) -> None:
@@ -671,9 +759,13 @@ def run_dev(
     which: Which = shutil.which,
     runner: Runner = subprocess.run,
     backend_only: bool = False,
+    backend_port: int | None = None,
+    frontend_port: int | None = None,
 ) -> int:
     steps = BACKEND_STEPS if backend_only else BACKEND_STEPS + FRONTEND_STEPS
-    names = ("backend",) if backend_only else ("backend", "frontend")
+    if not backend_only and backend_port is not None and backend_port == frontend_port:
+        dev_log("[dev] Backend and frontend ports must be different.", error=True)
+        return 2
     servers = "backend" if backend_only else "both servers"
     try:
         executables = resolve_tools(steps, which)
@@ -720,19 +812,48 @@ def run_dev(
                 file=sys.stderr,
             )
             return 1
+        api_port = select_dev_port(
+            "backend",
+            DEFAULT_BACKEND_PORT,
+            backend_port,
+            exclude=None if backend_only else frontend_port,
+        )
+        if api_port is None:
+            return 1
+        ports = {"backend": api_port}
         if not backend_only:
-            dev_log("[frontend] Frontend: http://localhost:3000")
-        dev_log("[backend] Backend: http://localhost:8000")
-        dev_log("[backend] API health: http://localhost:8000/health")
+            ui_port = select_dev_port(
+                "frontend", DEFAULT_FRONTEND_PORT, frontend_port, exclude=api_port
+            )
+            if ui_port is None:
+                return 1
+            ports["frontend"] = ui_port
+
+        backend_url = f"http://localhost:{api_port}"
+        if not backend_only:
+            dev_log(f"[frontend] Frontend: http://localhost:{ports['frontend']}")
+        dev_log(f"[backend] Backend: {backend_url}")
+        dev_log(f"[backend] API health: {backend_url}/health")
         dev_log(f"[dev] Press Ctrl+C to stop {servers}.")
         if os.name == "nt":
             job = WindowsJob()
-        for name, step in zip(names, steps, strict=True):
+        for (name, port), step in zip(ports.items(), steps, strict=True):
             label = step.label
             dev_log(label)
             options = dev_process_options(name)
+            if (
+                name == "backend"
+                and ports.get("frontend", DEFAULT_FRONTEND_PORT)
+                != DEFAULT_FRONTEND_PORT
+            ):
+                options["env"] = {
+                    **os.environ,
+                    "FAUNAVAULT_DEV_FRONTEND_PORT": str(ports["frontend"]),
+                }
+            if name == "frontend" and api_port != DEFAULT_BACKEND_PORT:
+                options["env"] = {**os.environ, "NEXT_PUBLIC_API_URL": backend_url}
             process = subprocess.Popen(
-                dev_process_command(name, step, executables),
+                dev_process_command(name, step, executables, port),
                 cwd=step.cwd,
                 shell=False,
                 stdout=subprocess.PIPE,
@@ -789,9 +910,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     arguments = build_parser().parse_args(argv)
     if arguments.command == "dev":
-        return run_dev()
+        return run_dev(
+            backend_port=arguments.backend_port, frontend_port=arguments.frontend_port
+        )
     if arguments.command == "backend":
-        return run_dev(backend_only=True)
+        return run_dev(backend_only=True, backend_port=arguments.backend_port)
     if arguments.command == "doctor":
         return run_doctor(arguments)
     if arguments.command == "benchmark-catalog":
