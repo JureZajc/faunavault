@@ -43,7 +43,6 @@ from app.archive_integrity import (
     validate_event_tables,
     validate_flat_filename,
 )
-from app.catalog_query import CatalogSavedQuery
 from app.config import Settings
 from app.migrations import LATEST_SCHEMA_VERSION
 
@@ -633,7 +632,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                 id=_required_id(row["id"], "smart_collection.id"),
                 name=_required_text(row["name"], "smart_collection.name"),
                 query_version=row["query_version"],
-                query=CatalogSavedQuery.model_validate_json(row["query_json"]),
+                query=json.loads(row["query_json"]),
                 created_at=_timestamp(row["created_at"], "smart_collection.created_at"),
                 updated_at=_timestamp(row["updated_at"], "smart_collection.updated_at"),
             )

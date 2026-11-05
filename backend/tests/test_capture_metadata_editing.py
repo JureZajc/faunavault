@@ -541,7 +541,7 @@ def test_schema15_backups_rehearsal_and_portable_export(lifecycle, tmp_path_fact
         artifact_root / "export", settings, include_csv=True
     )
     payload = json.loads(export.json_path.read_text())
-    assert payload["format_version"] == 12
+    assert payload["format_version"] == 13
     exported = payload["photos"][0]
     assert exported["captured_at"] is None and exported["capture_metadata_overridden"]
     assert exported["extracted_captured_at"] == "2024-05-24T18:42:00.000000"

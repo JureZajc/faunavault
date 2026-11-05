@@ -354,7 +354,7 @@ def test_event_lifecycle_and_artifacts(lifecycle, tmp_path_factory):
     assert first.csv_path.read_bytes() == second.csv_path.read_bytes()
     payload = json.loads(first.json_path.read_text())
     assert (
-        payload["format_version"] == 12
+        payload["format_version"] == 13
         and payload["archive_events"][0]["id"] == trip["id"]
     )
     assert payload["archive_event_photos"] == [

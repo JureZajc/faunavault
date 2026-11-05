@@ -353,7 +353,7 @@ def test_cover_backup_restore_export_and_change_detection(lifecycle, tmp_path_fa
     assert exported.json_path.read_bytes() == repeated.json_path.read_bytes()
     payload = json.loads(exported.json_path.read_text())
     assert (
-        payload["format_version"] == 12
+        payload["format_version"] == 13
         and payload["collections"][0]["cover_photo_id"] == photo["id"]
     )
     payload["collections"][0]["cover_photo_id"] = 99999

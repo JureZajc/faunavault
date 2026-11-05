@@ -7,10 +7,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.catalog_query import CatalogSavedQuery
+from app.catalog_query import SavedQueryVersion, VersionedSavedQuery
 from app.metadata_types import PhotoCullingState, PhotoRating
 
-EXPORT_FORMAT_VERSION = 12
+EXPORT_FORMAT_VERSION = 13
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -230,8 +230,8 @@ class CollectionPhotoExport(StrictExportModel):
 class SmartCollectionExport(StrictExportModel):
     id: int = Field(ge=1)
     name: str = Field(min_length=1, max_length=100)
-    query_version: Literal[1]
-    query: CatalogSavedQuery
+    query_version: SavedQueryVersion
+    query: VersionedSavedQuery
     created_at: str
     updated_at: str
 

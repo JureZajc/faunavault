@@ -275,7 +275,7 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
 
     payload = json.loads(first_json)
     validated = ArchiveMetadataExport.model_validate(payload)
-    assert payload["format_version"] == 12
+    assert payload["format_version"] == 13
     assert all(
         photo["is_favorite"] is False and photo["rating"] is None
         for photo in payload["photos"]
@@ -388,7 +388,7 @@ def test_metadata_export_preserves_heic_source_identity_without_version_bump(
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     photo = next(item for item in payload["photos"] if item["id"] == 3)
 
-    assert payload["format_version"] == 12
+    assert payload["format_version"] == 13
     assert photo["original_filename"] == "iPhone.HEIC"
     assert photo["archive_relative_original_path"] == "images/original/three.heic"
     assert photo["media_type"] == "image/heic"
@@ -430,6 +430,17 @@ def test_empty_archive_exports_valid_json_and_header_only_csv(tmp_path: Path):
 def test_export_includes_versioned_smart_collection_query(tmp_path: Path):
     archive = _create_archive(tmp_path, populated=False)
     engine = create_database_engine(archive.settings)
+    advanced = {
+        "tags": ["Birds", "bird"],
+        "camera_make": "Canon",
+        "camera_model": "",
+        "unknown_lens": True,
+        "metadata_issue": "complete",
+        "bbox_south": 0,
+        "bbox_north": 10,
+        "bbox_west": 170,
+        "bbox_east": -170,
+    }
     with Session(engine) as session:
         session.add(
             SmartCollection(
@@ -441,14 +452,31 @@ def test_export_includes_versioned_smart_collection_query(tmp_path: Path):
                 updated_at=STAMP,
             )
         )
+        session.add(
+            SmartCollection(
+                name="Birds at the dateline",
+                name_key="birds at the dateline",
+                query_version=2,
+                query_json=json.dumps(advanced),
+                created_at=STAMP,
+                updated_at=STAMP,
+            )
+        )
         session.commit()
     engine.dispose()
     result = create_metadata_export(tmp_path / "smart export", archive.settings)
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
-    assert payload["counts"]["smart_collections"] == 1
-    assert payload["smart_collections"][0]["name"] == "Birds 2026"
-    assert payload["smart_collections"][0]["query"]["taken_from"] == "2026-01-01"
+    assert payload["counts"]["smart_collections"] == 2
+    legacy, current = payload["smart_collections"]
+    assert legacy["name"] == "Birds 2026" and legacy["query_version"] == 1
+    assert legacy["query"]["taken_from"] == "2026-01-01"
+    assert "tags" not in legacy["query"]
+    assert current["query_version"] == 2
+    assert {key: current["query"][key] for key in advanced} == advanced
     ArchiveMetadataExport.model_validate(payload)
+    current["query_version"] = 1
+    with pytest.raises(ValidationError):
+        ArchiveMetadataExport.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -645,7 +673,7 @@ def test_cli_summary_warnings_exit_codes_and_help(
     assert export_cli.main([str(destination), "--csv"]) == 0
     captured = capsys.readouterr()
     assert "Metadata export: COMPLETE" in captured.out
-    assert "Format: v12" in captured.out
+    assert "Format: v13" in captured.out
     assert "Collections: 1 with 2 membership(s)" in captured.out
     assert "Photos: 3 total / 2 active / 1 Trash" in captured.out
     assert "1 photo(s) lacked a stored original size or SHA-256" in captured.out
@@ -673,13 +701,13 @@ def test_format_version_is_independent_and_schema_rejects_bad_artifacts(
     result = create_metadata_export(tmp_path / "valid", archive.settings)
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     payload["source_database_schema_version"] = 10
-    assert ArchiveMetadataExport.model_validate(payload).format_version == 12
+    assert ArchiveMetadataExport.model_validate(payload).format_version == 13
 
     payload["format_version"] = 1
     with pytest.raises(ValidationError):
         ArchiveMetadataExport.model_validate(payload)
 
-    payload["format_version"] = 12
+    payload["format_version"] = 13
     payload["photos"][0]["original_sha256"] = "BAD"
     with pytest.raises(ValidationError):
         ArchiveMetadataExport.model_validate(payload)

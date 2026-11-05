@@ -619,7 +619,7 @@ def test_backup_export_rehearsal_and_session_only_changes(lifecycle, tmp_path_fa
     assert first.json_path.read_bytes() == second.json_path.read_bytes()
     assert first.csv_path.read_bytes() == second.csv_path.read_bytes()
     payload = json.loads(first.json_path.read_text())
-    assert payload["format_version"] == 12 and payload["counts"]["import_sessions"] == 1
+    assert payload["format_version"] == 13 and payload["counts"]["import_sessions"] == 1
     assert payload["photos"][0]["import_session_id"] == identity
     invalid = json.loads(first.json_path.read_text())
     invalid["photos"][0]["import_session_id"] = str(uuid4())

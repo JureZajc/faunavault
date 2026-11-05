@@ -12,6 +12,7 @@ from app.benchmark.runner import measure
 from app.benchmark.safety import disposable_settings, protected_locations
 from app.catalog_query import CatalogSavedQuery
 from app.database import create_database_engine
+from app.schemas import SmartCollectionCreateRequest
 from app.services.catalog import list_catalog_photos
 from app.services.smart_collections import (
     create_smart_collection,
@@ -44,7 +45,12 @@ def main() -> None:
                 ]:
                     query = CatalogSavedQuery(**criteria)
                     with Session(engine) as session:
-                        smart_id = create_smart_collection(name, query, session).id
+                        smart_id = create_smart_collection(
+                            SmartCollectionCreateRequest(
+                                name=name, query_version=1, query=query
+                            ),
+                            session,
+                        ).id
 
                     def catalog(engine=engine, query=query):
                         with Session(engine) as session:

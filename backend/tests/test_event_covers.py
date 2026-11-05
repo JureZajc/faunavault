@@ -356,7 +356,7 @@ def test_cover_backup_restore_export_and_change_detection(lifecycle, tmp_path_fa
     exported = create_metadata_export(root / "export", settings)
     payload = json.loads(exported.json_path.read_text())
     assert (
-        payload["format_version"] == 12
+        payload["format_version"] == 13
         and payload["archive_events"][0]["cover_photo_id"] == photo["id"]
     )
     payload["archive_events"][0]["cover_photo_id"] = 99999

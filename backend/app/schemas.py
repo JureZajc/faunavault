@@ -18,7 +18,7 @@ from pydantic import (
 from pydantic import Field as PydanticField
 from sqlmodel import Field, SQLModel
 
-from app.catalog_query import CatalogSavedQuery
+from app.catalog_query import SavedQuery, SavedQueryVersion, VersionedSavedQuery
 from app.metadata_types import PhotoCullingState, PhotoRating
 from app.models import Animal, DuplicateScanState, Photo
 
@@ -784,22 +784,22 @@ class SmartCollectionCreateRequest(SQLModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    query_version: Literal[1]
-    query: CatalogSavedQuery
+    query_version: SavedQueryVersion
+    query: VersionedSavedQuery
 
 
 class SmartCollectionUpdateRequest(SQLModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
-    query_version: Literal[1] | None = None
-    query: CatalogSavedQuery | None = None
+    query_version: SavedQueryVersion | None = None
+    query: VersionedSavedQuery | None = None
 
 
 class SmartCollectionSummaryRead(SQLModel):
     id: int
     name: str
-    query_version: int
+    query_version: int | None
     query_valid: bool
     query_error: str | None
     created_at: datetime
@@ -807,7 +807,7 @@ class SmartCollectionSummaryRead(SQLModel):
 
 
 class SmartCollectionRead(SmartCollectionSummaryRead):
-    query: CatalogSavedQuery | None
+    query: SavedQuery | None
 
 
 class SmartCollectionDeleteResponse(SQLModel):

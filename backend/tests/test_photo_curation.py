@@ -379,7 +379,7 @@ def test_schema16_export_backup_rehearsal_and_live_signature(
     exported = create_metadata_export(root / "export", settings, include_csv=True)
     payload = json.loads(exported.json_path.read_text())
     assert (
-        payload["format_version"] == 12 and payload["photos"][0]["is_favorite"] is True
+        payload["format_version"] == 13 and payload["photos"][0]["is_favorite"] is True
     )
     assert payload["photos"][0]["rating"] == 5
     with exported.csv_path.open(newline="", encoding="utf-8") as source:
