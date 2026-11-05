@@ -60,7 +60,8 @@ def test_uvicorn_reload_preserves_launcher_and_frontend_then_ctrl_c_stops_both(
         "'--host', '127.0.0.1', '--port', '0', '--lifespan', 'off'), root),)\n"
         "dev.FRONTEND_STEPS = (dev.Step('[frontend] development server', 'python', "
         "('-u', str(root / 'frontend.py')), root),)\n"
-        f"code = dev.run_dev(backend_only={backend_only!r}, which=lambda _: sys.executable, "
+        f"code = dev.run_dev(backend_only={backend_only!r}, backend_port=0, "
+        "which=lambda _: sys.executable, "
         "runner=lambda *a, **k: SimpleNamespace(returncode=0, stdout='v24.12.0'))\n"
         "print('LAUNCHER_EXIT', code, flush=True)\n"
         "sys.exit(code)\n",

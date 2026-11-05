@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     data_dir: Path = BACKEND_DIR / "data"
     image_dir: Path = Field(default_factory=_default_image_root)
     database_url: str = "sqlite:///./data/faunavault.db"
+    dev_frontend_port: int | None = Field(
+        default=None, ge=1, le=65535, validation_alias="FAUNAVAULT_DEV_FRONTEND_PORT"
+    )
     ollama_base_url: str = "http://localhost:11434"
     ollama_connect_timeout_seconds: float = Field(default=5.0, gt=0)
     ollama_request_timeout_seconds: float = Field(default=180.0, gt=0)

@@ -152,6 +152,19 @@ command uses the same reload and shutdown handling.
 `dev` checks installed dependencies without reinstalling them; if setup is missing
 or incomplete, run `python scripts/dev.py setup` first.
 
+The launcher tries the next port if a default is unavailable, including when
+Windows refuses the bind (`WinError 10013`). It checks ports 8000–8010 for the
+backend and 3000–3010 for the frontend. To pin either port, pass its flag:
+
+```sh
+python scripts/dev.py dev --backend-port 8001 --frontend-port 3002
+```
+
+Open the frontend URL printed by the launcher. When `dev` uses a different
+backend port, it points Next.js at that backend for the run, overriding
+`NEXT_PUBLIC_API_URL`. It also allows requests from the selected frontend port
+on loopback. You don't need to edit your environment files.
+
 Alternatively, start individual services in two separate terminals:
 
 ```sh
@@ -166,7 +179,8 @@ Open [FaunaVault](http://localhost:3000). The backend listens on localhost and
 initializes the database/directories and applies migrations on startup. Existing
 archives are upgraded without a reset. [Health](http://localhost:8000/health)
 reports status and application version. When running services separately, stop
-each server with Ctrl+C.
+each server with Ctrl+C. If the standalone `backend` uses a different port, set
+`NEXT_PUBLIC_API_URL` for the separately launched frontend to match.
 
 Both services are **localhost-only by default**: the frontend (development and
 production) binds to `127.0.0.1:3000`, and the backend binds to `127.0.0.1:8000`.
