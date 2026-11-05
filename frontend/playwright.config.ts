@@ -78,7 +78,13 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: {
+          // Map tests can fulfill tiles with page.route; never contact the live tile server.
+          args: ["--no-proxy-server", "--host-resolver-rules=MAP tile.openstreetmap.org ~NOTFOUND"],
+        },
+      },
     },
   ],
   webServer: [

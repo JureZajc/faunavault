@@ -2,7 +2,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import Home from "../app/page";
-import { CatalogQuery, Photo } from "../app/lib/api";
+import { CatalogQuery, Photo, SmartCollectionQueryRead } from "../app/lib/api";
+import { smartCollectionEditHref } from "../app/lib/smart-collections";
 import { importSessionFixture } from "./fixtures/import-sessions";
 
 const api = vi.hoisted(() => ({
@@ -102,16 +103,16 @@ beforeEach(() => {
   api.addEventPhotos.mockResolvedValue({ event_id: 7, requested_count: 1, added_count: 1, already_present_count: 0 });
 });
 
-test("active tags visibly block creating and updating version-one Smart Collections", async () => {
-  window.history.replaceState(null, "", "/?catalog_tag=birds&smart_edit=7");
+test("active Trip/Event membership blocks updates even with supported tags", async () => {
+  window.history.replaceState(null, "", "/?catalog_tag=birds&catalog_event_id=7&smart_edit=7");
   render(<Home />);
-  await screen.findByRole("heading", { name: "Fox" });
-  expect(screen.getByText(/Version-1 Smart Collections cannot save them/)).toBeTruthy();
+  await screen.findByText(/Editing Smart Collection “Birds”/);
+  expect(screen.getByText(/Trip\/Event membership cannot be saved/)).toBeTruthy();
   expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.queryByRole("button", { name: "Save as Smart Collection" })).toBeNull();
   expect(api.createSmartCollection).not.toHaveBeenCalled();
   expect(api.updateSmartCollection).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole("button", { name: "Clear tag filters" }));
+  await userEvent.click(screen.getByRole("button", { name: "Reset filters" }));
   await waitFor(() => expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(false));
 });
 
@@ -128,42 +129,70 @@ test("List combines geographic bounds with filters and removes only area; Map ro
     expect(href).toContain("catalog_bbox_east=-170");
     expect(href).toContain("catalog_status=classified");
   }
-  expect(screen.queryByRole("button", { name: "Save as Smart Collection" })).toBeNull();
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Save as Smart Collection" }).disabled).toBe(false);
   await userEvent.click(screen.getByRole("button", { name: "Remove area filter" }));
   await waitFor(() => expect(window.location.search).not.toContain("bbox"));
   expect(window.location.search).toContain("catalog_category=mammal");
   expect(window.location.search).toContain("catalog_status=classified");
 });
 
-test("saves current List criteria without page or layout and includes pending search text", async () => {
-  window.history.replaceState(null, "", "/?catalog_page=2&catalog_status=classified&catalog_layout=grouped&catalog_sort=name&catalog_order=asc");
+test("saves the complete v2 List criteria and includes pending search text without transient state", async () => {
+  window.history.replaceState(null, "", "/?catalog_page=2&catalog_status=classified&catalog_layout=grouped&catalog_sort=name&catalog_order=asc&catalog_tag=Birds&catalog_tag=birds&catalog_camera_make=Canon&catalog_camera_model=&catalog_unknown_lens=1&catalog_metadata_issue=complete&catalog_bbox_south=0&catalog_bbox_north=10&catalog_bbox_west=170&catalog_bbox_east=-170&unrelated=1");
   render(<Home />);
   await screen.findByRole("heading", { name: "Fox" });
   await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "fox");
   await userEvent.click(screen.getByRole("button", { name: "Save as Smart Collection" }));
   const dialog = screen.getByRole("dialog", { name: "Create Smart Collection" });
-  await userEvent.type(within(dialog).getByRole("textbox", { name: "Smart Collection name" }), "Foxes");
-  await userEvent.click(within(dialog).getByRole("button", { name: "Create Smart Collection" }));
+  const name = within(dialog).getByRole("textbox", { name: "Smart Collection name" });
+  await waitFor(() => expect(document.activeElement).toBe(name));
+  await userEvent.type(name, "Foxes");
+  await userEvent.keyboard("{Enter}");
   await waitFor(() => expect(api.createSmartCollection).toHaveBeenCalledWith({
-    name: "Foxes", query_version: 1,
-    query: expect.objectContaining({ search: "fox", status: "classified", sort: "name", order: "asc" }),
+    name: "Foxes", query_version: 2,
+    query: expect.objectContaining({
+      search: "fox", status: "classified", sort: "name", order: "asc",
+      tags: ["Birds", "birds"], camera_make: "Canon", camera_model: "", unknown_lens: true,
+      metadata_issue: "complete", bbox_south: 0, bbox_north: 10, bbox_west: 170, bbox_east: -170,
+    }),
   }));
   const savedQuery = api.createSmartCollection.mock.calls[0][0].query;
   expect(savedQuery).not.toHaveProperty("page");
   expect(savedQuery).not.toHaveProperty("page_size");
   expect(savedQuery).not.toHaveProperty("layout");
+  expect(savedQuery).not.toHaveProperty("unrelated");
   await waitFor(() => expect(window.location.pathname).toBe("/collections/smart/8"));
 });
 
-test("edits a saved query through List controls and saves to the same collection", async () => {
-  window.history.replaceState(null, "", "/?smart_edit=7&catalog_status=pending");
+test("restores v2 criteria, edits through List controls, and retries a failed update", async () => {
+  const saved: SmartCollectionQueryRead = { sort: "created_at", order: "desc", tags: ["Birds"], camera_make: null,
+    camera_model: "", lens_model: null, metadata_issue: "missing_gps", bbox_south: null,
+    bbox_north: null, bbox_west: null, bbox_east: null };
+  window.history.replaceState(null, "", smartCollectionEditHref(7, saved));
+  api.getSmartCollection.mockResolvedValueOnce({ id: 7, name: "Birds", query_version: 2, query_valid: true, query: saved });
+  api.updateSmartCollection.mockRejectedValueOnce(new Error("Could not update the Smart Collection."));
   render(<Home />);
   expect(await screen.findByText(/Editing Smart Collection “Birds”/)).toBeTruthy();
-  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Status" }), "classified");
+  expect(api.getCatalogPhotos.mock.lastCall?.[0]).toMatchObject({ tags: ["Birds"], camera_model: "", metadata_issue: "missing_gps" });
+  expect(window.location.search).not.toMatch(/bbox|camera_make|lens_model/);
+  await userEvent.selectOptions(screen.getByLabelText("Metadata completeness"), "missing_capture");
+  await userEvent.click(screen.getByText("Edit geographic coordinates"));
+  await userEvent.type(screen.getByLabelText("South latitude"), "0");
+  await userEvent.type(screen.getByLabelText("North latitude"), "10");
+  await userEvent.type(screen.getByLabelText("West longitude"), "170");
+  await userEvent.type(screen.getByLabelText("East longitude"), "-170");
+  await userEvent.click(screen.getByRole("button", { name: "Apply coordinates" }));
+  await waitFor(() => expect(window.location.search).toContain("catalog_bbox_east=-170"));
+  await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(await screen.findByText("Could not update the Smart Collection.")).toBeTruthy();
+  expect(window.location.pathname).toBe("/");
   await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(api.updateSmartCollection).toHaveBeenCalledWith(7, {
-    query_version: 1, query: expect.objectContaining({ status: "classified" }),
+    query_version: 2, query: expect.objectContaining({
+      tags: ["Birds"], camera_model: "", metadata_issue: "missing_capture",
+      bbox_south: 0, bbox_north: 10, bbox_west: 170, bbox_east: -170,
+    }),
   }));
+  expect(api.updateSmartCollection).toHaveBeenCalledTimes(2);
   await waitFor(() => expect(window.location.pathname).toBe("/collections/smart/7"));
 });
 
@@ -232,7 +261,7 @@ test("restores, edits, saves and clears curation criteria through URL state", as
   const dialog = screen.getByRole("dialog", { name: "Create Smart Collection" });
   await userEvent.type(within(dialog).getByRole("textbox", { name: "Smart Collection name" }), "Best photos");
   await userEvent.click(within(dialog).getByRole("button", { name: "Create Smart Collection" }));
-  expect(api.createSmartCollection).toHaveBeenCalledWith(expect.objectContaining({ query_version: 1, query: expect.objectContaining({ favorites_only: true, rating_min: 4, sort: "rating" }) }));
+  expect(api.createSmartCollection).toHaveBeenCalledWith(expect.objectContaining({ query_version: 2, query: expect.objectContaining({ favorites_only: true, rating_min: 4, sort: "rating" }) }));
 });
 
 test("switches exact/minimum/unrated filters without combining them and follows history", async () => {
@@ -328,12 +357,11 @@ test("List Event membership survives filters and prevents saving Smart criteria"
   await waitFor(() => expect(screen.queryByText("1 selected", { exact: true })).toBeNull());
 });
 
-test("equipment restored from history resets selection and blocks Smart Collection updates", async () => {
+test("equipment restored from history resets selection and can upgrade a v1 collection", async () => {
   window.history.replaceState(null, "", "/?catalog_camera_model=R5&smart_edit=7");
   render(<Home />);
   await screen.findByRole("heading", { name: "Fox" });
-  expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText(/Equipment filters cannot be saved in version-1 Smart Collections/)).toBeTruthy();
+  await screen.findByText(/Editing Smart Collection “Birds”/);
   await userEvent.click(screen.getByRole("button", { name: "Select photos" }));
   await userEvent.click(screen.getByRole("checkbox", { name: /Select photo 1:/ }));
   expect(screen.getByText("1 selected", { exact: true })).toBeTruthy();
@@ -341,8 +369,10 @@ test("equipment restored from history resets selection and blocks Smart Collecti
   window.dispatchEvent(new PopStateEvent("popstate"));
   await waitFor(() => expect(screen.queryByText("1 selected", { exact: true })).toBeNull());
   expect(api.updateSmartCollection).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole("button", { name: "Clear equipment filters" }));
-  await waitFor(() => expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(false));
+  await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(api.updateSmartCollection).toHaveBeenCalledWith(7, {
+    query_version: 2, query: expect.objectContaining({ camera_model: "R6" }),
+  }));
 });
 
 test("List suggestion target does not scope membership; successful addition clears selection and stays in List", async () => {

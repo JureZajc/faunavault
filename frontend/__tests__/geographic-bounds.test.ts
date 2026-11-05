@@ -41,7 +41,9 @@ test("URL and navigation preserve precise bounds, compatible and unsupported cri
   }
   const detail = photoMapDetailHref({ id: 17 } as Parameters<typeof photoMapDetailHref>[0], mapCatalogHref(state));
   expect(new URLSearchParams(detail.split("?")[1]).get("returnTo")).toContain("catalog_bbox_east=-170");
-  expect(() => savedQueryFromState(state, "")).toThrow("Geographic area filters cannot be saved");
+  expect(() => savedQueryFromState(state, "")).toThrow(/Trip\/Event membership cannot be saved/);
+  expect(savedQueryFromState({ ...state, event_id: undefined }, "")).toMatchObject({ bbox_south: state.bbox_south, bbox_north: 10, bbox_west: 170, bbox_east: -170 });
+  expect(() => savedQueryFromState({ ...DEFAULT_CATALOG_STATE, bbox_south: 0 }, "")).toThrow(/all four area coordinates/);
 });
 
 test.each(["catalog_bbox_south=", "catalog_bbox_south=NaN", "catalog_bbox_south=0&catalog_bbox_north=10&catalog_bbox_west=170", "catalog_bbox_south=0&catalog_bbox_south=5&catalog_bbox_north=10&catalog_bbox_west=170&catalog_bbox_east=-170"])("invalid URLs stay invalid through serialization: %s", (query) => {

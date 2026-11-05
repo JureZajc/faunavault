@@ -332,9 +332,7 @@ trims whitespace just like existing photo and bulk tag edits. General text searc
 keeps its broader behavior and can be combined with exact tags.
 
 Tag filters also work in Culling. Map explains its limitation and links back to
-the filtered List. Exact tags and untagged are live catalog criteria: version-1
-Smart Collections cannot save them. Clear tag filters before creating or updating
-a Smart Collection. No database migration or new tagging storage is required.
+the filtered List. Smart Collections can save exact tags or the untagged filter.
 
 Each tag has **Rename**, **Merge**, and **Delete** actions. These operations affect
 the **entire archive, including Trash**, even though Explorer counts show active
@@ -389,10 +387,26 @@ reconcile with `GET /catalog/photos?metadata_issue=...`, where accepted values a
 The criterion combines with other live filters using AND semantics; invalid values
 return 422. Culling also retains the criterion. No tables or migrations are added.
 
-Metadata completeness remains a live List/Culling criterion. Version-1 Smart
-Collection queries cannot save it, and Map does not support it. Navigation explains
-these limitations and offers the filtered List or an explicit unfiltered destination;
-clear the criterion before saving a Smart Collection. Direct Map API requests with
+Metadata completeness works in List, Culling, and v2 Smart Collections. Map
+offers the filtered List or an explicit unfiltered destination. Direct Map API requests with
 this criterion return 422. Wildlife Insights links undated Photos only for All Time;
 missing-GPS links retain a selected capture year's date range. Existing Insights
 percentages and comparisons keep their original meanings.
+
+## Smart Collections
+
+Apply filters in **List**, choose **Save as Smart Collection**, and give it a name.
+Open it from **Collections** to see its saved criteria and current matches.
+Choose **Edit criteria** to restore the filters in List, then **Save changes**.
+Version 2 adds exact tags (all selected tags, with case preserved), untagged,
+camera and lens (including unknown equipment), metadata completeness, and
+geographic areas to the existing search, taxonomy, capture date, curation, and
+sort options. Trip/Event membership cannot be saved; clear it first.
+
+Results follow the live archive, including new photos, edits, Trash, and Restore.
+A tag rename or merge changes photo tags; the saved exact tag text stays the same.
+Areas support antimeridian crossings and zero coordinates and match only photos
+with valid GPS. Completeness uses effective capture dates and GPS, including
+manual corrections. Existing v1 definitions still work and keep their version
+when renamed; saving edited criteria upgrades them to v2. Metadata export v13
+includes both query versions. [Smart Collection workflow](docs/OPERATIONS.md#smart-collections)

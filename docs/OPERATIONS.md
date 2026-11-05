@@ -110,9 +110,8 @@ descending first. Binary value tie-breakers keep pages deterministic.
 parameter for no criterion; an explicitly empty value selects a missing component.
 Gear links include both camera components, using an empty value where absent, so
 partial-group links match their displayed counts exactly. Unknown camera plus any
-camera component, or unknown lens plus a lens component, returns HTTP 422. Live
-equipment criteria are excluded from version-1 Smart Collections; both new saves
-and updates are blocked. Map rejects equipment criteria and offers the full List;
+camera component, or unknown lens plus a lens component, returns HTTP 422. V2
+Smart Collections retain these criteria. Map rejects equipment criteria and offers the full List;
 Timeline and other archive views keep their existing filtering contracts.
 
 Aggregation uses four scalar/grouped SQL statements, bounded returned rows and no
@@ -560,23 +559,39 @@ structured 409 errors. Cover and membership writes acquire `BEGIN IMMEDIATE`
 before validation; repeated assignments do not write or change `updated_at`.
 Backup-v1 verification accepts covers on active or trashed members, rejects
 nonmembers/dangling references, and recovery rehearsal compares cover choices
-exactly. Metadata export v12 includes every Collection's nullable cover ID.
-Historical backups remain supported; Smart Collection query version stays 1.
+exactly. Metadata export v13 includes every Collection's nullable cover ID.
+Historical backups remain supported.
 
-Smart Collections are named saved List queries with live membership. In List,
-set search, status, category or Unknown, verified taxon, capture dates, Favorites,
-exact/minimum/Unrated rating criteria, and sort,
-then choose **Save as Smart Collection**. An unfiltered “All photos” query is
-valid. Page, page size, flat/grouped layout, and selection are never saved.
+### Smart Collections
+
+Smart Collections are named List queries with live results. In List, set any
+combination of search, classification status, category or Unknown, verified
+taxon, capture dates, Import Session, culling, Favorites, rating and sort.
+V2 can also save case-sensitive exact tags (all selected tags must match) or
+untagged, exact trimmed camera make/model and lens model or unknown equipment,
+metadata completeness, and geographic bounds. Choose **Save as Smart
+Collection** and enter a name. An unfiltered “All photos” query is valid.
+To start with a geographic area, select it on Map, choose **View selected area
+in List**, then add any other List filters.
+Clear Trip/Event membership before saving; page, page size, layout, and
+selection are never saved.
+
 Find Smart Collections in a separate section under `/collections`; open one at
-`/collections/smart/<id>` to see its current count and paginated results. **Edit
-criteria** restores the query in List and **Save changes** updates the same
-Smart Collection. Metadata edits, new Photos, Trash, and restore immediately
-change results because no membership rows are stored. Deleting a Smart
-Collection deletes only its saved query. Bulk **Add to Collection** still
-targets manual Collections. Saved query version 1 has explicit validated
-fields; an unsupported or damaged definition is shown as invalid and can be
-replaced from List without affecting other collections.
+`/collections/smart/<id>` to see its criteria, current count and paginated results.
+**Edit criteria** restores the query in List. To change an area there, open
+**Edit geographic coordinates** and apply the new bounds. **Save changes** updates
+the same collection, upgrading a v1 definition to v2. Existing v1 definitions continue
+to work and keep their version on rename. An unsupported or damaged definition
+can be repaired with **Replace criteria**.
+
+Results reflect new Photos, tag changes, corrected metadata, Trash, and Restore.
+Renaming or merging a tag updates Photos but leaves the saved tag text unchanged;
+edit the collection to follow the new tag. Areas require all four coordinates,
+support antimeridian crossings and zero coordinates, and match only valid GPS
+pairs. Completeness uses the effective capture date and GPS, so manual
+corrections and clears affect results. Deleting a Smart Collection only deletes
+its definition. Bulk **Add to Collection** still targets manual Collections.
+Metadata export v13 carries both query versions without a database migration.
 
 `POST /photos/bulk` accepts a discriminated operation body with explicit
 `photo_ids`. The backend validates the complete active set before mutation and
@@ -649,8 +664,8 @@ failure, and Retry states. Both Map and area-filtered List exclude Trash and
 Photos without complete valid effective GPS. Effective metadata corrections,
 Trash, and Restore change membership on refresh. List combines bounds with
 tags, equipment, dates, verified Taxon, category, status, Event membership,
-rating, Favorite, and Culling filters. An area cannot be saved to a v1 Smart
-Collection. No images or original files are read by area filtering.
+rating, Favorite, and Culling filters. Valid areas can be saved in v2 Smart
+Collections. No images or original files are read by area filtering.
 
 The shared catalog SQL predicate applies before projection, sorting, counting,
 and pagination; no Python archive scan is used. Map still selects scalar columns,
@@ -796,7 +811,7 @@ evidence/version cannot inherit an old dismissal silently. Candidates are derive
 and reproducible, while explicit dismissals are user-curation data. Schema-14
 verified backups include both pair records and scan state, and rehearsal checks
 their preservation. Backup v1 and historical schemas 9–21 remain supported.
-Portable metadata export v12 intentionally excludes duplicate curation state; use
+Portable metadata export v13 intentionally excludes duplicate curation state; use
 verified backups to preserve decisions during recovery.
 
 ### Ingestion detection
@@ -930,7 +945,7 @@ capture/GPS baseline; it does not scan image files. Capture-only correction and
 Restore do not accept pending AI classification review. Original files and EXIF
 bytes are never rewritten, nor are derivatives regenerated. Trash restoration
 preserves both corrections and provenance. Backup-v1 schemas 9–21 are supported;
-verification/rehearsal preserve all new fields. Portable JSON/CSV export v12
+verification/rehearsal preserve all new fields. Portable JSON/CSV export v13
 includes effective values, retained extraction, and both markers.
 
 `backfill-photo-metadata` remains a stopped-archive, dry-run-by-default command.
@@ -984,7 +999,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v9](METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v13](METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -1216,7 +1231,7 @@ current active/Trash totals, and active-only undecided/Pick/Reject counts.
 curation filters compose with membership; reload and copied URLs preserve it.
 Selection resets when the source changes. Detail, Compare, Favorites/Ratings,
 bulk actions, and rejected cleanup use their ordinary controls. Clearing filters
-also clears session membership. Smart Collection query version 1 can save/edit
+also clears session membership. Both Smart Collection query versions can save
 the optional `import_session_id` without changing historical saved queries.
 Map currently rejects session criteria and List explains its disabled Map action.
 
@@ -1274,7 +1289,7 @@ History performs one grouped Photo query restricted to the requested page of
 session IDs; detail groups one ID. Metadata browsing reads no Photo IDs, images,
 or files. The membership index also narrows List and Culling queries. Backup v1
 keeps its manifest shape and supports schemas 9–21, including session signatures
-for change detection and exact recovery comparisons. Portable export v12 includes
+for change detection and exact recovery comparisons. Portable export v13 includes
 ordered sessions, historical aggregates, nullable membership, and CSV provenance;
 derived culling counts are omitted. See [the export contract](METADATA_EXPORT_FORMAT.md).
 
@@ -1328,7 +1343,7 @@ Map rejects unsupported culling filters and provides an explanation and List lin
 Schema 17 stores `culling_state` as null, `pick`, or `reject` with a database
 constraint. Existing Photos start null. Trash and restore preserve the field;
 permanent deletion removes it with the Photo. No automatic Trash/expiry is added.
-Portable export v12 includes decisions on active and trashed Photos: JSON uses
+Portable export v13 includes decisions on active and trashed Photos: JSON uses
 null/`pick`/`reject`; CSV uses `\N`/`pick`/`reject`. Backup format v1 supports schemas
 9–21, verifies column structure and values, checks live metadata changes before
 publication, and compares decisions during isolated recovery rehearsal. Historical
@@ -1391,7 +1406,7 @@ No individual Trash buttons are offered on rejected-review cards; inspection
 continues through existing Photo detail. Permanent deletion stays inside Trash
 with its existing confirmation. There is no automatic selection, Trash,
 permanent deletion, retention, scan, background job, or scheduling. Schema 17,
-export v12, and backup v1 remain unchanged.
+export v13, and backup v1 remain unchanged.
 
 ## Photo Favorites and Ratings
 
@@ -1417,7 +1432,7 @@ Backup format v1 supports schemas 9–21. Schema-16 verification checks curation
 column structure and values, including empty databases. Recovery rehearsal
 compares Favorite and Rating on active and Trash Photos; older backups migrate
 to false/null without rewriting frozen fixtures. Production restore remains
-manual and uses the same complete SQLite backup. Portable export v12 includes
+manual and uses the same complete SQLite backup. Portable export v13 includes
 JSON boolean/null/integer values and CSV `true`/`false`, 1–5, or `\N`.
 
 ## Trips & Events (v0.3)
@@ -1484,8 +1499,8 @@ automatic memberships, original-file changes, or backup/export format changes.
 Dates never assign Photos or change existing memberships. A Photo can belong to
 several Trips, Events and Collections. Metadata/membership edits update only the
 Event timestamp; Photo timestamps, classification, AI review and duplicate
-decisions stay independent. Event criteria cannot be saved as Smart Collection
-query v1; clear membership scope to save a date/metadata query. Trash retains
+decisions stay independent. Event membership cannot be saved in a Smart Collection;
+clear membership scope to save a date/metadata query. Trash retains
 joins; Restore makes active members reappear. Permanent Photo deletion cascades
 join rows and leaves the Event, even when empty.
 
@@ -1504,7 +1519,7 @@ foreign keys, metadata constraints, reverse index, canonical data and references
 even with empty Event tables, before rehearsal writes. Deterministic Event and
 membership signatures detect concurrent backup changes and verify exact recovery.
 Older backups migrate to empty Event tables. Rehearsal output includes Event and
-membership totals. Portable export v12 includes all Event fields and Trash joins,
+membership totals. Portable export v13 includes all Event fields and Trash joins,
 ordered with validated references; photos.csv is unchanged.
 
 Recurrence, automatic membership, Event coordinates and geocoding remain deferred.
@@ -1747,11 +1762,8 @@ and sorting rather than server pagination.
 
 Culling retains tag criteria. Map rejects exact tags/untagged with HTTP 422 and
 provides an explicit UI explanation with a filtered-List link. Archive navigation
-warns before opening another view without exact filters. Version-1 Smart Collections
-reject dedicated tags at the API schema boundary; the UI blocks create/update and
-explains how to clear tag filters. Dedicated tags are currently **live catalog
-filters**, not persisted Smart Collection criteria. Query version 1 and the separate
-`feature/smart-collections-v2` work remain independent.
+warns before opening another view without exact filters. V2 Smart Collections
+save exact tags or untagged and evaluate them against the current archive.
 
 Bulk add/remove retains the 250-photo cap, explicit submission, validation,
 transactional changes, review/audit behavior and active-photo restrictions. Suggestions
@@ -1866,10 +1878,9 @@ reconcile with `GET /catalog/photos?metadata_issue=...`, where accepted values a
 The criterion combines with other live filters using AND semantics; invalid values
 return 422. Culling also retains the criterion. No tables or migrations are added.
 
-Metadata completeness remains a live List/Culling criterion. Version-1 Smart
-Collection queries cannot save it, and Map does not support it. Navigation explains
-these limitations and offers the filtered List or an explicit unfiltered destination;
-clear the criterion before saving a Smart Collection. Direct Map API requests with
+Metadata completeness works in List, Culling, and v2 Smart Collections. Map
+navigation explains its limitation and offers the filtered List or an explicit
+unfiltered destination. Direct Map API requests with
 this criterion return 422. Wildlife Insights links undated Photos only for All Time;
 missing-GPS links retain a selected capture year's date range. Existing Insights
 percentages and comparisons keep their original meanings.

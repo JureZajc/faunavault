@@ -355,29 +355,33 @@ export type CollectionDetail = CollectionSummary & {
   photos: CollectionPhotoPage;
 };
 
-export type SmartCollectionQuery = Omit<CatalogQuery, keyof import("./geographic-bounds").BoundsQuery | "metadata_issue" | "page" | "page_size" | "event_id" | "tags" | "untagged" | keyof EquipmentQuery>;
+export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id">;
+type SmartCollectionQueryV1 = Omit<SmartCollectionQuery, keyof import("./geographic-bounds").BoundsQuery | "metadata_issue" | "tags" | "untagged" | keyof EquipmentQuery>;
+type VersionedSmartCollectionQuery =
+  | { query_version: 1; query: SmartCollectionQueryV1 }
+  | { query_version: 2; query: SmartCollectionQuery };
+
+export type SmartCollectionQueryRead = {
+  [Key in keyof SmartCollectionQuery]: undefined extends SmartCollectionQuery[Key]
+    ? SmartCollectionQuery[Key] | null
+    : SmartCollectionQuery[Key];
+};
 export type SmartCollectionSummary = {
   id: number;
   name: string;
-  query_version: number;
+  query_version: number | null;
   query_valid: boolean;
   query_error: string | null;
   created_at: string;
   updated_at: string;
 };
 export type SmartCollection = SmartCollectionSummary & {
-  query: SmartCollectionQuery | null;
+  query: SmartCollectionQueryRead | null;
 };
-export type SmartCollectionCreateRequest = {
-  name: string;
-  query_version: 1;
-  query: SmartCollectionQuery;
-};
-export type SmartCollectionUpdateRequest = {
-  name?: string;
-  query_version?: 1;
-  query?: SmartCollectionQuery;
-};
+export type SmartCollectionCreateRequest = { name: string } & VersionedSmartCollectionQuery;
+export type SmartCollectionUpdateRequest = { name?: string } & (
+  VersionedSmartCollectionQuery | { name: string; query_version?: never; query?: never }
+);
 
 export type CollectionCreateRequest = { name: string };
 export type CollectionRenameRequest = { name: string };

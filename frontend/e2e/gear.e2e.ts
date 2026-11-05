@@ -26,7 +26,7 @@ test("Gear Explorer exact camera/lens navigation, partial EXIF, history and mobi
     await camera.focus(); await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/catalog_camera_model=E2E\+Canon\+EOS\+R5/);
     await expect(page.getByRole("article")).toHaveCount(2);
-    await expect(page.getByText(/Equipment filters cannot be saved in version-1 Smart Collections/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save as Smart Collection" })).toBeEnabled();
     await expect(page.getByRole("button", { name: "View on Map", exact: true })).toBeDisabled();
     await page.getByRole("link", { name: "Map", exact: true }).click();
     await expect(page.getByRole("alert").filter({ hasText: "equipment filters" })).toBeVisible();
