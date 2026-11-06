@@ -4,13 +4,13 @@ import styles from "./photo-map.module.css";
 
 export function createLeafletMap(
   container: HTMLElement,
-  options: { scrollWheelZoom: boolean },
+  options: Pick<L.MapOptions, "scrollWheelZoom" | "zoomAnimation">,
 ) {
   const map = L.map(container, {
     center: [0, 0],
     zoom: 2,
     keyboard: true,
-    scrollWheelZoom: options.scrollWheelZoom,
+    ...options,
   });
   try {
     L.tileLayer(MAP_TILE_CONFIG.url, {

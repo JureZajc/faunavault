@@ -27,20 +27,20 @@ export function SightingPagination({ page, totalPages, onPage, label, disabled =
   </nav>;
 }
 
-export function LocalSpeciesPicker({ value, onChange, emptyLabel = "Unidentified", disabled = false }: {
-  value: SightingTaxon | null; onChange: (value: SightingTaxon | null) => void; emptyLabel?: string; disabled?: boolean;
+export function LocalSpeciesPicker({ value, onChange, selectedLabel, emptyLabel = "Unidentified", disabled = false }: {
+  value: SightingTaxon | null; onChange: (value: SightingTaxon | null) => void; selectedLabel?: string; emptyLabel?: string; disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const pickerButton = useRef<HTMLButtonElement>(null);
   return <fieldset disabled={disabled} className="min-w-0 space-y-2">
     <legend className="text-sm font-semibold">Verified species</legend>
-    <p className="break-words text-sm">{value ? taxonLabel(value) : emptyLabel}</p>
+    <p className="break-words text-sm">{value ? taxonLabel(value) : selectedLabel ?? emptyLabel}</p>
     <div className="flex flex-wrap gap-2">
       <button ref={pickerButton} type="button" aria-expanded={open} aria-controls={open ? panelId : undefined} className={buttonStyle} onClick={() => setOpen(!open)}>
         {open ? "Close species picker" : "Choose species"}
       </button>
-      {value && <button type="button" className={buttonStyle} onClick={() => {
+      {(value || selectedLabel) && <button type="button" className={buttonStyle} onClick={() => {
         onChange(null); pickerButton.current?.focus();
       }}>Clear species</button>}
     </div>

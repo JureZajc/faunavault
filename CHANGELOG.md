@@ -6,6 +6,12 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Wildlife Sightings Map clusters encounters using Sighting GPS and field-local
+  dates. Filter by date, verified species, or map area, and move between markers
+  and Sighting detail. The map reports missing locations and flags the
+  2,000-marker limit. Markers follow Sighting coordinate edits and deletion,
+  while linked photo thumbnails follow Trash and Restore.
+
 - Wildlife Life List groups manually recorded Sightings by verified local species
   or subspecies. Browse first and latest encounters, all-time counts, and taxa
   seen or first recorded in a field-local observation year. Encounter totals

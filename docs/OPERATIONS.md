@@ -1641,6 +1641,42 @@ sighting and membership counts. Recovery rehearsal compares all observation
 fields and links, including those to Trash. Portable metadata export v15
 records the same data in JSON; the Photo CSV keeps its existing columns.
 
+## Wildlife Sightings Map
+
+From the Journal, choose **View Sightings Map**. The link carries over the
+applied date and verified species filters. Each marker represents one encounter
+at its Sighting coordinates, including unidentified encounters and multiple
+encounters at the same location. Photo Map places individual photos by their
+own GPS and applies Photo filters.
+
+Use **From date** and **Through date** for inclusive field-local observation
+dates, and **Choose species** to select a verified local species or subspecies.
+Zoom and pan, then use **Search this map area** to apply the visible bounds. The
+coordinate form supports keyboard entry and areas crossing the antimeridian
+when West is greater than East. The URL preserves the applied filters across
+reload and Back/Forward. **Clear filters** resets the view's filters.
+
+The mapped count covers every located encounter in scope, and the missing-GPS
+count covers encounters matching the date and species filters. With a geographic
+area selected, their sum is the matching count. A missing or invalid Sighting
+GPS pair keeps the encounter in the Journal. If the map reaches its 2,000-marker
+limit, it shows how many are displayed and how many match. Narrow the date or
+species filters, or zoom in and search a smaller area.
+
+Select a cluster to zoom in or spread overlapping encounters, then choose
+**Open Sighting** in a marker popup. **View on Sightings Map** on the detail
+page centers and opens that encounter. To correct a location, choose **Edit
+Sighting** and save both coordinates. The next map fetch uses the updated
+position. A popup can show an active linked photo. Trash hides its preview,
+Restore makes it eligible again, and permanent photo deletion leaves the
+encounter mapped. Deleting the Sighting removes the marker.
+
+The basemap uses the configured remote OpenStreetMap raster tiles. Offline or
+unavailable tiles can leave the basemap blank while the local markers, counts,
+and detail links remain available. Tile requests reveal the viewed area to the
+tile provider. This derived view uses the existing archive data in SQLite schema
+23 and portable metadata export v15.
+
 ## Wildlife Life List
 
 Open **Life List** (`/life-list`) from Archive navigation or the **Sightings**
