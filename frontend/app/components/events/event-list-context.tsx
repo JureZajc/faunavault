@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useEvent } from "../../hooks/use-event";
 import { addEventPhotos } from "../../lib/api";
 import { eventDateLabel, eventId, eventKindLabel } from "../../lib/events";
-import EventConfirmDialog from "./event-confirm-dialog";
+import EventConfirmDialog from "../confirm-dialog";
 import { MAX_SELECTED_PHOTOS } from "../../hooks/use-catalog-selection";
 
 export default function EventListContext({ id, adding = false, selectedIds = new Set<number>(), busy = false, revision, onSelect, onDates, onAdded, onBusyChange }: {

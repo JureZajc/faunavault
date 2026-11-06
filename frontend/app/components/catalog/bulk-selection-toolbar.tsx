@@ -10,7 +10,7 @@ export type BulkDialogAction =
   | "remove_tags"
   | "category"
   | "move_to_trash";
-export type BulkToolbarAction = BulkDialogAction | "add_to_collection" | "add_to_event" | "edit_capture" | "export_selected";
+export type BulkToolbarAction = BulkDialogAction | "add_to_collection" | "add_to_event" | "create_sighting" | "edit_capture" | "export_selected";
 
 type BulkSelectionToolbarProps = {
   selectedIds: ReadonlySet<number>;
@@ -103,6 +103,7 @@ export default function BulkSelectionToolbar({
             ["edit_capture", "Edit capture / GPS"],
             ["add_to_collection", "Add to Collection"],
             ["add_to_event", "Add to Trip/Event"],
+            ["create_sighting", "Create Sighting"],
             ["favorite", "Favorite / Unfavorite"],
             ["rating", "Set rating"],
             ["culling", "Culling decision"],

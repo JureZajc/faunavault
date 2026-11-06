@@ -50,6 +50,12 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   [Bulk metadata guide](docs/OPERATIONS.md#bulk-capture-and-gps-editing).
 - Search, filters, sorting, Timeline, clustered Map, species Albums, manual
   Collections, and live Smart Collections.
+- **Wildlife Sightings Journal** at `/sightings` records one encounter per entry,
+  even when several photos document it. Select photos in List and choose
+  **Create Sighting**, then enter the observation time, optional location and
+  notes, and an optional species from local verified taxonomy. Filter encounters
+  by date or species, and follow sighting links from Photo detail.
+  [Sightings guide](docs/OPERATIONS.md#wildlife-sightings-journal).
 - **Daily Photography Calendar** within Timeline: choose Calendar and a capture
   year for a Monday-first, twelve-month overview, daily photo activity, active-day
   totals, average Photos per active day, and a linked most active day. Click an
@@ -257,7 +263,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–22. Production restore remains manual.
+schemas 9–23. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)
@@ -412,8 +418,8 @@ uv run --no-sync faunavault-maintenance backfill-photo-metadata --apply
 ```
 
 The backfill preserves populated settings, manual capture and GPS corrections,
-and the original images. Metadata export v14 includes the four settings.
-Backup format v1 verifies and rehearses recovery of database schemas 9–22.
+and the original images. Metadata export v15 includes the four settings.
+Backup format v1 verifies and rehearses recovery of database schemas 9–23.
 [Archive maintenance instructions](docs/OPERATIONS.md#exif-shooting-settings)
 
 ## Smart Collections
@@ -431,5 +437,5 @@ A tag rename or merge changes photo tags; the saved exact tag text stays the sam
 Areas support antimeridian crossings and zero coordinates and match only photos
 with valid GPS. Completeness uses effective capture dates and GPS, including
 manual corrections. Existing v1 definitions still work and keep their version
-when renamed; saving edited criteria upgrades them to v2. Metadata export v14
+when renamed; saving edited criteria upgrades them to v2. Metadata export v15
 includes both query versions. [Smart Collection workflow](docs/OPERATIONS.md#smart-collections)

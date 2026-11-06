@@ -322,7 +322,7 @@ test("preserves catalog parameters while switching collection views", async () =
   const navigation = screen.getByRole("navigation", { name: "Archive views" });
   expect(
     Array.from(navigation.querySelectorAll("a")).map((link) => link.textContent),
-  ).toEqual(["List", "Gear", "Tags", "Timeline", "Metadata Health", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash"]);
+  ).toEqual(["List", "Gear", "Tags", "Timeline", "Metadata Health", "Insights", "Map", "Albums", "Collections", "Trips & Events", "Sightings", "Review", "Culling", "Duplicates", "Trash"]);
   expect(screen.getByRole("link", { name: "Timeline" }).getAttribute("href"))
     .toBe("/timeline");
   expect(screen.getByRole("link", { name: "Map" }).getAttribute("href"))

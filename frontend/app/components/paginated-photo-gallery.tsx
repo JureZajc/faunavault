@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ImageLightbox, { LightboxImage } from "./image-lightbox";
-import { getCatalogPhotos, getCollection, getCullingWorkspace, imageUrl, Photo } from "../lib/api";
+import { getCatalogPhotos, getCollection, getCullingWorkspace, getSightingPhotos, imageUrl, Photo } from "../lib/api";
 import { DEFAULT_CATALOG_STATE } from "../lib/catalog-query";
 
 type GalleryPage = { items: Photo[]; total: number; page: number; page_size: number; total_pages: number };
 export type GalleryStart = { page: number; index: number; photoId?: number };
 type Props = {
-  kind: "collection" | "event";
+  kind: "collection" | "event" | "sighting";
   id: number;
   start: GalleryStart;
   onClose: () => void;
@@ -48,9 +48,13 @@ function GallerySession({ kind, id, start, onClose }: Props) {
       const page = Math.floor(target / PAGE_SIZE) + 1;
       let result = cache.current.get(page);
       if (!result) {
-        result = kind === "collection"
-          ? (await getCollection(id, page, PAGE_SIZE, controller.signal)).photos
-          : await getCatalogPhotos({ ...query, page, page_size: PAGE_SIZE }, controller.signal);
+        if (kind === "collection") {
+          result = (await getCollection(id, page, PAGE_SIZE, controller.signal)).photos;
+        } else if (kind === "sighting") {
+          result = await getSightingPhotos(id, page, controller.signal, PAGE_SIZE);
+        } else {
+          result = await getCatalogPhotos({ ...query, page, page_size: PAGE_SIZE }, controller.signal);
+        }
       }
       if (controller.signal.aborted) return false;
       cache.current.delete(page);

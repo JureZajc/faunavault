@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   deletePhoto: vi.fn(),
   getAnimal: vi.fn(),
   getPhoto: vi.fn(),
+  getPhotoSightings: vi.fn(),
   getSpeciesAlbum: vi.fn(),
   searchTaxonomy: vi.fn(),
   selectAlbumTaxon: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("../app/lib/api", async (importOriginal) => {
     deletePhoto: api.deletePhoto,
     getAnimal: api.getAnimal,
     getPhoto: api.getPhoto,
+    getPhotoSightings: api.getPhotoSightings,
     getSpeciesAlbum: api.getSpeciesAlbum,
     searchTaxonomy: api.searchTaxonomy,
     selectAlbumTaxon: api.selectAlbumTaxon,
@@ -94,6 +96,7 @@ function makePhoto(overrides: Partial<Photo> = {}): Photo {
 beforeEach(() => {
   vi.clearAllMocks();
   api.deletePhoto.mockResolvedValue({ status: "trashed", photo_id: 44 });
+  api.getPhotoSightings.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 12, total_pages: 0 });
 });
 
 test("presents a named animal with its stable identifier as secondary metadata", () => {

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import PhotoMedia from "../../components/photo-detail/photo-media";
 import PhotoSidebar from "../../components/photo-detail/photo-sidebar";
+import PhotoSightings from "../../components/sightings/photo-sightings";
 import { usePhotoClassification } from "../../hooks/use-photo-classification";
 import { usePhotoDetail } from "../../hooks/use-photo-detail";
 import { Photo } from "../../lib/api";
@@ -47,6 +48,7 @@ export default function PhotoDetail({
     onError: setActionError,
   });
   const error = actionError ?? detail.error;
+  const back = safeReturnLocation(returnTo);
 
   async function handleMoved(photo: Photo) {
     window.sessionStorage.setItem(
@@ -61,10 +63,10 @@ export default function PhotoDetail({
       <div className="mx-auto max-w-7xl px-3 py-8 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <Link
-            href={safeReturnLocation(returnTo)}
+            href={back}
             className="inline-flex w-fit rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-700 transition hover:border-emerald-300 hover:text-emerald-900"
           >
-            {/^\/photos\/[1-9]\d*(?:\?|$)/.test(safeReturnLocation(returnTo)) ? "Back to source photo" : "Back to catalog"}
+            {/^\/sightings\/[1-9]\d*$/.test(back) ? "Back to sighting" : /^\/photos\/[1-9]\d*(?:\?|$)/.test(back) ? "Back to source photo" : "Back to catalog"}
           </Link>
           <p className="break-words text-sm text-stone-500 sm:text-right">
             Field record stored in your local animal archive
@@ -84,7 +86,10 @@ export default function PhotoDetail({
           </div>
         ) : detail.photo ? (
           <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
-            <PhotoMedia photo={detail.photo} />
+            <div className="min-w-0 space-y-6">
+              <PhotoMedia photo={detail.photo} />
+              <PhotoSightings key={detail.photo.id} photoId={detail.photo.id} />
+            </div>
             <PhotoSidebar
               photo={detail.photo}
               classification={classification}

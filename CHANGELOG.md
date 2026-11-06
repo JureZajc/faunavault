@@ -6,6 +6,12 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Wildlife Sightings Journal records individual encounters from explicitly
+  selected photos. Browse by date or verified local species, edit observation
+  metadata, and follow encounter links from Photo detail. Trash preserves
+  memberships for Restore. Schema 23 adds sightings and links, backup v1
+  verifies and rehearses them, and portable JSON export v15 includes them.
+
 - Read-only EXIF Shooting Settings on Photo details and inclusive, URL-backed
   List ranges for aperture, shutter speed, ISO, and focal length. Browser uploads
   and folder imports extract these settings where available. An opt-in maintenance
