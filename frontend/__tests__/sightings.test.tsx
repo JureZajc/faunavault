@@ -101,6 +101,8 @@ test("journal shows encounter totals, card links, pagination, sorting and filter
   await user.click(await screen.findByRole("button", { name: /Red fox/ }));
   expect(api.getSightingTaxa).toHaveBeenLastCalledWith("fox", 1, expect.any(AbortSignal));
   expect(api.getSightings).toHaveBeenLastCalledWith({ page: 1, sort: "oldest", taxon_id: 5, date_from: "2026-08-23", date_to: "2026-08-24" }, expect.any(AbortSignal));
+  expect(screen.getByRole("link", { name: "View Sightings Map" }).getAttribute("href"))
+    .toBe("/sightings/map?date_from=2026-08-23&date_to=2026-08-24&taxon_id=5");
 });
 
 test("journal moves from loading to error to empty when retried", async () => {
@@ -170,6 +172,7 @@ test("detail renders membership and zero coordinates, preserves precision on edi
   expect((await within(gallery).findByRole("link", { name: /^Meadow photo$/ })).getAttribute("href")).toBe("/photos/11?returnTo=%2Fsightings%2F7");
   expect(screen.getByRole("link", { name: "Add existing photos" }).getAttribute("href")).toBe("/?add_to_sighting=7");
   expect(screen.getByRole("region", { name: "Map at 0, 0" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "View on Sightings Map" }).getAttribute("href")).toBe("/sightings/map?focus=7");
   await user.click(screen.getByRole("button", { name: "Edit Sighting" }));
   const edit = within(screen.getByRole("dialog", { name: "Edit Sighting" }));
   await user.clear(edit.getByLabelText(/Field notes/));
@@ -191,6 +194,13 @@ test("detail renders membership and zero coordinates, preserves precision on edi
   await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete Sighting" }));
   await waitFor(() => expect(window.location.pathname).toBe("/sightings"));
   expect(api.deleteSighting).toHaveBeenCalledWith(7);
+});
+
+test("Sighting detail explains missing GPS and omits the map action", async () => {
+  api.getSighting.mockResolvedValue({ ...item, latitude: null, longitude: null });
+  render(<SightingDetail id={7} />);
+  expect(await screen.findByText(/Add Sighting coordinates/)).toBeTruthy();
+  expect(screen.queryByRole("link", { name: "View on Sightings Map" })).toBeNull();
 });
 
 test("Photo detail shows encounter links and supports retry independently of photo loading", async () => {

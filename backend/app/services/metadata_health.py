@@ -12,13 +12,13 @@ def capture_present():
     return Photo.captured_at.is_not(None)
 
 
-def gps_present():
+def gps_present(model=Photo):
     # Explicit presence makes negation two-valued even for partial legacy pairs.
     return and_(
-        Photo.latitude.is_not(None),
-        Photo.longitude.is_not(None),
-        Photo.latitude.between(-90, 90),
-        Photo.longitude.between(-180, 180),
+        model.latitude.is_not(None),
+        model.longitude.is_not(None),
+        model.latitude.between(-90, 90),
+        model.longitude.between(-180, 180),
     )
 
 

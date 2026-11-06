@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { ArchivePhotoMapProps } from "./archive-photo-map.client";
 import type { SinglePhotoMapProps } from "./single-photo-map.client";
+import type { SightingMapProps } from "./sighting-map.client";
 import styles from "./photo-map.module.css";
 
 const SinglePhotoMapClient = dynamic(
@@ -36,6 +37,15 @@ const ArchivePhotoMapClient = dynamic(
     ),
   },
 );
+
+const SightingMapClient = dynamic(() => import("./sighting-map.client"), {
+  ssr: false,
+  loading: () => <div role="status" className={`${styles.loading} ${styles.archiveFrame}`}>Loading map…</div>,
+});
+
+export function SightingMap(props: SightingMapProps) {
+  return <SightingMapClient {...props} />;
+}
 
 export function PhotoLocationMap(props: SinglePhotoMapProps) {
   return <SinglePhotoMapClient {...props} />;

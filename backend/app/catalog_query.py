@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.geographic_bounds import validate_bounding_box
 from app.metadata_types import (
     SHOOTING_SETTING_FIELDS,
     CullingFilter,
@@ -106,16 +107,9 @@ class CatalogSavedQueryV2(CatalogSavedQuery):
 
     @model_validator(mode="after")
     def validate_bounds(self) -> CatalogSavedQueryV2:
-        values = (self.bbox_south, self.bbox_north, self.bbox_west, self.bbox_east)
-        if any(value is not None for value in values):
-            if any(value is None for value in values):
-                raise ValueError("provide all four bbox coordinates together")
-            if self.bbox_south >= self.bbox_north:
-                raise ValueError("bbox_south must be less than bbox_north")
-            if self.bbox_west == self.bbox_east or (
-                self.bbox_west == 180 and self.bbox_east == -180
-            ):
-                raise ValueError("bounding box must have non-zero longitude width")
+        validate_bounding_box(
+            self.bbox_south, self.bbox_north, self.bbox_west, self.bbox_east
+        )
         return self
 
     tags: list[str] = Field(default_factory=list, max_length=20)

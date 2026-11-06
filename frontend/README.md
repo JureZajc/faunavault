@@ -41,6 +41,27 @@ select and submit the photos you want to link. **Remove from sighting** and
 and shows them in the Trash count; Restore brings those photos back into the
 gallery. Photo detail links back to its recorded sightings.
 
+## Wildlife Sightings Map
+
+Choose **View Sightings Map** in the Journal to carry over the applied date and
+verified species filters. The map shows one marker per encounter using the
+Sighting's coordinates and field-local observation date. Photo Map shows one
+marker per geotagged photo using Photo metadata.
+
+Date, species, and geographic filters are stored in the URL for reload and
+browser Back/Forward. Pan and zoom, then choose **Search this map area**, or
+enter bounds under **Geographic area coordinates**. The map reports matching,
+mapped, and missing-GPS totals. If more than 2,000 encounters have coordinates in
+scope, narrow the filters or search a smaller area to see the remaining markers.
+
+Clusters zoom or spread apart to reveal individual markers. Open a marker for
+details and follow **Open Sighting**. A geotagged encounter's **View on Sightings
+Map** link centers and opens its marker. Use **Edit Sighting** to add or correct
+GPS, then return to the map to see the updated location. Trash hides linked
+thumbnails and Restore makes them eligible again. A Sighting with coordinates
+can appear even when it has zero active photos. OpenStreetMap tiles require
+network access, while encounter data comes from the local archive.
+
 ## Wildlife Life List
 
 Open **Life List** in Archive navigation or from the **Sightings** Journal. The

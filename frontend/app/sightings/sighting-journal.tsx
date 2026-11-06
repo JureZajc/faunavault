@@ -8,6 +8,7 @@ import { buttonStyle, inputStyle, LocalSpeciesPicker, SightingError, SightingPag
 import { useSightingResource } from "../hooks/use-sighting-resource";
 import { getSightings, SightingFilters, SightingTaxon } from "../lib/api";
 import { formatCameraLocalDate } from "../lib/photo-metadata";
+import { sightingMapHref } from "../lib/sighting-map-query";
 import { sightingName, taxonLabel } from "../lib/sightings";
 
 export default function SightingJournal() {
@@ -24,7 +25,10 @@ export default function SightingJournal() {
       <header>
         <h1 className="text-3xl font-semibold">Wildlife Sightings Journal</h1>
         <p className="mt-2 text-stone-600">Record encounters in the field and link the photos that document each one.</p>
-        <Link href="/life-list" className="inline-flex min-h-11 items-center font-semibold text-emerald-900 underline">Explore your Life List</Link>
+        <div className="flex flex-wrap gap-x-4 font-semibold text-emerald-900 underline">
+          <Link href="/life-list" className="inline-flex min-h-11 items-center">Explore your Life List</Link>
+          <Link href={sightingMapHref(filters)} className="inline-flex min-h-11 items-center">View Sightings Map</Link>
+        </div>
       </header>
       <ArchiveNavigation active="sightings" />
       <section aria-label="Sighting filters" className="space-y-3 rounded-lg border border-stone-200 bg-white p-4">

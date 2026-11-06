@@ -7,6 +7,12 @@ export function hasArea(query: BoundsQuery) {
   return BOUND_KEYS.some((key) => query[key] !== undefined);
 }
 
+export function hasValidCoordinates(latitude: number | null, longitude: number | null) {
+  return latitude !== null && longitude !== null &&
+    Number.isFinite(latitude) && Number.isFinite(longitude) &&
+    Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+}
+
 export function boundsError(query: BoundsQuery): string | null {
   if (!hasArea(query)) return null;
   if (BOUND_KEYS.some((key) => query[key] === undefined)) return "Enter all four area coordinates, or clear the area filter.";

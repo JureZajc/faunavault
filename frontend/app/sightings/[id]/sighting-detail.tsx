@@ -12,7 +12,9 @@ import { buttonStyle, SightingError, SightingPagination } from "../../components
 import SightingFormDialog from "../../components/sightings/sighting-form-dialog";
 import { useSightingResource } from "../../hooks/use-sighting-resource";
 import { changeSightingPhotos, deleteSighting, getSighting, getSightingPhotos, Photo, Sighting } from "../../lib/api";
+import { hasValidCoordinates } from "../../lib/geographic-bounds";
 import { formatCameraLocalDate, formatUtcOffset } from "../../lib/photo-metadata";
+import { sightingMapHref } from "../../lib/sighting-map-query";
 import { sightingName, taxonLabel } from "../../lib/sightings";
 
 export default function SightingDetail({ id }: { id: number | null }) {
@@ -33,6 +35,7 @@ function SightingRecord({ id }: { id: number }) {
   if (error) return <SightingError message={error} retry={retry} />;
   if (!item) return <p role="status">Loading sighting…</p>;
   const name = sightingName(item);
+  const hasLocation = hasValidCoordinates(item.latitude, item.longitude);
   return <>
     <article className="space-y-4 rounded-lg border border-stone-200 bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -54,15 +57,19 @@ function SightingRecord({ id }: { id: number }) {
         </div>
         <div className="min-w-0 break-words">
           <dt className="text-sm font-semibold">Location</dt>
-          <dd>{item.location_label || (item.latitude === null ? "No location recorded" : "GPS location")}</dd>
-          {item.latitude !== null && item.longitude !== null && <dd className="text-sm text-stone-600">{item.latitude}, {item.longitude}</dd>}
+          <dd>{item.location_label || (hasLocation ? "GPS location" : "No location recorded")}</dd>
+          {hasLocation && <dd className="text-sm text-stone-600">{item.latitude}, {item.longitude}</dd>}
+          {!hasLocation && <dd className="text-sm text-stone-600">Add Sighting coordinates to show this encounter on the map.</dd>}
         </div>
         <div className="min-w-0">
           <dt className="text-sm font-semibold">Field notes</dt>
           <dd className="whitespace-pre-wrap break-words">{item.notes || "No field notes"}</dd>
         </div>
       </dl>
-      {item.latitude !== null && item.longitude !== null && <PhotoLocationMap latitude={item.latitude} longitude={item.longitude} label={item.location_label || name} />}
+      {hasLocation && item.latitude !== null && item.longitude !== null && <>
+        <Link href={sightingMapHref({ focus: id })} className={buttonStyle}>View on Sightings Map</Link>
+        <PhotoLocationMap latitude={item.latitude} longitude={item.longitude} label={item.location_label || name} />
+      </>}
     </article>
     <SightingGallery item={item} onChanged={replace} />
     {dialog === "edit" && <SightingFormDialog item={item} onClose={() => setDialog(null)} onSaved={(updated) => { replace(updated); setDialog(null); }} />}

@@ -1,5 +1,6 @@
 import type { MapCatalogQuery } from "./catalog-query";
 import { SHOOTING_RANGE_KEYS, type ShootingRangeQuery } from "./shooting-settings";
+import { sightingMapQuery, type SightingMapFilters } from "./sighting-map-query";
 
 export type PhotoRating = 1 | 2 | 3 | 4 | 5;
 export type PhotoCullingState = "pick" | "reject";
@@ -292,6 +293,27 @@ export function updateEventCover(id: number, photoId: number | null) { return re
 export function deleteEvent(id: number) { return request<{ event_id: number; status: "deleted" }>(`/events/${id}`, { method: "DELETE" }); }
 export function addEventPhotos(id: number, photoIds: number[]) { return request<EventAddResponse>(`/events/${id}/photos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_ids: photoIds }) }); }
 export function removeEventPhotos(id: number, photoIds: number[]) { return request<EventRemoveResponse>(`/events/${id}/photos`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_ids: photoIds }) }); }
+
+export type SightingMapPoint = Pick<SightingMetadata, "observed_at" | "subject_label" | "location_label" | "taxon_id"> & {
+  id: number;
+  latitude: number;
+  longitude: number;
+  common_name: string | null;
+  scientific_name: string | null;
+  thumbnail_filename: string | null;
+};
+
+export type SightingMapResult = {
+  points: SightingMapPoint[];
+  total_matching: number;
+  without_location_count: number;
+  truncated: boolean;
+};
+
+export function getSightingMap(filters: SightingMapFilters, signal?: AbortSignal) {
+  const query = sightingMapQuery(filters);
+  return request<SightingMapResult>(query ? `/sightings/map?${query}` : "/sightings/map", { signal, cache: "no-store" });
+}
 
 export type SightingTaxon = {
   id: number;

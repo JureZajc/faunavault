@@ -1,4 +1,4 @@
-"""Seed local taxonomy for the Life List browser test without network services."""
+"""Seed local taxonomy for Sighting browser tests without network services."""
 
 import json
 import os
@@ -23,11 +23,11 @@ with sqlite3.connect(f"{database.as_uri()}?mode=rw", uri=True) as connection:
         ("owl", "Barn owl", "Tyto alba"),
         ("raven", "Common raven", "Corvus corax"),
     ):
-        row = connection.execute(
+        connection.execute(
             """INSERT INTO taxon (provider, external_taxon_id, common_name,
                    scientific_name, canonical_name, taxonomic_rank, synchronized_at)
                VALUES ('local', ?, ?, ?, ?, 'SPECIES', ?)
-               RETURNING id""",
+               ON CONFLICT (provider, external_taxon_id) DO NOTHING""",
             (
                 f"life-list-e2e-{key}",
                 f"Fixture {name}",
@@ -35,6 +35,10 @@ with sqlite3.connect(f"{database.as_uri()}?mode=rw", uri=True) as connection:
                 scientific_name,
                 datetime.now(UTC).replace(tzinfo=None).isoformat(sep=" "),
             ),
+        )
+        row = connection.execute(
+            "SELECT id FROM taxon WHERE provider = 'local' AND external_taxon_id = ?",
+            (f"life-list-e2e-{key}",),
         ).fetchone()
         taxa[key] = row[0]
 

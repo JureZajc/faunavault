@@ -56,6 +56,12 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   notes, and an optional species from local verified taxonomy. Filter encounters
   by date or species, and follow sighting links from Photo detail.
   [Sightings guide](docs/OPERATIONS.md#wildlife-sightings-journal).
+- **Wildlife Sightings Map** at `/sightings/map` clusters encounters by their
+  recorded Sighting coordinates. Filter by observation date, verified species,
+  or geographic area, then open an encounter from its marker. The map shows
+  how many matching Sightings have GPS and how many stay in the Journal. Photo
+  Map places individual photos using their own GPS.
+  [Sightings Map guide](docs/OPERATIONS.md#wildlife-sightings-map).
 - **Wildlife Life List** at `/life-list` groups recorded Sightings by verified
   local taxon. Species and subspecies each count by their own taxon ID. Browse
   all-time first and latest encounters, or choose a field-local year to see

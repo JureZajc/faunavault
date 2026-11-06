@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.geographic_bounds import validate_bounding_box
 from app.models import Photo
 from app.schemas import TimelinePhotoPreview
 
@@ -140,6 +141,57 @@ class SightingPage(BaseModel):
 
 class SightingJournalPage(SightingPage):
     totals: SightingTotals
+
+
+class SightingMapQuery(BaseModel):
+    date_from: date | None = None
+    date_to: date | None = None
+    taxon_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
+    bbox_south: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    bbox_north: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    bbox_west: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    bbox_east: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    focus: int | None = Field(default=None, ge=1, le=2**63 - 1)
+
+    @field_validator("date_from", "date_to", mode="before")
+    @classmethod
+    def date_input(cls, value: object) -> object:
+        if value is None or type(value) is date:
+            return value
+        if isinstance(value, str) and re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value
+        ):
+            return value
+        raise ValueError("Observation dates must use YYYY-MM-DD")
+
+    @model_validator(mode="after")
+    def validate_filters(self):
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            raise ValueError("Start date must be on or before end date")
+        validate_bounding_box(
+            self.bbox_south, self.bbox_north, self.bbox_west, self.bbox_east
+        )
+        return self
+
+
+class SightingMapPoint(BaseModel):
+    id: int
+    latitude: Latitude
+    longitude: Longitude
+    observed_at: datetime
+    subject_label: str | None
+    location_label: str | None
+    taxon_id: int | None
+    common_name: str | None
+    scientific_name: str | None
+    thumbnail_filename: str | None = None
+
+
+class SightingMapRead(BaseModel):
+    points: list[SightingMapPoint]
+    total_matching: int
+    without_location_count: int
+    truncated: bool
 
 
 class SightingPhotoPage(BaseModel):

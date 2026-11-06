@@ -25,6 +25,7 @@ import {
 import styles from "./photo-map.module.css";
 import { AreaBounds, displayAreaBounds } from "../../lib/geographic-bounds";
 import { AREA_STYLE, attachAreaSelection } from "./leaflet-area-selection";
+import { detachClusterMoveListeners } from "./leaflet-cluster";
 
 export type ArchivePhotoMapProps = {
   points: PhotoMapPoint[];
@@ -45,20 +46,6 @@ function appendText(
   element.className = className;
   element.textContent = value;
   parent.append(element);
-}
-
-function detachClusterMoveListeners(map: L.Map, cluster: L.MarkerClusterGroup) {
-  // markercluster 1.5.3's zoomToShowLayer attaches a moveend callback with
-  // cluster context but does not remove it on teardown. Clearing markers then
-  // deletes __parent, which that callback still reads on the next pan/zoom.
-  // Leaflet exposes no context-only off(), so retain callback references from
-  // its event registry and remove only listeners owned by the retiring cluster.
-  const listeners = (map as L.Map & {
-    _events?: { moveend?: Array<{ fn: L.LeafletEventHandlerFn; ctx: unknown }> };
-  })._events?.moveend;
-  for (const listener of [...(listeners ?? [])]) {
-    if (listener.ctx === cluster) map.off("moveend", listener.fn, cluster);
-  }
 }
 
 export function createPhotoPopup(point: PhotoMapPoint, mapHref = "/map") {

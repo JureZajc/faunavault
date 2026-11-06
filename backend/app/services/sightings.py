@@ -241,6 +241,19 @@ def _page(
     )
 
 
+def observation_date_conditions(date_from: date | None, date_to: date | None):
+    date_conditions = []
+    if date_from is not None:
+        date_conditions.append(
+            Sighting.observed_at >= datetime.combine(date_from, time.min)
+        )
+    if date_to is not None:
+        date_conditions.append(
+            Sighting.observed_at <= datetime.combine(date_to, time.max)
+        )
+    return date_conditions
+
+
 def list_sightings(
     session: Session,
     *,
@@ -253,15 +266,7 @@ def list_sightings(
 ) -> SightingJournalPage:
     if date_from is not None and date_to is not None and date_from > date_to:
         raise HTTPException(422, "Start date must be on or before end date.")
-    date_conditions = []
-    if date_from is not None:
-        date_conditions.append(
-            Sighting.observed_at >= datetime.combine(date_from, time.min)
-        )
-    if date_to is not None:
-        date_conditions.append(
-            Sighting.observed_at <= datetime.combine(date_to, time.max)
-        )
+    date_conditions = observation_date_conditions(date_from, date_to)
     conditions = date_conditions.copy()
     if taxon_id is not None:
         conditions.append(Sighting.taxon_id == taxon_id)
