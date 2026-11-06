@@ -38,7 +38,7 @@ PREVIEW_FIELDS = (
 )
 
 
-def _preview(row) -> TimelinePhotoPreview:
+def photo_preview(row) -> TimelinePhotoPreview:
     return TimelinePhotoPreview.model_validate(
         dict(zip(TimelinePhotoPreview.model_fields, row, strict=True))
     )
@@ -121,7 +121,7 @@ def describe_selection(session: Session, photo_ids: list[int]) -> SightingSelect
         latitude = longitude = None
     return SightingSelection(
         photo_count=len(rows),
-        previews=[_preview(row[:4]) for row in rows[:12]],
+        previews=[photo_preview(row[:4]) for row in rows[:12]],
         observed_at=observed_at,
         observed_at_offset_minutes=next(iter(offsets))
         if observed_at and len(offsets) == 1
@@ -132,21 +132,23 @@ def describe_selection(session: Session, photo_ids: list[int]) -> SightingSelect
     )
 
 
+def taxon_name_matches(search: str, *fields):
+    term = search.strip().lower()
+    return or_(
+        *(
+            func.faunavault_unicode_lower(field).contains(term, autoescape=True)
+            for field in fields
+        )
+    )
+
+
 def list_taxa(session: Session, *, search: str, page: int) -> SightingTaxonPage:
     name = func.coalesce(func.nullif(Taxon.common_name, ""), Taxon.canonical_name)
     query = select(Taxon).where(func.upper(Taxon.taxonomic_rank).in_(SPECIES_RANKS))
     if search.strip():
-        term = search.strip().lower()
         query = query.where(
-            or_(
-                *(
-                    func.faunavault_unicode_lower(field).contains(term, autoescape=True)
-                    for field in (
-                        Taxon.common_name,
-                        Taxon.canonical_name,
-                        Taxon.scientific_name,
-                    )
-                )
+            taxon_name_matches(
+                search, Taxon.common_name, Taxon.canonical_name, Taxon.scientific_name
             )
         )
     page_size = 24
@@ -185,7 +187,7 @@ def _summaries(session: Session, rows) -> list[SightingRead]:
     }
     previews = (
         {
-            row.id: _preview(row)
+            row.id: photo_preview(row)
             for row in session.exec(
                 select(*PREVIEW_FIELDS).where(Photo.id.in_(preview_ids), active)
             )

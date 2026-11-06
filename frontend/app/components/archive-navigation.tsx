@@ -19,6 +19,7 @@ export type ArchiveSection =
   | "album"
   | "events"
   | "sightings"
+  | "life-list"
   | "collections"
   | "review"
   | "cull"
@@ -37,6 +38,7 @@ const destinations: { section: ArchiveSection; label: string; href: string }[] =
   { section: "collections", label: "Collections", href: "/collections" },
   { section: "events", label: "Trips & Events", href: "/events" },
   { section: "sightings", label: "Sightings", href: "/sightings" },
+  { section: "life-list", label: "Life List", href: "/life-list" },
   { section: "review", label: "Review", href: "/review" },
   { section: "cull", label: "Culling", href: "/cull" },
   { section: "duplicates", label: "Duplicates", href: "/duplicates" },

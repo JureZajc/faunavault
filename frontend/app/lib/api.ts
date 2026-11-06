@@ -351,6 +351,47 @@ export function getSightings(filters: SightingFilters, signal?: AbortSignal) {
   return request<SightingJournalPage>(`/sightings?${params}`, { signal });
 }
 
+export type LifeListFilters = {
+  year?: number;
+  mode: "seen" | "new";
+  search: string;
+  sort: "name" | "first_observed" | "most_observed";
+  page: number;
+};
+
+export type LifeListTaxon = {
+  taxon_id: number;
+  common_name: string | null;
+  scientific_name: string;
+  taxonomic_rank: string;
+  first_observed_at: string;
+  last_observed_at: string;
+  sighting_count: number;
+  first_sighting_id: number;
+  last_sighting_id: number;
+  preview: TimelinePhotoPreview | null;
+};
+
+export type LifeListPage = SightingPage<LifeListTaxon> & {
+  year: number | null;
+  available_years: number[];
+  summary: {
+    all_time_taxa: number;
+    all_time_sightings: number;
+    seen_taxa: number | null;
+    new_taxa: number | null;
+    scope_sightings: number;
+  };
+};
+
+export function getLifeList(filters: LifeListFilters, signal?: AbortSignal) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, String(value));
+  }
+  return request<LifeListPage>(`/sightings/life-list?${params}`, { signal, cache: "no-store" });
+}
+
 export function getSightingTaxa(search: string, page: number, signal?: AbortSignal) {
   const params = new URLSearchParams({ search, page: String(page) });
   return request<{ items: SightingTaxon[]; has_more: boolean }>(`/sightings/taxa?${params}`, { signal });

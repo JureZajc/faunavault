@@ -1641,6 +1641,35 @@ sighting and membership counts. Recovery rehearsal compares all observation
 fields and links, including those to Trash. Portable metadata export v15
 records the same data in JSON; the Photo CSV keeps its existing columns.
 
+## Wildlife Life List
+
+Open **Life List** (`/life-list`) from Archive navigation or the **Sightings**
+Journal. The Journal records individual encounters. The Life List groups those
+encounters by verified local Taxon ID. Species Albums group verified archive
+photos by their photo taxonomy.
+
+The list includes `SPECIES` and `SUBSPECIES` links. A species and one of its
+subspecies can have separate entries, and two taxa can share a common name.
+Unidentified encounters stay in the Journal. One Sighting counts as one
+encounter even if it links many photos. Photo metadata and classification
+guesses have no effect on Life List counts.
+
+Each entry shows its all-time count and links to its earliest and latest
+field-local observation, based on the Sighting's `observed_at`. If timestamps
+tie, the lower Sighting ID wins. **Seen** includes taxa with at least one
+Sighting in the selected observation year. **First recorded this year**
+includes taxa whose earliest recorded encounter falls in that year. The
+yearly summary cards describe the whole archive for that year. **Sightings in
+this view** follows the year, mode, and search across all matching pages.
+
+Changing a Sighting's observation date or linked taxon, or deleting the
+encounter, recalculates first and latest observations and counts on the next
+fetch. Moving linked photos to Trash preserves the encounter and can change
+its thumbnail. The Life List uses an active local thumbnail from the earliest
+Sighting with an active photo, or a placeholder. Restoring a photo makes it
+eligible again. Life List results are derived from the same records backed up
+with schema 23 and included in portable metadata export v15.
+
 ## Wildlife Insights
 
 Open **Insights** in Archive navigation (`/insights`). All metrics describe active

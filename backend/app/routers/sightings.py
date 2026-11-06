@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, Path, Query
 from sqlmodel import Session
 
 from app.db import SessionDep
-from app.services import sightings
+from app.life_list_schemas import LifeListMode, LifeListOrder, LifeListPage
+from app.services import life_list, sightings
 from app.sighting_schemas import (
     SightingCreate,
     SightingJournalPage,
@@ -61,6 +62,26 @@ def create_sightings_router() -> APIRouter:
         session: SessionDep, search: str = Query("", max_length=200), page: Page = 1
     ):
         return sightings.list_taxa(session, search=search, page=page)
+
+    @router.get("/sightings/life-list", response_model=LifeListPage)
+    def life_list_index(
+        session: ReadSession,
+        year: int | None = Query(None, ge=1, le=9999),
+        mode: LifeListMode = "seen",
+        search: str = Query("", max_length=200),
+        sort: LifeListOrder = "name",
+        page: Page = 1,
+        page_size: PageSize = 24,
+    ):
+        return life_list.list_life_list(
+            session,
+            year=year,
+            mode=mode,
+            search=search,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+        )
 
     @router.post("/sightings/selection", response_model=SightingSelection)
     def selection(request: SightingMembership, session: SessionDep):

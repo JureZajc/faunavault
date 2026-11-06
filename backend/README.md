@@ -103,6 +103,38 @@ No request contacts GBIF or changes an Animal, Taxon, or Photo. Backup v1
 verifies and rehearses schemas 9–23. Portable export v15 includes sightings and
 all membership pairs in JSON, including links to Trash.
 
+### Wildlife Life List API
+
+`GET /sightings/life-list` reads manually recorded Sightings joined to local
+`SPECIES` and `SUBSPECIES` Taxon records. Each `taxon_id` contributes one row and
+each Sighting contributes one encounter. Unidentified Sightings stay in the
+Journal. Albums group photos through their verified taxonomy instead of this
+Sighting relationship.
+
+- `year` accepts 1–9999. Without it, both modes return the all-time list.
+  With a year, `mode=seen` (default) includes taxa with a Sighting in that
+  field-local calendar year. `mode=new` includes taxa whose earliest-ever
+  `observed_at` falls in that year.
+- `search` is a case-insensitive substring of the common, canonical, or
+  scientific name, up to 200 characters. `sort` accepts `name` (default),
+  `first_observed` (earliest first), and `most_observed` (highest all-time
+  Sighting count first). Taxon ID breaks sort ties.
+- `page` defaults to 1 and `page_size` to 24, with a maximum size of 100.
+  The response includes `items`, `total`, `page`, `page_size`, `total_pages`,
+  `year`, and `available_years` from verified encounters, newest first.
+- Rows include the taxon ID, common and scientific names, rank, all-time `first_observed_at`,
+  `last_observed_at`, `sighting_count`, `first_sighting_id`, `last_sighting_id`,
+  and optional local `preview`. Tied observation timestamps choose the smallest
+  Sighting ID. Previews prefer the earliest encounter with an active linked photo.
+- `summary` includes `all_time_taxa` and `all_time_sightings`, plus `seen_taxa`
+  and `new_taxa` for the selected year (both `null` in all-time mode). Those
+  totals are independent of search, mode, and page. `scope_sightings` counts
+  encounters matching the year, mode, and name search across all matching pages.
+
+The endpoint derives its results from the current database snapshot, so
+Sighting date or taxon edits and deletions take effect on the next fetch.
+Trash affects thumbnail availability and leaves encounter totals intact.
+
 ## Portable metadata export
 
 Create a deterministic JSON metadata and original-file inventory in a new local
