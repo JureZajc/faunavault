@@ -421,6 +421,12 @@ def _catalog_conditions(criteria: CatalogSavedQuery) -> list:
             )
         if criteria.unknown_lens:
             conditions.append(_gear_value(Photo.lens_model) == "")
+        for field, minimum, maximum in criteria.shooting_ranges():
+            column = getattr(Photo, field)
+            if minimum is not None:
+                conditions.append(column >= minimum)
+            if maximum is not None:
+                conditions.append(column <= maximum)
     if isinstance(criteria, CatalogQuery) and criteria.event_id is not None:
         conditions.append(
             Photo.id.in_(
@@ -506,10 +512,26 @@ def list_catalog_photos(
     bbox_north: float | None = None,
     bbox_west: float | None = None,
     bbox_east: float | None = None,
+    iso_speed_min: int | None = None,
+    iso_speed_max: int | None = None,
+    aperture_f_number_min: float | None = None,
+    aperture_f_number_max: float | None = None,
+    focal_length_mm_min: float | None = None,
+    focal_length_mm_max: float | None = None,
+    exposure_time_seconds_min: float | None = None,
+    exposure_time_seconds_max: float | None = None,
 ) -> CatalogPhotoPage:
     if event_id is not None:
         event_or_404(event_id, session)
     criteria = CatalogQuery(
+        iso_speed_min=iso_speed_min,
+        iso_speed_max=iso_speed_max,
+        aperture_f_number_min=aperture_f_number_min,
+        aperture_f_number_max=aperture_f_number_max,
+        focal_length_mm_min=focal_length_mm_min,
+        focal_length_mm_max=focal_length_mm_max,
+        exposure_time_seconds_min=exposure_time_seconds_min,
+        exposure_time_seconds_max=exposure_time_seconds_max,
         bbox_south=bbox_south,
         bbox_north=bbox_north,
         bbox_west=bbox_west,
@@ -555,6 +577,7 @@ def list_catalog_photos(
         or unknown_camera
         or unknown_lens
         or metadata_issue is not None
+        or any(criteria.shooting_ranges())
         or criteria.tags
         or criteria.untagged
         or event_id is not None

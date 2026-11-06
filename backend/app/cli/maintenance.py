@@ -154,7 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     metadata = commands.add_parser(
         "backfill-photo-metadata",
-        help="inspect or populate missing capture metadata from original photos",
+        help="inspect or populate missing EXIF metadata from original photos",
     )
     metadata.add_argument(
         "--apply",

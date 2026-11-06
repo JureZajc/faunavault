@@ -14,7 +14,13 @@ from pydantic import (
     model_validator,
 )
 
-from app.metadata_types import CullingFilter, PhotoRating
+from app.metadata_types import (
+    SHOOTING_SETTING_FIELDS,
+    CullingFilter,
+    PhotoRating,
+    PositiveISO,
+    PositiveMeasurement,
+)
 from app.services.import_sessions import canonical_session_id
 from app.tag_values import normalize_tags
 
@@ -151,9 +157,33 @@ class CatalogSavedQueryV2(CatalogSavedQuery):
 
 
 class CatalogQuery(CatalogSavedQueryV2):
-    """Live criteria; Trip/Event membership is only available in the catalog."""
+    """Live criteria including Trip/Event membership and shooting settings."""
 
     event_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
+    iso_speed_min: PositiveISO | None = None
+    iso_speed_max: PositiveISO | None = None
+    aperture_f_number_min: PositiveMeasurement | None = None
+    aperture_f_number_max: PositiveMeasurement | None = None
+    focal_length_mm_min: PositiveMeasurement | None = None
+    focal_length_mm_max: PositiveMeasurement | None = None
+    exposure_time_seconds_min: PositiveMeasurement | None = None
+    exposure_time_seconds_max: PositiveMeasurement | None = None
+
+    def shooting_ranges(self):
+        for field in SHOOTING_SETTING_FIELDS:
+            minimum = getattr(self, f"{field}_min")
+            maximum = getattr(self, f"{field}_max")
+            if minimum is not None or maximum is not None:
+                yield field, minimum, maximum
+
+    @model_validator(mode="after")
+    def validate_shooting_ranges(self) -> CatalogQuery:
+        for field, minimum, maximum in self.shooting_ranges():
+            if minimum is not None and maximum is not None and minimum > maximum:
+                raise ValueError(
+                    f"{field}_min must be less than or equal to {field}_max"
+                )
+        return self
 
 
 def saved_query_model(version: int) -> type[CatalogSavedQuery]:

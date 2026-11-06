@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from PIL import ExifTags, Image
+from PIL import ExifTags, Image, TiffImagePlugin
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -40,6 +40,12 @@ def metadata_jpeg_bytes() -> bytes:
     exif[int(ExifTags.Base.Make)] = "SONY"
     exif[int(ExifTags.Base.Model)] = "ILCE-7M4"
     exif[int(ExifTags.Base.LensModel)] = "FE 200-600mm"
+    exif[ExifTags.IFD.Exif] = {
+        ExifTags.Base.FNumber: TiffImagePlugin.IFDRational(56, 10),
+        ExifTags.Base.ExposureTime: TiffImagePlugin.IFDRational(1, 2000),
+        ExifTags.Base.ISOSpeedRatings: 1600,
+        ExifTags.Base.FocalLength: TiffImagePlugin.IFDRational(400, 1),
+    }
     Image.new("RGB", (64, 32), "teal").save(output, format="JPEG", exif=exif)
     return output.getvalue()
 
@@ -441,6 +447,7 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
         19,
         20,
         21,
+        22,
     ]
     with engine.connect() as connection:
         indexes = {
@@ -511,6 +518,7 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         19,
         20,
         21,
+        22,
     ]
     assert migration_versions(engine) == [
         1,
@@ -534,6 +542,7 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         19,
         20,
         21,
+        22,
     ]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
@@ -571,7 +580,7 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
 
     assert run_migrations(
         engine, settings, main.normalize_existing_domestic_metadata
-    ) == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    ) == [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
     assert migration_versions(engine) == [
         1,
         2,
@@ -594,6 +603,7 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
         19,
         20,
         21,
+        22,
     ]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
@@ -646,6 +656,7 @@ def test_migration_8_backfills_normalized_album_group_and_is_idempotent(tmp_path
         19,
         20,
         21,
+        22,
     ]
     with engine.connect() as connection:
         rows = connection.exec_driver_sql(
@@ -697,6 +708,7 @@ def test_migration_9_adds_nullable_perceptual_hash_without_backfill(tmp_path):
         19,
         20,
         21,
+        22,
     ]
     with engine.connect() as connection:
         columns = {
@@ -736,7 +748,19 @@ def test_migration_12_adds_nullable_review_timestamp_without_backfill(tmp_path):
                 (version,),
             )
 
-    assert run_migrations(engine, settings) == [12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    assert run_migrations(engine, settings) == [
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+    ]
     with engine.connect() as connection:
         columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(photo)")
@@ -786,6 +810,7 @@ def test_migration_10_creates_collection_relations_with_cascades(tmp_path):
         19,
         20,
         21,
+        22,
     ]
     with engine.begin() as connection:
         connection.exec_driver_sql(
@@ -922,6 +947,17 @@ def test_upload_persists_capture_metadata_without_rewriting_original(lifecycle):
     assert photo["camera_make"] == "SONY"
     assert photo["camera_model"] == "ILCE-7M4"
     assert photo["lens_model"] == "FE 200-600mm"
+    settings_fields = {
+        "aperture_f_number": 5.6,
+        "exposure_time_seconds": 0.0005,
+        "iso_speed": 1600,
+        "focal_length_mm": 400,
+    }
+    assert {field: photo[field] for field in settings_fields} == settings_fields
+    detail = client.get(f"/photos/{photo['id']}").json()
+    assert {field: detail[field] for field in settings_fields} == settings_fields
+    client.patch(f"/photos/{photo['id']}", json={"iso_speed": 200})
+    assert client.get(f"/photos/{photo['id']}").json()["iso_speed"] == 1600
     assert (photo["image_width"], photo["image_height"]) == (64, 32)
     assert (photo["latitude"], photo["longitude"]) == (None, None)
     assert (

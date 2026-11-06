@@ -70,6 +70,10 @@ CSV_COLUMNS = (
     "camera_make",
     "camera_model",
     "lens_model",
+    "aperture_f_number",
+    "exposure_time_seconds",
+    "iso_speed",
+    "focal_length_mm",
     "image_width",
     "image_height",
     "latitude",
@@ -161,6 +165,10 @@ class SnapshotPhoto:
     camera_make: str | None
     camera_model: str | None
     lens_model: str | None
+    aperture_f_number: float | None
+    exposure_time_seconds: float | None
+    iso_speed: int | None
+    focal_length_mm: float | None
     image_width: int | None
     image_height: int | None
     latitude: float | None
@@ -408,6 +416,7 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             "description, tags, status, animal_id, content_sha256, "
             "original_size_bytes, media_type, captured_at, "
             "captured_at_offset_minutes, camera_make, camera_model, lens_model, "
+            "aperture_f_number, exposure_time_seconds, iso_speed, focal_length_mm, "
             "image_width, image_height, latitude, longitude, deleted_at, "
             "reviewed_at, created_at, updated_at, "
             "extracted_captured_at, extracted_captured_at_offset_minutes, "
@@ -485,6 +494,10 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                     lens_model=_optional_text(
                         row["lens_model"], f"photo {photo_id} lens_model"
                     ),
+                    aperture_f_number=row["aperture_f_number"],
+                    exposure_time_seconds=row["exposure_time_seconds"],
+                    iso_speed=row["iso_speed"],
+                    focal_length_mm=row["focal_length_mm"],
                     image_width=_optional_integer(
                         row["image_width"], f"photo {photo_id} image_width"
                     ),
@@ -789,6 +802,10 @@ def _inventory_photos(
                 camera_make=photo.camera_make,
                 camera_model=photo.camera_model,
                 lens_model=photo.lens_model,
+                aperture_f_number=photo.aperture_f_number,
+                exposure_time_seconds=photo.exposure_time_seconds,
+                iso_speed=photo.iso_speed,
+                focal_length_mm=photo.focal_length_mm,
                 image_width=photo.image_width,
                 image_height=photo.image_height,
                 latitude=photo.latitude,
@@ -915,6 +932,10 @@ def _csv_rows(document: ArchiveMetadataExport) -> list[list[str]]:
             photo.camera_make,
             photo.camera_model,
             photo.lens_model,
+            photo.aperture_f_number,
+            photo.exposure_time_seconds,
+            photo.iso_speed,
+            photo.focal_length_mm,
             photo.image_width,
             photo.image_height,
             photo.latitude,

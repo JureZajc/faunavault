@@ -104,7 +104,7 @@ integrity failure, and `2` means usage, configuration, destination, permission,
 disk, or publication failure.
 
 See the operations guide for the user workflow and
-[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the v13
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the v14
 field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
 does not replace a verified backup and is not an import or restore mechanism.
 
@@ -131,7 +131,7 @@ atomically. Bare overrides and importer overrides leave matches unresolved.
 Dismissals preserve both Photo metadata and AI-review timestamps. Trash hides
 pairs; restore reopens them unless dismissed; permanent deletion cascades cleanup.
 Backups/rehearsal support schemas through 18 and preserve this curation state; metadata
-export v13 still excludes duplicate curation state. See Operations for safety and coverage details.
+export v14 still excludes duplicate curation state. See Operations for safety and coverage details.
 
 Uploads retain the authoritative SHA-256 duplicate check. After it finds no
 exact match, the lifecycle service calculates the Pillow-only `phash64-v1`
@@ -235,6 +235,26 @@ Schema 15 retains extracted capture/GPS separately from effective values and
 marks manual overrides, including intentional null clears. Backfill can fill
 missing retained extraction but cannot overwrite overridden effective groups.
 Conditional writes skip stale rows and advance `updated_at` when applied.
+
+### EXIF shooting settings
+
+Browser and folder imports extract `aperture_f_number`,
+`exposure_time_seconds`, `iso_speed`, and `focal_length_mm` in the existing
+Pillow inspection. Supported formats include JPEG and HEIC/HEIF. Photo API
+responses include these read-only values, with null for missing or invalid EXIF.
+Schema 22 appends one nullable INTEGER and three nullable REAL columns. It
+creates a pre-migration SQLite backup and leaves existing values null.
+The dry run and `--apply` commands above fill missing fields from trusted stored
+originals for active and trashed Photos. The command reports processed, updated,
+skipped and failed Photos. Startup only applies the schema migration.
+
+`GET /catalog/photos` accepts `_min` and `_max` parameters for each of the four
+field names, such as `iso_speed_min=400&focal_length_mm_max=500`. Each range
+is inclusive, values must be positive and finite, and ISO must be integral.
+A minimum above its maximum returns HTTP 422. Ranges combine with other filters
+in SQL and exclude nulls for active fields. Smart Collection queries remain at
+v1/v2. Metadata export v14 includes the four fields in JSON and CSV. Backup
+format v1 supports verification and recovery rehearsal for schemas 9–22.
 Individual `PATCH /photos/{id}` capture/GPS updates require complete groups and
 `expected_updated_at`; source fields/flags are read-only. The same PATCH accepts
 `restore_original_metadata: true` to re-read both groups from a trusted original,
@@ -334,7 +354,7 @@ participate in text search. Map rejects active curation criteria.
 `POST /photos/bulk` adds `set_favorite` with required boolean `is_favorite`,
 `set_rating` with required integer `rating`, and `clear_rating`. Existing
 250-ID limits, atomicity, active-photo checks, and selection semantics apply.
-Export v13 includes JSON/CSV curation values; backup format v1 supports schemas
+Export v14 includes JSON/CSV curation values; backup format v1 supports schemas
 9–18 and validates schema-16 structure even for empty archives.
 
 ## Smart Collection queries
@@ -359,5 +379,5 @@ Neither version accepts `event_id`, pagination, layout, or transient fields.
 as `GET /catalog/photos`, with Trash excluded. Invalid stored definitions remain
 visible with a repair message and return 422 for results. The existing
 `query_version` and `query_json` columns store both versions without migration.
-Portable export v13 includes v1 and v2 definitions; backup v1, verification,
+Portable export v14 includes v1 and v2 definitions; backup v1, verification,
 and recovery rehearsal continue to preserve the database definitions.

@@ -71,7 +71,7 @@ def _create_archive(tmp_path: Path, *, populated: bool = True) -> ArchiveFixture
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for version in range(1, 22):
+        for version in range(1, 23):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (version,),
@@ -172,6 +172,10 @@ def _create_archive(tmp_path: Path, *, populated: bool = True) -> ArchiveFixture
                     image_height=4672,
                     latitude=46.12345,
                     longitude=14.54321,
+                    aperture_f_number=5.6,
+                    exposure_time_seconds=0.0005,
+                    iso_speed=1600,
+                    focal_length_mm=400.5,
                     reviewed_at=STAMP,
                     created_at=STAMP,
                     updated_at=STAMP,
@@ -275,12 +279,12 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
 
     payload = json.loads(first_json)
     validated = ArchiveMetadataExport.model_validate(payload)
-    assert payload["format_version"] == 13
+    assert payload["format_version"] == 14
     assert all(
         photo["is_favorite"] is False and photo["rating"] is None
         for photo in payload["photos"]
     )
-    assert payload["source_database_schema_version"] == 21
+    assert payload["source_database_schema_version"] == 22
     assert payload["counts"] == {
         "photos": 3,
         "active_photos": 2,
@@ -315,6 +319,14 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
     assert payload["photos"][0]["captured_at"] == "2024-05-24T18:42:00.000000"
     assert payload["photos"][0]["captured_at_offset_minutes"] == 120
     assert payload["photos"][0]["latitude"] == 46.12345
+    settings = {
+        "aperture_f_number": 5.6,
+        "exposure_time_seconds": 0.0005,
+        "iso_speed": 1600,
+        "focal_length_mm": 400.5,
+    }
+    assert {field: payload["photos"][0][field] for field in settings} == settings
+    assert all(payload["photos"][1][field] is None for field in settings)
     assert payload["animals"][1]["legacy_common_name"] == ""
     assert "legacy_species_group" not in payload["animals"][0]
     assert payload["taxa"][0]["external_taxon_id"] == "00123"
@@ -358,6 +370,9 @@ def test_export_is_deterministic_complete_portable_and_round_trips(
     assert _decode_csv(rows[2]["description"]) == ""
     assert _decode_csv(rows[2]["display_title"]) == r"\N"
     assert rows[0]["taxon_external_id"] == "00123"
+    for field, value in settings.items():
+        assert rows[0][field] == str(value)
+        assert _decode_csv(rows[1][field]) is None
     assert rows[0]["captured_at"] == "2024-05-24T18:42:00.000000"
     assert rows[0]["reviewed_at"] == "2026-08-20T08:00:00.000000Z"
     assert rows[0]["latitude"] == "46.12345"
@@ -388,7 +403,7 @@ def test_metadata_export_preserves_heic_source_identity_without_version_bump(
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     photo = next(item for item in payload["photos"] if item["id"] == 3)
 
-    assert payload["format_version"] == 13
+    assert payload["format_version"] == 14
     assert photo["original_filename"] == "iPhone.HEIC"
     assert photo["archive_relative_original_path"] == "images/original/three.heic"
     assert photo["media_type"] == "image/heic"
@@ -673,7 +688,7 @@ def test_cli_summary_warnings_exit_codes_and_help(
     assert export_cli.main([str(destination), "--csv"]) == 0
     captured = capsys.readouterr()
     assert "Metadata export: COMPLETE" in captured.out
-    assert "Format: v13" in captured.out
+    assert "Format: v14" in captured.out
     assert "Collections: 1 with 2 membership(s)" in captured.out
     assert "Photos: 3 total / 2 active / 1 Trash" in captured.out
     assert "1 photo(s) lacked a stored original size or SHA-256" in captured.out
@@ -701,13 +716,13 @@ def test_format_version_is_independent_and_schema_rejects_bad_artifacts(
     result = create_metadata_export(tmp_path / "valid", archive.settings)
     payload = json.loads(result.json_path.read_text(encoding="utf-8"))
     payload["source_database_schema_version"] = 10
-    assert ArchiveMetadataExport.model_validate(payload).format_version == 13
+    assert ArchiveMetadataExport.model_validate(payload).format_version == 14
 
     payload["format_version"] = 1
     with pytest.raises(ValidationError):
         ArchiveMetadataExport.model_validate(payload)
 
-    payload["format_version"] = 13
+    payload["format_version"] = 14
     payload["photos"][0]["original_sha256"] = "BAD"
     with pytest.raises(ValidationError):
         ArchiveMetadataExport.model_validate(payload)

@@ -7,7 +7,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from PIL import ExifTags, Image, ImageDraw
+from PIL import ExifTags, Image, ImageDraw, TiffImagePlugin
 from sqlmodel import Session, select
 
 from app.cli import import_photos
@@ -27,6 +27,10 @@ def jpeg(seed: int, *, metadata: bool = False) -> bytes:
     if metadata:
         exif[int(ExifTags.Base.DateTimeOriginal)] = "2024:05:24 18:42:00"
         exif[int(ExifTags.Base.Make)] = "SONY"
+        exif[ExifTags.Base.ISOSpeedRatings] = 800
+        exif[ExifTags.Base.FNumber] = TiffImagePlugin.IFDRational(8)
+        exif[ExifTags.Base.ExposureTime] = TiffImagePlugin.IFDRational(5, 2)
+        exif[ExifTags.Base.FocalLength] = TiffImagePlugin.IFDRational(500)
     output = BytesIO()
     image.save(output, format="JPEG", exif=exif)
     return output.getvalue()
@@ -135,18 +139,39 @@ def test_dry_run_simulates_duplicates_without_mutation(archive):
 
 def test_metadata_heic_heif_and_classification_jobs(archive):
     settings, source = archive
-    (source / "metadata.jpg").write_bytes(jpeg(1, metadata=True))
+    nested = source / "nested"
+    nested.mkdir()
+    (nested / "metadata.jpg").write_bytes(jpeg(1, metadata=True))
     (source / "phone.heic").write_bytes(heic_bytes("blue", metadata=True))
     (source / "phone.heif").write_bytes(heic_bytes("red", metadata=True))
-    result = run(source, settings, classify=True, allow_visual_duplicates=True)
+    result = run(
+        source, settings, recursive=True, classify=True, allow_visual_duplicates=True
+    )
     assert (result.imported, result.jobs) == (3, 3)
     stored = photos(settings)
     assert len(stored) == 3
     assert all(photo.captured_at is not None for photo in stored)
     assert all(photo.status == "pending" for photo in stored)
     assert all(photo.perceptual_hash is not None for photo in stored)
-    assert [photo.camera_make for photo in stored] == ["SONY", "Apple", "Apple"]
-    assert all(photo.latitude is not None for photo in stored[1:])
+    by_name = {photo.original_filename: photo for photo in stored}
+    jpeg_photo = by_name["metadata.jpg"]
+    assert jpeg_photo.camera_make == "SONY"
+    assert (
+        jpeg_photo.aperture_f_number,
+        jpeg_photo.exposure_time_seconds,
+        jpeg_photo.iso_speed,
+        jpeg_photo.focal_length_mm,
+    ) == (8, 2.5, 800, 500)
+    for name in ("phone.heic", "phone.heif"):
+        phone = by_name[name]
+        assert phone.camera_make == "Apple"
+        assert phone.latitude is not None
+        assert (
+            phone.aperture_f_number,
+            phone.exposure_time_seconds,
+            phone.iso_speed,
+            phone.focal_length_mm,
+        ) == (1.8, 0.008, 400, 4.4)
     engine = create_database_engine(settings)
     try:
         with Session(engine) as session:

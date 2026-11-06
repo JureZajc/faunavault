@@ -983,3 +983,61 @@ def test_map_rejects_search_and_preserves_lifecycle_filtering(catalog_app):
     assert client.get("/catalog/map", params=params).json() == []
     assert client.post(f"/trash/photos/{photo_id}/restore").status_code == 200
     assert client.get("/catalog/map", params=params).json()[0]["id"] == photo_id
+
+
+def test_shooting_ranges_filter_items_and_counts_with_taxon_search_and_trash(
+    catalog_app,
+):
+    client, engine = catalog_app
+    settings = dict(
+        iso_speed=1600,
+        aperture_f_number=5.6,
+        exposure_time_seconds=0.0005,
+        focal_length_mm=400,
+    )
+    with Session(engine) as session:
+        fox = add_taxon(session, "Vulpes vulpes", "fox")
+        matching = [add_photo(session, i, taxon=fox, **settings).id for i in (1, 2)]
+        add_photo(session, 3, taxon=fox, **{**settings, "focal_length_mm": 399})
+        add_photo(session, 4, taxon=fox, **{**settings, "iso_speed": 800})
+        add_photo(session, 5, taxon=fox)
+        add_photo(session, 6, taxon=fox, deleted_at=datetime.now(UTC), **settings)
+        add_photo(session, 7, **settings)
+        params = {"taxon_id": fox.id, "search": "fox", "page_size": 1}
+        session.commit()
+    for field, value in settings.items():
+        params[f"{field}_min"] = params[f"{field}_max"] = value
+
+    for number, expected in enumerate(reversed(matching), start=1):
+        response = client.get("/catalog/photos", params={**params, "page": number})
+        assert response.status_code == 200
+        page = response.json()
+        assert (page["total"], page["total_pages"]) == (2, 2)
+        (item,) = page["items"]
+        assert item["id"] == expected
+        assert {field: item[field] for field in settings} == settings
+
+    search_only = client.get(
+        "/catalog/photos", params={"search": "fox", "iso_speed_max": 800}
+    ).json()
+    assert search_only["total"] == 1 and search_only["items"][0]["iso_speed"] == 800
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"iso_speed_min": "0"},
+        {"iso_speed_max": "800.5"},
+        {"iso_speed_max": str(2**63)},
+        {"aperture_f_number_max": "-1"},
+        {"exposure_time_seconds_min": "NaN"},
+        {"focal_length_mm_max": "Infinity"},
+        {"iso_speed_min": 1600, "iso_speed_max": 800},
+        {"aperture_f_number_min": 8, "aperture_f_number_max": 5.6},
+        {"focal_length_mm_min": 400, "focal_length_mm_max": 300},
+        {"exposure_time_seconds_min": 2, "exposure_time_seconds_max": 0.01},
+    ],
+)
+def test_invalid_shooting_ranges_return_422(catalog_app, params):
+    client, _ = catalog_app
+    assert client.get("/catalog/photos", params=params).status_code == 422

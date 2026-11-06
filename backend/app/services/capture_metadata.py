@@ -26,6 +26,10 @@ PROVENANCE_FIELDS = tuple(f"extracted_{name}" for name in CAPTURE_FIELDS) + (
 )
 
 
+class OriginalMetadataError(RuntimeError):
+    """The stored original could not be safely read."""
+
+
 def read_original_capture_metadata(
     photo: Photo, settings: Settings
 ) -> ExtractedPhotoMetadata:
@@ -35,7 +39,22 @@ def read_original_capture_metadata(
 def read_verified_original_capture_metadata(
     photo: Photo, settings: Settings
 ) -> tuple[ExtractedPhotoMetadata, str]:
-    """Re-extract supported fields without creating derivatives or changing originals."""
+    try:
+        return inspect_stored_original_metadata(photo, settings)
+    except OriginalMetadataError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "original_metadata_unavailable",
+                "message": f"Could not restore original metadata: {exc}",
+            },
+        ) from exc
+
+
+def inspect_stored_original_metadata(
+    photo: Photo, settings: Settings
+) -> tuple[ExtractedPhotoMetadata, str]:
+    """Verify the stored original and read metadata without writing image files."""
     try:
         validate_flat_filename(photo.stored_filename)
         raw_path = settings.image_dirs["original"] / photo.stored_filename
@@ -84,10 +103,4 @@ def read_verified_original_capture_metadata(
         Image.DecompressionBombError,
         Image.DecompressionBombWarning,
     ) as exc:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "original_metadata_unavailable",
-                "message": f"Could not restore original metadata: {exc}",
-            },
-        ) from exc
+        raise OriginalMetadataError(str(exc)) from exc

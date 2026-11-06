@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from app.catalog_query import CatalogQuery, MetadataIssue
 from app.db import SessionDep
-from app.metadata_types import CullingFilter
+from app.metadata_types import MAX_SQLITE_INTEGER, CullingFilter
 from app.schemas import (
     CalendarResponse,
     CatalogFacets,
@@ -207,6 +207,26 @@ def create_catalog_router() -> APIRouter:
         culling_state: CullingFilter | None = None,
         import_session_id: str | None = None,
         event_id: int | None = Query(default=None, ge=1, le=2**63 - 1),
+        iso_speed_min: int | None = Query(default=None, gt=0, le=MAX_SQLITE_INTEGER),
+        iso_speed_max: int | None = Query(default=None, gt=0, le=MAX_SQLITE_INTEGER),
+        aperture_f_number_min: float | None = Query(
+            default=None, gt=0, allow_inf_nan=False
+        ),
+        aperture_f_number_max: float | None = Query(
+            default=None, gt=0, allow_inf_nan=False
+        ),
+        focal_length_mm_min: float | None = Query(
+            default=None, gt=0, allow_inf_nan=False
+        ),
+        focal_length_mm_max: float | None = Query(
+            default=None, gt=0, allow_inf_nan=False
+        ),
+        exposure_time_seconds_min: float | None = Query(
+            default=None, gt=0, allow_inf_nan=False
+        ),
+        exposure_time_seconds_max: float | None = Query(
+            default=None, gt=0, allow_inf_nan=False
+        ),
         sort: Literal[
             "created_at",
             "captured_at",
@@ -240,6 +260,14 @@ def create_catalog_router() -> APIRouter:
             taxon_id=taxon_id,
             taken_from=taken_from,
             taken_to=taken_to,
+            iso_speed_min=iso_speed_min,
+            iso_speed_max=iso_speed_max,
+            aperture_f_number_min=aperture_f_number_min,
+            aperture_f_number_max=aperture_f_number_max,
+            focal_length_mm_min=focal_length_mm_min,
+            focal_length_mm_max=focal_length_mm_max,
+            exposure_time_seconds_min=exposure_time_seconds_min,
+            exposure_time_seconds_max=exposure_time_seconds_max,
             sort=sort,
             order=order,
             favorites_only=favorites_only,

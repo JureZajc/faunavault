@@ -15,7 +15,7 @@ from app.album_identity import normalize_legacy_species_group
 from app.config import BACKEND_DIR, Settings
 
 logger = logging.getLogger(__name__)
-LATEST_SCHEMA_VERSION = 21
+LATEST_SCHEMA_VERSION = 22
 
 
 def database_path_for_engine(engine: Engine) -> Path | None:
@@ -553,6 +553,33 @@ def _migration_21(connection) -> None:
     )
 
 
+def _migration_22(connection) -> None:
+    existing = _columns(connection, "photo")
+    for column in (
+        "aperture_f_number",
+        "exposure_time_seconds",
+        "iso_speed",
+        "focal_length_mm",
+    ):
+        if column in existing:
+            continue
+        if column == "iso_speed":
+            kind = "INTEGER"
+            check = f"typeof({column}) = 'integer' AND {column} > 0"
+        else:
+            kind = "REAL"
+            check = (
+                f"typeof({column}) = 'real' AND {column} > 0 "
+                f"AND {column} <= 1.7976931348623157e308"
+            )
+        connection.execute(
+            text(
+                f"ALTER TABLE photo ADD COLUMN {column} {kind} "
+                f"CHECK ({column} IS NULL OR ({check}))"
+            )
+        )
+
+
 def run_migrations(
     engine: Engine,
     settings: Settings,
@@ -630,6 +657,8 @@ def run_migrations(
                 _migration_20(connection)
             elif version == 21:
                 _migration_21(connection)
+            elif version == 22:
+                _migration_22(connection)
             connection.execute(
                 text(
                     "INSERT INTO schema_migration(version, applied_at) "

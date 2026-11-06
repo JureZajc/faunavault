@@ -1,20 +1,21 @@
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 
-from PIL import Image, UnidentifiedImageError
 from sqlalchemy import update
 from sqlmodel import Session, select
 
 from app.archive_integrity import ArchiveIntegrityError, inspect_database
 from app.config import Settings
 from app.database import create_database_engine
+from app.metadata_types import SHOOTING_SETTING_FIELDS
 from app.migrations import LATEST_SCHEMA_VERSION
 from app.models import Photo, utc_now
-from app.services.image_codecs import open_image
-from app.services.photo_lifecycle import stored_image_path
-from app.services.photo_metadata import ExtractedPhotoMetadata, extract_photo_metadata
+from app.services.capture_metadata import (
+    OriginalMetadataError,
+    inspect_stored_original_metadata,
+)
+from app.services.photo_metadata import ExtractedPhotoMetadata
 
 BACKFILL_BATCH_SIZE = 25
 
@@ -54,7 +55,12 @@ def _updates(
     ):
         values["captured_at"] = metadata.captured_at
         values["captured_at_offset_minutes"] = metadata.captured_at_offset_minutes
-    for field in ("camera_make", "camera_model", "lens_model"):
+    for field in (
+        "camera_make",
+        "camera_model",
+        "lens_model",
+        *SHOOTING_SETTING_FIELDS,
+    ):
         if getattr(photo, field) is None and getattr(metadata, field) is not None:
             values[field] = getattr(metadata, field)
     if photo.image_width is None and photo.image_height is None:
@@ -122,37 +128,9 @@ def backfill_photo_metadata(
                 for photo in photos:
                     cursor = int(photo.id)
                     processed += 1
-                    path = stored_image_path(
-                        settings, "original", photo.stored_filename
-                    )
-                    if path is None or not path.is_file():
-                        errors.append(
-                            MetadataBackfillError(cursor, "original is missing")
-                        )
-                        continue
                     try:
-                        with warnings.catch_warnings():
-                            warnings.simplefilter(
-                                "error", Image.DecompressionBombWarning
-                            )
-                            with open_image(path) as image:
-                                if (
-                                    image.width * image.height
-                                    > settings.max_image_pixels
-                                ):
-                                    raise ValueError("image dimensions are too large")
-                                image.load()
-                                metadata = extract_photo_metadata(image)
-                    except (
-                        Image.DecompressionBombError,
-                        Image.DecompressionBombWarning,
-                        UnidentifiedImageError,
-                        EOFError,
-                        OSError,
-                        RuntimeError,
-                        SyntaxError,
-                        ValueError,
-                    ) as exc:
+                        metadata, _ = inspect_stored_original_metadata(photo, settings)
+                    except OriginalMetadataError as exc:
                         errors.append(MetadataBackfillError(cursor, str(exc)))
                         continue
                     changes = _updates(photo, metadata)

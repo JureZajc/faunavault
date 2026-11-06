@@ -12,6 +12,8 @@ from pathlib import Path
 from urllib.parse import quote
 from uuid import UUID
 
+from app.metadata_types import SHOOTING_SETTING_FIELDS
+
 CHUNK_SIZE = 1024 * 1024
 JOB_STATUSES = ("queued", "running", "succeeded", "failed")
 PERCEPTUAL_HASH_PATTERN = re.compile(r"[0-9a-f]{16}")
@@ -59,6 +61,10 @@ class PhotoRecord:
     rating: int | None = None
     culling_state: str | None = None
     import_session_id: str | None = None
+    aperture_f_number: float | None = None
+    exposure_time_seconds: float | None = None
+    iso_speed: int | None = None
+    focal_length_mm: float | None = None
 
     def signature(self) -> tuple[object, ...]:
         return (
@@ -90,6 +96,10 @@ class PhotoRecord:
             self.rating,
             self.culling_state,
             self.import_session_id,
+            self.aperture_f_number,
+            self.exposure_time_seconds,
+            self.iso_speed,
+            self.focal_length_mm,
         )
 
 
@@ -986,6 +996,49 @@ def _inspect_schema_21(connection, migrations: list[int]) -> DatabaseInventory:
     return base
 
 
+_SHOOTING_COLUMNS = ", ".join(SHOOTING_SETTING_FIELDS)
+
+
+def _inspect_schema_22(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_21(connection, migrations)
+    columns = {row[1]: row for row in connection.execute("PRAGMA table_info(photo)")}
+    for field in SHOOTING_SETTING_FIELDS:
+        column = columns.get(field)
+        expected_type = "INTEGER" if field == "iso_speed" else "REAL"
+        if column is None:
+            raise ArchiveIntegrityError(
+                f"Missing Photo shooting settings column {field}"
+            )
+        if (
+            column[2].upper() != expected_type
+            or column[3] != 0
+            or column[4] is not None
+        ):
+            raise ArchiveIntegrityError(
+                f"Invalid Photo shooting settings column {field}"
+            )
+
+    settings_by_id = {
+        row[0]: _shooting_settings_from_row(row[1:], row[0])
+        for row in connection.execute(f"SELECT id, {_SHOOTING_COLUMNS} FROM photo")
+    }
+    return replace(
+        base,
+        photos=[replace(photo, **settings_by_id[photo.id]) for photo in base.photos],
+    )
+
+
+def _shooting_settings_from_row(values: tuple, photo_id: int) -> dict:
+    settings = dict(zip(SHOOTING_SETTING_FIELDS, values, strict=True))
+    for field, value in settings.items():
+        expected = int if field == "iso_speed" else float
+        if value is not None and (
+            type(value) is not expected or value <= 0 or not math.isfinite(value)
+        ):
+            raise ArchiveIntegrityError(f"Photo {photo_id} has invalid {field}")
+    return settings
+
+
 def read_collection_signature(path: Path) -> tuple[tuple, tuple]:
     connection = open_read_only_database(path)
     try:
@@ -1026,6 +1079,7 @@ SCHEMA_INVENTORY_READERS = {
     19: _inspect_schema_19,
     20: _inspect_schema_20,
     21: _inspect_schema_21,
+    22: _inspect_schema_22,
 }
 
 
@@ -1078,19 +1132,30 @@ def inspect_database(path: Path, expected_schema_version: int) -> DatabaseInvent
         connection.close()
 
 
+_CURRENT_PHOTO_SELECT = (
+    "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
+    "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
+    "media_type, captured_at, captured_at_offset_minutes, camera_make, "
+    "camera_model, lens_model, image_width, image_height, latitude, "
+    "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
+    "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
+    "location_metadata_overridden, is_favorite, rating, culling_state, import_session_id, "
+    f"{_SHOOTING_COLUMNS} FROM photo"
+)
+
+
+def _current_photo_from_row(row) -> PhotoRecord:
+    return replace(
+        _photo_from_schema_18_row(row),
+        **_shooting_settings_from_row(row[-len(SHOOTING_SETTING_FIELDS) :], row[0]),
+    )
+
+
 def read_photo_signature(path: Path) -> tuple[tuple[object, ...], ...]:
     try:
         connection = open_read_only_database(path)
-        rows = connection.execute(
-            "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
-            "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
-            "media_type, captured_at, captured_at_offset_minutes, camera_make, "
-            "camera_model, lens_model, image_width, image_height, latitude, "
-            "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
-            "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden, is_favorite, rating, culling_state, import_session_id FROM photo ORDER BY id"
-        ).fetchall()
-        return tuple(_photo_from_schema_18_row(row).signature() for row in rows)
+        rows = connection.execute(_CURRENT_PHOTO_SELECT + " ORDER BY id").fetchall()
+        return tuple(_current_photo_from_row(row).signature() for row in rows)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check live archive state: {exc}"
@@ -1104,16 +1169,10 @@ def read_photo_record(path: Path, photo_id: int) -> PhotoRecord | None:
     try:
         connection = open_read_only_database(path)
         row = connection.execute(
-            "SELECT id, stored_filename, resized_filename, thumbnail_filename, "
-            "deleted_at, content_sha256, original_size_bytes, perceptual_hash, "
-            "media_type, captured_at, captured_at_offset_minutes, camera_make, "
-            "camera_model, lens_model, image_width, image_height, latitude, "
-            "longitude, extracted_captured_at, extracted_captured_at_offset_minutes, "
-            "extracted_latitude, extracted_longitude, capture_metadata_overridden, "
-            "location_metadata_overridden, is_favorite, rating, culling_state, import_session_id FROM photo WHERE id = ?",
+            _CURRENT_PHOTO_SELECT + " WHERE id = ?",
             (photo_id,),
         ).fetchone()
-        return None if row is None else _photo_from_schema_18_row(row)
+        return None if row is None else _current_photo_from_row(row)
     except sqlite3.Error as exc:
         raise ArchiveIntegrityError(
             f"Could not re-check photo {photo_id}: {exc}"
