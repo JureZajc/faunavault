@@ -323,10 +323,10 @@ def test_migration21_from_actual_schema20_is_retryable(collections_app):
             CONSTRAINT uq_collection_name_key UNIQUE (name_key)
         )""")
         connection.execute("INSERT INTO collection SELECT * FROM saved_collections")
-        connection.execute("DELETE FROM schema_migration WHERE version=21")
+        connection.execute("DELETE FROM schema_migration WHERE version>=21")
     assert inspect_database(settings.database_path, 20).collection_memberships == 1
     before = read_collection_signature(settings.database_path)
-    assert run_migrations(engine, settings) == [21]
+    assert run_migrations(engine, settings) == [21, 22]
     assert run_migrations(engine, settings) == []
     assert inspect_database(settings.database_path, 22).collection_memberships == 1
     assert read_collection_signature(settings.database_path) == before
