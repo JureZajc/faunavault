@@ -4,6 +4,9 @@ import { hasArea } from "./lib/geographic-bounds";
 
 import AddToEventDialog from "./components/events/add-to-event-dialog";
 import EventListContext from "./components/events/event-list-context";
+import AddToSighting from "./components/sightings/add-to-sighting";
+import SightingFormDialog from "./components/sightings/sighting-form-dialog";
+import { sightingId } from "./lib/sightings";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -102,8 +105,12 @@ function HomeContent() {
     }
   }
   const addToEvent = new URLSearchParams(query.paramsString).get("add_to_event");
+  const addToSighting = sightingId(new URLSearchParams(query.paramsString).get("add_to_sighting"));
   const [addEventIds, setAddEventIds] = useState<number[] | null>(null);
   const [eventBusy, setEventBusy] = useState(false);
+  const [sightingPhotoIds, setSightingPhotoIds] = useState<number[] | null>(null);
+  const [sightingBusy, setSightingBusy] = useState(false);
+  const membershipBusy = eventBusy || sightingBusy;
   const selectionContextKey = useMemo(
     () =>
       JSON.stringify({
@@ -113,6 +120,7 @@ function HomeContent() {
         shootingRanges: SHOOTING_RANGE_KEYS.map((key) => query.catalogState[key]),
         eventId: query.catalogState.event_id ?? null,
         addToEvent,
+        addToSighting,
         favoritesOnly: query.catalogState.favorites_only ?? false,
         bbox: [query.catalogState.bbox_south, query.catalogState.bbox_north, query.catalogState.bbox_west, query.catalogState.bbox_east],
         cullingState: query.catalogState.culling_state ?? null,
@@ -128,7 +136,7 @@ function HomeContent() {
         sort: query.catalogState.sort,
         order: query.catalogState.order,
       }),
-    [query.catalogState, query.homeView, addToEvent],
+    [query.catalogState, query.homeView, addToEvent, addToSighting],
   );
   const selection = useCatalogSelection(selectionContextKey);
   const {
@@ -347,6 +355,7 @@ function HomeContent() {
                 section === "gear" ||
                 section === "tags" ||
                 section === "events" ||
+                section === "sightings" ||
                 section === "collections" ||
                 section === "review" ||
                 section === "cull" ||
@@ -407,7 +416,9 @@ function HomeContent() {
               </div>
             ) : null}
             {query.catalogState.event_id !== undefined ? <EventListContext key={`source-${query.catalogState.event_id}`} id={String(query.catalogState.event_id)} revision={catalog} /> : null}
-            {addToEvent !== null ? <EventListContext key={`add-${addToEvent}`} id={addToEvent} adding selectedIds={selection.selectedIds} busy={bulkActions.isBusy || eventBusy} onBusyChange={setEventBusy} onSelect={selection.enter} onDates={(start, end) => { selection.reset(); query.setTakenRange(start, end); }} onAdded={(message) => { selection.reset(); setSuccessNotice(message); }} /> : null}
+            {addToEvent !== null ? <EventListContext key={`add-${addToEvent}`} id={addToEvent} adding selectedIds={selection.selectedIds} busy={bulkActions.isBusy || membershipBusy} onBusyChange={setEventBusy} onSelect={selection.enter} onDates={(start, end) => { selection.reset(); query.setTakenRange(start, end); }} onAdded={(message) => { selection.reset(); setSuccessNotice(message); }} /> : null}
+            {addToSighting !== null && <AddToSighting key={addToSighting} id={addToSighting} selected={selection.selectedIds} busy={bulkActions.isBusy || membershipBusy}
+              onBusyChange={setSightingBusy} onSelect={selection.enter} onAdded={() => { selection.reset(); query.cancelPendingSearch(); }} />}
             {query.catalogState.event_id !== undefined && !shootingFiltersActive && <p className="mb-3 text-sm text-stone-600">{saveCriteriaError}</p>}
             {query.catalogState.import_session_id ? <ImportSessionSummary id={query.catalogState.import_session_id} revision={catalog} /> : null}
             <CatalogToolbar
@@ -521,7 +532,7 @@ function HomeContent() {
                 rejectedReview={rejectedReview}
                 selectedIds={selection.selectedIds}
                 visibleIds={visiblePhotoIds}
-                isBusy={bulkActions.isBusy || eventBusy}
+                isBusy={bulkActions.isBusy || membershipBusy}
                 error={selection.error}
                 onTogglePage={selection.togglePage}
                 onClear={selection.clear}
@@ -536,13 +547,15 @@ function HomeContent() {
                 }}
                 onOpenAction={(action) => {
                   bulkActions.clearError();
-                  if (eventBusy) return;
+                  if (membershipBusy) return;
                   if (action === "export_selected") {
                     setExportPhotoIds([...selection.selectedIds].sort((a, b) => a - b));
                   } else if (action === "edit_capture") {
                     setCapturePhotoIds([...selection.selectedIds].sort((a, b) => a - b));
                   } else if (action === "add_to_event") {
                     setAddEventIds([...selection.selectedIds].sort((a, b) => a - b));
+                  } else if (action === "create_sighting") {
+                    setSightingPhotoIds([...selection.selectedIds].sort((a, b) => a - b));
                   } else if (action === "add_to_collection") {
                     setAddCollectionIds(
                       Array.from(selection.selectedIds).sort((a, b) => a - b),
@@ -589,7 +602,7 @@ function HomeContent() {
               onError={setActionError}
               isSelectionMode={selection.isSelecting}
               selectedIds={selection.selectedIds}
-              isSelectionBusy={bulkActions.isBusy || eventBusy}
+              isSelectionBusy={bulkActions.isBusy || membershipBusy}
               onToggleSelection={selection.toggle}
             />
             {exportPhotoIds ? <SelectedExportDialog photoIds={exportPhotoIds} onClose={() => setExportPhotoIds(null)} /> : null}
@@ -614,7 +627,7 @@ function HomeContent() {
               action={bulkDialog}
               selectedCount={selection.selectedCount}
               categoryOptions={categoryOptions}
-              isBusy={bulkActions.isBusy || eventBusy}
+              isBusy={bulkActions.isBusy || membershipBusy}
               error={bulkActions.error}
               onClose={() => {
                 if (!bulkActions.isBusy) setBulkDialog(null);
@@ -622,6 +635,9 @@ function HomeContent() {
               onSubmit={bulkActions.execute}
             />
             {addEventIds ? <AddToEventDialog photoIds={addEventIds} onClose={() => setAddEventIds(null)} onSuccess={(response) => { setAddEventIds(null); selection.reset(); setSuccessNotice(`Added ${response.added_count} Photos to the Trip/Event${response.already_present_count ? `; ${response.already_present_count} already present` : ""}.`); void loadPhotos().catch(() => undefined); }} /> : null}
+            {sightingPhotoIds && <SightingFormDialog photoIds={sightingPhotoIds} onClose={() => setSightingPhotoIds(null)} onSaved={(item) => {
+              setSightingPhotoIds(null); selection.reset(); query.cancelPendingSearch(); router.push(`/sightings/${item.id}`);
+            }} />}
             <AddToCollectionDialog
               key={addCollectionIds?.join("-") ?? "collection-closed"}
               photoIds={addCollectionIds}

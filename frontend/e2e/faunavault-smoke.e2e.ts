@@ -47,7 +47,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
     await page.goto("/events");
     await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveText([
       "List", "Gear", "Tags", "Timeline", "Metadata Health", "Insights", "Map",
-      "Albums", "Collections", "Trips & Events", "Review", "Culling", "Duplicates", "Trash",
+      "Albums", "Collections", "Trips & Events", "Sightings", "Review", "Culling", "Duplicates", "Trash",
     ]);
     await page.getByRole("button", { name: "Create Trip/Event" }).click();
     const form = page.getByRole("dialog");

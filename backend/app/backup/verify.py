@@ -117,6 +117,11 @@ def _compare_database_to_manifest(
     ):
         if manifest_counts[key] != actual_counts[key]:
             result.errors.append(f"Manifest {key} counts do not match the database")
+    for key in ("sightings", "sighting_memberships"):
+        if (
+            manifest.database.schema_version >= 23 or manifest_counts[key] is not None
+        ) and (manifest_counts[key] != getattr(inventory, key)):
+            result.errors.append(f"Manifest {key} counts do not match the database")
 
     image_entries = {
         (entry.role, entry.photo_id): entry

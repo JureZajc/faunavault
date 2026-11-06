@@ -195,7 +195,9 @@ def test_schema_21_to_22_preserves_rows_and_creates_pre_migration_backup(tmp_pat
         with sqlite3.connect(database) as connection:
             for column in SHOOTING_SETTING_FIELDS:
                 connection.execute(f"ALTER TABLE photo DROP COLUMN {column}")
-            connection.execute("DELETE FROM schema_migration WHERE version = 22")
+            connection.execute("DROP TABLE sighting_photo")
+            connection.execute("DROP TABLE sighting")
+            connection.execute("DELETE FROM schema_migration WHERE version >= 22")
             connection.execute(
                 "INSERT INTO photo (id, original_filename, stored_filename, resized_filename, "
                 "thumbnail_filename, status, created_at, updated_at, camera_make) "
@@ -203,7 +205,7 @@ def test_schema_21_to_22_preserves_rows_and_creates_pre_migration_backup(tmp_pat
                 "'classified', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'Canon')"
             )
             previous_backups = set(tmp_path.glob("*.pre-migrate-*.db"))
-        assert run_migrations(engine, settings) == [22]
+        assert run_migrations(engine, settings) == [22, 23]
         assert run_migrations(engine, settings) == []
         with sqlite3.connect(database) as connection:
             assert connection.execute(

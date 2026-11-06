@@ -70,7 +70,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for migration in range(1, 23):
+        for migration in range(1, 24):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (migration,),
@@ -161,8 +161,8 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert backup_path.name.startswith("faunavault-backup-")
     manifest = read_manifest(backup_path / "manifest.json")
     assert manifest.backup_format_version == 1
-    assert manifest.database.schema_version == 22
-    assert manifest.database.applied_migrations == list(range(1, 23))
+    assert manifest.database.schema_version == 23
+    assert manifest.database.applied_migrations == list(range(1, 24))
     assert manifest.counts.photos == 2
     assert manifest.counts.active_photos == 1
     assert manifest.counts.trashed_photos == 1
@@ -284,7 +284,7 @@ def test_current_backup_rehearsal_preserves_duplicate_curation(archive):
     backup, verified = create_backup(destination, settings)
     assert verified.valid
     result = rehearse_backup(backup, destination.parent / "duplicate-rehearsal")
-    assert result.source_schema_version == 22 and result.doctor_status == "HEALTHY"
+    assert result.source_schema_version == 23 and result.doctor_status == "HEALTHY"
     assert (
         read_duplicate_signature(result.target / "data" / "faunavault.db") == expected
     )
@@ -311,7 +311,7 @@ def test_current_schema_backup_rehearsal_preserves_collections(archive):
 
     result = rehearse_backup(backup_path, target)
 
-    assert result.source_schema_version == 22
+    assert result.source_schema_version == 23
     assert result.collections == 1
     assert result.collection_memberships == 2
     recovered_settings = Settings(
@@ -364,7 +364,7 @@ def test_current_backup_verifies_and_rehearses_smart_definitions(archive):
     assert verify_backup(backup_path).valid
     target = destination.parent / "smart-rehearsal"
     rehearsal = rehearse_backup(backup_path, target)
-    assert rehearsal.source_schema_version == 22
+    assert rehearsal.source_schema_version == 23
     restored = create_database_engine(
         Settings(
             _env_file=None,
@@ -612,7 +612,7 @@ def test_backup_and_recovery_preserve_active_and_trashed_shooting_settings(
     assert verify_backup(backup).valid
     target = tmp_path / "exif-rehearsal"
     result = rehearse_backup(backup, target)
-    assert result.source_schema_version == result.current_schema_version == 22
+    assert result.source_schema_version == result.current_schema_version == 23
     assert result.applied_migrations == ()
     with sqlite3.connect(target / "data" / "faunavault.db") as connection:
         assert connection.execute(

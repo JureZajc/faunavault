@@ -9,6 +9,7 @@ import { formatCameraLocalDate, parseCaptureFields, parseLocationFields } from "
 const api = vi.hoisted(() => ({
   getPhoto: vi.fn(),
   getNearbyPhotos: vi.fn(),
+  getPhotoSightings: vi.fn(),
   getCatalogPhotos: vi.fn(),
   getAnimal: vi.fn(),
   getClassificationJobs: vi.fn(),
@@ -101,6 +102,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   api.getPhoto.mockResolvedValue(photo());
   api.getNearbyPhotos.mockResolvedValue({ source_photo_id: 44, radius_km: 5, availability: "available", unavailable_reason: null, total: 0, items: [] });
+  api.getPhotoSightings.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 12, total_pages: 0 });
   api.getAnimal.mockResolvedValue(animal());
   api.getClassificationJobs.mockResolvedValue({
     jobs: [],

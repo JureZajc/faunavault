@@ -293,6 +293,105 @@ export function deleteEvent(id: number) { return request<{ event_id: number; sta
 export function addEventPhotos(id: number, photoIds: number[]) { return request<EventAddResponse>(`/events/${id}/photos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_ids: photoIds }) }); }
 export function removeEventPhotos(id: number, photoIds: number[]) { return request<EventRemoveResponse>(`/events/${id}/photos`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photo_ids: photoIds }) }); }
 
+export type SightingTaxon = {
+  id: number;
+  provider: string;
+  external_taxon_id: string;
+  scientific_name: string;
+  canonical_name: string;
+  common_name: string | null;
+  taxonomic_rank: string;
+};
+
+export type SightingMetadata = {
+  subject_label: string | null;
+  taxon_id: number | null;
+  observed_at: string;
+  observed_at_offset_minutes: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  location_label: string | null;
+  notes: string | null;
+};
+
+export type Sighting = SightingMetadata & {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  taxon: SightingTaxon | null;
+  active_photo_count: number;
+  trash_photo_count: number;
+  preview: TimelinePhotoPreview | null;
+};
+
+export type SightingSelection = Pick<SightingMetadata, "latitude" | "longitude" | "observed_at_offset_minutes"> & {
+  observed_at: string | null;
+  photo_count: number;
+  previews: TimelinePhotoPreview[];
+  capture_times_differ: boolean;
+};
+
+export type SightingPage<T = Sighting> = Paginated<T> & { total_pages: number };
+export type SightingJournalPage = SightingPage & {
+  totals: { recorded: number; in_date_range: number; verified: number; unidentified: number };
+};
+export type SightingFilters = {
+  page: number;
+  sort: "newest" | "oldest";
+  date_from?: string;
+  date_to?: string;
+  taxon_id?: number;
+};
+
+export function getSightings(filters: SightingFilters, signal?: AbortSignal) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, String(value));
+  }
+  return request<SightingJournalPage>(`/sightings?${params}`, { signal });
+}
+
+export function getSightingTaxa(search: string, page: number, signal?: AbortSignal) {
+  const params = new URLSearchParams({ search, page: String(page) });
+  return request<{ items: SightingTaxon[]; has_more: boolean }>(`/sightings/taxa?${params}`, { signal });
+}
+
+function sightingJson(method: string, body: unknown, signal?: AbortSignal) {
+  return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal };
+}
+
+export function getSightingSelection(photoIds: number[], signal?: AbortSignal) {
+  return request<SightingSelection>("/sightings/selection", sightingJson("POST", { photo_ids: photoIds }, signal));
+}
+
+export function createSighting(metadata: SightingMetadata, photoIds: number[]) {
+  return request<Sighting>("/sightings", sightingJson("POST", { ...metadata, photo_ids: photoIds }));
+}
+
+export function getSighting(id: number, signal?: AbortSignal) {
+  return request<Sighting>(`/sightings/${id}`, { signal });
+}
+
+export function updateSighting(id: number, metadata: Partial<SightingMetadata>) {
+  return request<Sighting>(`/sightings/${id}`, sightingJson("PATCH", metadata));
+}
+
+export function deleteSighting(id: number) {
+  return request<{ sighting_id: number; status: "deleted" }>(`/sightings/${id}`, { method: "DELETE" });
+}
+
+export function getSightingPhotos(id: number, page: number, signal?: AbortSignal, pageSize = 24) {
+  return request<SightingPage<Photo>>(`/sightings/${id}/photos?page=${page}&page_size=${pageSize}`, { signal });
+}
+
+export function changeSightingPhotos(id: number, photoIds: number[], action: "add" | "remove") {
+  return request<Sighting>(`/sightings/${id}/photos`, sightingJson(action === "add" ? "POST" : "DELETE", { photo_ids: photoIds }));
+}
+
+export function getPhotoSightings(id: number, page: number, signal?: AbortSignal) {
+  return request<SightingPage>(`/photos/${id}/sightings?page=${page}`, { signal });
+}
+
 export type CatalogFacets = {
   active_total: number;
   status_counts: Record<PhotoStatus, number>;

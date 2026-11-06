@@ -14,8 +14,9 @@ from app.metadata_types import (
     PositiveISO,
     PositiveMeasurement,
 )
+from app.sighting_schemas import SPECIES_RANKS, SightingFields
 
-EXPORT_FORMAT_VERSION = 14
+EXPORT_FORMAT_VERSION = 15
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -74,6 +75,8 @@ class ExportCounts(StrictExportModel):
     import_sessions: int = Field(ge=0)
     archive_events: int = Field(ge=0)
     archive_event_memberships: int = Field(ge=0)
+    sightings: int = Field(ge=0)
+    sighting_memberships: int = Field(ge=0)
     original_bytes: int = Field(ge=0)
 
     @model_validator(mode="after")
@@ -335,6 +338,38 @@ class ArchiveEventPhotoExport(StrictExportModel):
     photo_id: int = Field(ge=1)
 
 
+class SightingExport(StrictExportModel):
+    id: int = Field(ge=1)
+    subject_label: str | None
+    taxon_id: int | None
+    observed_at: str
+    observed_at_offset_minutes: int | None
+    latitude: float | None
+    longitude: float | None
+    location_label: str | None
+    notes: str | None
+    created_at: str
+    updated_at: str
+
+    _timestamps = field_validator("created_at", "updated_at")(validate_export_timestamp)
+    _observed_at = field_validator("observed_at")(validate_capture_timestamp)
+
+    @model_validator(mode="after")
+    def validate_metadata(self):
+        fields = self.model_dump(include=set(SightingFields.model_fields))
+        validated = SightingFields.model_validate(fields)
+        if validated.model_dump(exclude={"observed_at"}) != {
+            name: value for name, value in fields.items() if name != "observed_at"
+        }:
+            raise ValueError("Sighting metadata must be canonical")
+        return self
+
+
+class SightingPhotoExport(StrictExportModel):
+    sighting_id: int = Field(ge=1)
+    photo_id: int = Field(ge=1)
+
+
 class ArchiveMetadataExport(StrictExportModel):
     format_version: Literal[EXPORT_FORMAT_VERSION]
     source_database_schema_version: int = Field(ge=1)
@@ -348,6 +383,8 @@ class ArchiveMetadataExport(StrictExportModel):
     import_sessions: list[ImportSessionExport]
     archive_events: list[ArchiveEventExport]
     archive_event_photos: list[ArchiveEventPhotoExport]
+    sightings: list[SightingExport]
+    sighting_photos: list[SightingPhotoExport]
 
     @staticmethod
     def _validate_order(records: list[object], label: str) -> None:
@@ -366,6 +403,12 @@ class ArchiveMetadataExport(StrictExportModel):
         self._validate_order(self.collections, "collection")
         self._validate_order(self.smart_collections, "Smart Collection")
         self._validate_order(self.archive_events, "Trip/Event")
+        self._validate_order(self.sightings, "Sighting")
+        sighting_keys = [
+            (item.sighting_id, item.photo_id) for item in self.sighting_photos
+        ]
+        if sighting_keys != sorted(set(sighting_keys)):
+            raise ValueError("Sighting memberships must be unique and strictly ordered")
         event_keys = [
             (item.event_id, item.photo_id) for item in self.archive_event_photos
         ]
@@ -398,6 +441,8 @@ class ArchiveMetadataExport(StrictExportModel):
             "import_sessions": len(self.import_sessions),
             "archive_events": len(self.archive_events),
             "archive_event_memberships": len(self.archive_event_photos),
+            "sightings": len(self.sightings),
+            "sighting_memberships": len(self.sighting_photos),
             "original_bytes": sum(photo.original_size_bytes for photo in self.photos),
         }
         if self.counts.model_dump() != actual_counts:
@@ -416,6 +461,22 @@ class ArchiveMetadataExport(StrictExportModel):
         taxon_ids = {taxon.id for taxon in self.taxa}
         collection_ids = {collection.id for collection in self.collections}
         photo_ids = {photo.id for photo in self.photos}
+        species_ids = {
+            taxon.id for taxon in self.taxa if taxon.rank.upper() in SPECIES_RANKS
+        }
+        if any(
+            item.taxon_id is not None and item.taxon_id not in species_ids
+            for item in self.sightings
+        ):
+            raise ValueError("Sighting references a species absent from the export")
+        sighting_ids = {item.id for item in self.sightings}
+        if any(
+            sighting_id not in sighting_ids or photo_id not in photo_ids
+            for sighting_id, photo_id in sighting_keys
+        ):
+            raise ValueError(
+                "Sighting membership references a record absent from the export"
+            )
         collection_memberships = {
             (item.collection_id, item.photo_id) for item in self.collection_photos
         }

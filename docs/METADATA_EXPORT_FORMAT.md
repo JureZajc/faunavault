@@ -1,8 +1,9 @@
-# FaunaVault metadata export format v14
+# FaunaVault metadata export format v15
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, manual Collections and their
-memberships, Smart Collection definitions, Import Sessions, Trips & Events, Trash state, and authoritative original-file inventory.
+memberships, Smart Collection definitions, Import Sessions, Trips & Events,
+Wildlife Sightings, Trash state, and authoritative original-file inventory.
 It contains no media bytes and is not a backup, restore format, or supported
 import format.
 
@@ -12,9 +13,9 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v14 is `14`. |
+| `format_version` | Metadata export representation version; v15 is `15`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
-| `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, Import Session, Trip/Event, Event membership, and original-byte totals. |
+| `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, Import Session, Trip/Event, Event membership, Sighting, Sighting membership, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
 | `animals` | All Animals, including those without Photos, ordered by local ID. |
 | `taxa` | All locally stored Taxa, including unreferenced rows, ordered by local ID. |
@@ -23,6 +24,8 @@ import format.
 | `smart_collections` | Saved versioned catalog queries, ordered by local ID. |
 | `archive_events` | All Trips and Events, including empty ones, ordered by local ID. |
 | `archive_event_photos` | All Event membership pairs, including Trash Photos, ordered by Event ID then Photo ID. |
+| `sightings` | All recorded encounters, including empty ones, ordered by local ID. |
+| `sighting_photos` | All Sighting membership pairs, including Trash Photos, ordered by Sighting ID then Photo ID. |
 | `import_sessions` | All historical sessions, including empty and unfinished ones, ordered by canonical UUID string. |
 
 Export format and database schema versions have separate compatibility
@@ -30,7 +33,7 @@ lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
 adds the durable Photo capture-metadata contract. Version 4 adds human review
-timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. Version 9 adds Import Sessions and Photo provenance. Version 10 adds Trips & Events and their explicit memberships. Version 11 adds persistent custom Event cover references. Version 12 adds persistent custom manual Collection cover references. Version 13 adds support for Smart Collection query version 2. Version 14 adds Photo shooting settings in JSON and CSV. FaunaVault emits v14.
+timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. Version 9 adds Import Sessions and Photo provenance. Version 10 adds Trips & Events and their explicit memberships. Version 11 adds persistent custom Event cover references. Version 12 adds persistent custom manual Collection cover references. Version 13 adds support for Smart Collection query version 2. Version 14 adds Photo shooting settings in JSON and CSV. Version 15 adds Wildlife Sightings and their photo memberships in JSON. FaunaVault emits v15.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -45,8 +48,8 @@ covers are valid and preserved; automatic fallback previews are derived and are
 not exported. Permanent Photo deletion or membership removal clears the stored
 reference. Collection ordering remains ascending ID, and an unchanged archive
 produces identical output. The Photo CSV representation is unchanged from v11.
-Historical v1–v12 artifacts keep their original contracts; consumers must
-explicitly support v14. The database schema is 22 and backup format remains v1.
+Historical v1–v14 artifacts keep their original contracts; consumers must
+explicitly support v15. The database schema is 23 and backup format remains v1.
 
 Each Photo contains these fields:
 
@@ -367,6 +370,7 @@ JSON. Override flags use lowercase `true`/`false` in CSV.
   membership, including trashed members. photos.csv is unchanged.
 - v13: `smart_collections` supports both v1 and v2 saved queries. photos.csv is unchanged.
 - v14: Four nullable shooting settings in Photo JSON records and photos.csv.
+- v15: Sighting records and memberships in JSON; Photo CSV columns are unchanged.
 
 ## Deliberate exclusions
 
@@ -405,3 +409,24 @@ saved reference. Historical v10 exports have no custom-cover field and imply
 `null`; consumers upgrading v10 data must add that null explicitly. Export format
 11 is independent of database schema 20 and backup container format v1. Backup
 verification/rehearsal continues to support historical archive schemas.
+
+## Wildlife Sightings (v15)
+
+Each `sightings` entry contains positive `id`, nullable `subject_label`,
+nullable `taxon_id`, required `observed_at`, nullable
+`observed_at_offset_minutes`, nullable `latitude` and `longitude`, nullable
+`location_label` and `notes`, and required `created_at` and `updated_at`.
+Observation time is zone-free ISO 8601 with six fractional digits. The optional
+offset is a separate integer from −1439 to +1439. Coordinates are either both
+null or both present, within ±90 latitude and ±180 longitude; zero is valid.
+Subject labels, location labels and notes are limited to 100, 200 and 2,000
+characters respectively. The creation and update timestamps use the canonical
+UTC representation. A non-null taxon ID references an exported local species
+or subspecies.
+
+`sighting_photos` contains only unique positive `sighting_id` / `photo_id`
+pairs. Both records must exist in the same export. A photo can appear in
+multiple pairs. Links to Trash photos and encounters without linked photos are
+included. Preview thumbnails and active/Trash counts per encounter are derived
+and omitted. The `counts.sightings` and `counts.sighting_memberships` totals
+match the corresponding arrays. Photo CSV remains unchanged from v14.

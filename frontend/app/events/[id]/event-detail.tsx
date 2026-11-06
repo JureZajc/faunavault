@@ -7,7 +7,7 @@ import PaginatedPhotoGallery, { GalleryStart } from "../../components/paginated-
 import PhotoCard from "../../components/catalog/photo-card";
 import EventCover from "../../components/events/event-cover";
 import EventFormDialog from "../../components/events/event-form-dialog";
-import EventConfirmDialog from "../../components/events/event-confirm-dialog";
+import EventConfirmDialog from "../../components/confirm-dialog";
 import { useEvent } from "../../hooks/use-event";
 import { usePhotoCatalog } from "../../hooks/use-photo-catalog";
 import { useCatalogSelection } from "../../hooks/use-catalog-selection";

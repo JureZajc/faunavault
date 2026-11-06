@@ -75,6 +75,34 @@ duplicates are skipped; possible visual duplicates are skipped unless
 `--allow-visual-duplicates` is supplied. `--classify` queues jobs for new photos
 that the backend processes after restart. See the operations guide for details.
 
+## Wildlife Sightings Journal API
+
+A sighting stores one manually recorded encounter, independently of Photo
+classification, Albums, Collections, and Trips & Events. Schema 23 adds the
+`sighting` and `sighting_photo` tables through an append-only migration.
+
+- `GET /sightings` lists encounters with `page`, `page_size`, `sort` (newest or
+  oldest), inclusive local dates `date_from` / `date_to`, and optional `taxon_id`.
+  The filtered total is separate from journal totals (all encounters, within
+  the dates, with verified identification, and without identification).
+- `POST /sightings` atomically saves an encounter and 1–250 distinct active
+  `photo_ids`. `POST /sightings/selection` previews the explicit selection and
+  suggests only unanimous, nonmissing effective capture/GPS values.
+- `GET /sightings/{id}`, `PATCH /sightings/{id}`, and `DELETE /sightings/{id}`
+  read, edit, or delete the encounter. The observation timestamp is field-local
+  ISO 8601 with no embedded timezone. A separate signed offset in minutes
+  (−1439 through +1439) and complete GPS pair are optional.
+- `GET /sightings/{id}/photos` pages active Photo records; POST and DELETE to the
+  same endpoint add or remove explicit `photo_ids`. Trash retains the links and
+  Restore reveals them. Purging a photo removes its links. Deleting a sighting
+  only deletes the encounter and its links.
+- `GET /sightings/taxa` searches existing local species and subspecies by name.
+  `GET /photos/{id}/sightings` pages encounters linked to an active photo.
+
+No request contacts GBIF or changes an Animal, Taxon, or Photo. Backup v1
+verifies and rehearses schemas 9–23. Portable export v15 includes sightings and
+all membership pairs in JSON, including links to Trash.
+
 ## Portable metadata export
 
 Create a deterministic JSON metadata and original-file inventory in a new local
@@ -104,7 +132,7 @@ integrity failure, and `2` means usage, configuration, destination, permission,
 disk, or publication failure.
 
 See the operations guide for the user workflow and
-[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the v14
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the v15
 field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
 does not replace a verified backup and is not an import or restore mechanism.
 
@@ -131,7 +159,7 @@ atomically. Bare overrides and importer overrides leave matches unresolved.
 Dismissals preserve both Photo metadata and AI-review timestamps. Trash hides
 pairs; restore reopens them unless dismissed; permanent deletion cascades cleanup.
 Backups/rehearsal support schemas through 18 and preserve this curation state; metadata
-export v14 still excludes duplicate curation state. See Operations for safety and coverage details.
+export v15 still excludes duplicate curation state. See Operations for safety and coverage details.
 
 Uploads retain the authoritative SHA-256 duplicate check. After it finds no
 exact match, the lifecycle service calculates the Pillow-only `phash64-v1`
@@ -189,7 +217,7 @@ recoverability failure and exit `2` means usage, target, permission, disk, or
 other setup failure.
 
 Backup format v1 and database recovery versions are independent. This version
-supports schema 9 through schema 22 backups. Schema-9
+supports schema 9 through schema 23 backups. Schema-9
 rehearsals migrate to empty Collection tables; schema-10 rehearsals compare
 Collection metadata and membership exactly; schema-11 rehearsals additionally
 compare all persisted Photo capture metadata. Schema-12 adds review timestamps;
@@ -239,7 +267,7 @@ Individual `PATCH /photos/{id}` capture/GPS updates require complete groups and
 `expected_updated_at`; source fields/flags are read-only. The same PATCH accepts
 `restore_original_metadata: true` to re-read both groups from a trusted original,
 without writing original bytes. Capture-only edits preserve AI review state.
-Portable format v14 exports effective values, source values, and override markers. See
+Portable format v15 exports effective values, source values, and override markers. See
 [capture editing semantics](../docs/OPERATIONS.md#editable-capture-metadata-v02).
 
 Exit `0` means healthy with optional warnings, `1` means integrity errors or
@@ -265,8 +293,8 @@ field names, such as `iso_speed_min=400&focal_length_mm_max=500`. Each range
 is inclusive, values must be positive and finite, and ISO must be integral.
 A minimum above its maximum returns HTTP 422. Ranges combine with other filters
 in SQL and exclude nulls for active fields. Smart Collection queries remain at
-v1/v2. Metadata export v14 includes the four fields in JSON and CSV. Backup
-format v1 supports verification and recovery rehearsal for schemas 9–22.
+v1/v2. Metadata export v15 includes the four fields in JSON and CSV. Backup
+format v1 supports verification and recovery rehearsal for schemas 9–23.
 
 Classification is asynchronous and local-first. One lifespan-owned in-process worker claims SQLite jobs in `queued_at` order and processes them serially. Status and safe failures survive browser refresh and backend restart; interrupted running jobs are marked failed for explicit retry. The worker records requested/actual model, fallback use, durable attempt count, duration, and prompt version. FaunaVault supports one backend process, not multiple Uvicorn workers.
 
@@ -353,8 +381,8 @@ participate in text search. Map rejects active curation criteria.
 `POST /photos/bulk` adds `set_favorite` with required boolean `is_favorite`,
 `set_rating` with required integer `rating`, and `clear_rating`. Existing
 250-ID limits, atomicity, active-photo checks, and selection semantics apply.
-Export v14 includes JSON/CSV curation values; backup format v1 supports schemas
-9–22 and validates schema-16 structure even for empty archives.
+Export v15 includes JSON/CSV curation values; backup format v1 supports schemas
+9–23 and validates schema-16 structure even for empty archives.
 
 ## Smart Collection queries
 
@@ -378,5 +406,5 @@ Neither version accepts `event_id`, pagination, layout, or transient fields.
 as `GET /catalog/photos`, with Trash excluded. Invalid stored definitions remain
 visible with a repair message and return 422 for results. The existing
 `query_version` and `query_json` columns store both versions without migration.
-Portable export v14 includes v1 and v2 definitions; backup v1, verification,
+Portable export v15 includes v1 and v2 definitions; backup v1, verification,
 and recovery rehearsal continue to preserve the database definitions.

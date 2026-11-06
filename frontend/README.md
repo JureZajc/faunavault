@@ -20,6 +20,27 @@ bind addresses, `NEXT_PUBLIC_API_URL`, and backend CORS origins. Localhost bindi
 does not replace authentication or other protections for intentional network
 deployment. See the [root startup instructions](../README.md#starting-faunavault).
 
+## Wildlife Sightings Journal
+
+In **List**, choose **Select photos**, select one to 250 photos across pages, and
+choose **Create Sighting**. The form previews the selection. If every selected
+photo has the same capture timestamp or the same complete GPS pair, the form
+suggests those values separately. Enter your own observation date and time
+when captures disagree or are missing. Enter both GPS coordinates or leave both
+blank; the existing map picker can fill them in.
+
+Pick a species or subspecies from the local taxonomy to record a verified
+identification. You can leave it unidentified and use an optional subject
+label. The form leaves the photos' own classifications and metadata untouched.
+
+Open **Sightings** for encounter totals, date and species filters, sorting,
+and paginated cards. Details show notes, identification, GPS, and a paginated
+active photo gallery with a fullscreen viewer. **Add existing photos** opens List with a target sighting;
+select and submit the photos you want to link. **Remove from sighting** and
+**Delete Sighting** leave the photos in the archive. Trash preserves memberships
+and shows them in the Trash count; Restore brings those photos back into the
+gallery. Photo detail links back to its recorded sightings.
+
 ## Nearby Photos
 
 Photo details with valid effective GPS show **Nearby Photos** below Location map.
