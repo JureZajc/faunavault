@@ -1,20 +1,32 @@
-import { SmartCollectionQuery } from "./api";
-import { hasArea } from "./geographic-bounds";
-import { CatalogState, DEFAULT_CATALOG_STATE, hasEquipmentFilters, hasTagFilters, writeCatalogState } from "./catalog-query";
+import type { SmartCollectionQuery, SmartCollectionQueryRead } from "./api";
+import { areaSummary, boundsError } from "./geographic-bounds";
+import { CatalogState, DEFAULT_CATALOG_STATE, equipmentQuery, metadataIssueLabels, writeCatalogState } from "./catalog-query";
+
+export const SMART_COLLECTION_QUERY_VERSION = 2;
+
+export function smartCollectionSaveError(state: CatalogState) {
+  if (state.event_id !== undefined) return "Trip/Event membership cannot be saved as Smart Collection criteria. Clear the Trip/Event filter first.";
+  return boundsError(state);
+}
 
 export function savedQueryFromState(state: CatalogState, searchInput: string): SmartCollectionQuery {
-  if (hasArea(state)) throw new Error("Geographic area filters cannot be saved in version-1 Smart Collections. Clear the area filter before saving or updating.");
-  if (state.metadata_issue) throw new Error("Metadata completeness filters cannot be saved in version-1 Smart Collections. Clear the metadata filter before saving or updating.");
-  if (hasEquipmentFilters(state)) throw new Error("Equipment filters cannot be saved in version-1 Smart Collections. Clear equipment filters before saving or updating.");
-  if (hasTagFilters(state)) throw new Error("Exact tag and untagged filters are live catalog filters and cannot be saved in version-1 Smart Collections. Clear the tag filters before saving.");
-  if (state.event_id !== undefined) throw new Error("Trip/Event membership cannot be saved as Smart Collection criteria. Clear the Trip/Event filter first.");
+  const error = smartCollectionSaveError(state);
+  if (error) throw new Error(error);
   return {
+    tags: state.tags,
+    untagged: state.untagged,
+    ...equipmentQuery(state),
+    metadata_issue: state.metadata_issue,
+    bbox_south: state.bbox_south,
+    bbox_north: state.bbox_north,
+    bbox_west: state.bbox_west,
+    bbox_east: state.bbox_east,
     import_session_id: state.import_session_id,
     search: searchInput.trim() || undefined,
     culling_state: state.culling_state,
     favorites_only: state.favorites_only, rating: state.rating, rating_min: state.rating_min, unrated: state.unrated,
     status: state.status,
-    category: state.uncategorized ? undefined : state.category,
+    category: state.category,
     uncategorized: state.uncategorized ?? false,
     taxon_id: state.taxon_id,
     taken_from: state.taken_from,
@@ -24,15 +36,29 @@ export function savedQueryFromState(state: CatalogState, searchInput: string): S
   };
 }
 
-export function smartCollectionEditHref(id: number, query: SmartCollectionQuery | null) {
-  const state: CatalogState = { ...DEFAULT_CATALOG_STATE, ...query, page: 1, layout: "flat" };
+export function smartCollectionEditHref(id: number, query: SmartCollectionQueryRead | null) {
+  // The API returns null for unset criteria. Keep empty equipment strings and zero coordinates.
+  const criteria = Object.fromEntries(Object.entries(query ?? {}).filter(([, value]) => value != null));
+  const state: CatalogState = { ...DEFAULT_CATALOG_STATE, ...criteria };
   const params = writeCatalogState(new URLSearchParams(), state);
   params.set("smart_edit", String(id));
   return `/?${params}`;
 }
 
-export function smartCollectionCriteria(query: SmartCollectionQuery): string {
+export function smartCollectionCriteria(query: SmartCollectionQueryRead): string {
   const parts: string[] = [];
+  if (query.tags?.length) parts.push(`Tags (all): ${query.tags.map((tag) => JSON.stringify(tag)).join(", ")}`);
+  if (query.untagged) parts.push("Photos without tags");
+  if (query.camera_make != null) parts.push(`Camera make: ${query.camera_make || "Missing"}`);
+  if (query.camera_model != null) parts.push(`Camera model: ${query.camera_model || "Missing"}`);
+  if (query.unknown_camera) parts.push("Unknown camera");
+  if (query.lens_model != null) parts.push(`Lens: ${query.lens_model || "Missing model"}`);
+  if (query.unknown_lens) parts.push("Unknown lens");
+  if (query.metadata_issue) parts.push(`Metadata: ${metadataIssueLabels[query.metadata_issue]}`);
+  if (query.bbox_south != null) parts.push(`Area: ${areaSummary({
+    bbox_south: query.bbox_south, bbox_north: query.bbox_north ?? undefined,
+    bbox_west: query.bbox_west ?? undefined, bbox_east: query.bbox_east ?? undefined,
+  })}`);
   if (query.import_session_id) parts.push(`Import Session: ${query.import_session_id}`);
   if (query.culling_state) parts.push(`Culling: ${query.culling_state === "pick" ? "Picked" : query.culling_state === "reject" ? "Rejected" : "Undecided"}`);
   if (query.favorites_only) parts.push("Favorites only");

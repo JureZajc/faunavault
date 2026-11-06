@@ -17,6 +17,7 @@ import BulkSelectionToolbar, {
 } from "./components/catalog/bulk-selection-toolbar";
 import AddToCollectionDialog from "./components/collections/add-to-collection-dialog";
 import CollectionNameDialog from "./components/collections/collection-name-dialog";
+import AreaCoordinateForm from "./components/catalog/area-coordinate-form";
 import CatalogClassificationPanel from "./components/catalog/catalog-classification-panel";
 import CatalogResults from "./components/catalog/catalog-results";
 import CatalogToolbar, {
@@ -55,7 +56,7 @@ import {
   mapCatalogHref,
 } from "./lib/catalog-query";
 import { compareHref } from "./lib/photo-compare";
-import { savedQueryFromState } from "./lib/smart-collections";
+import { savedQueryFromState, SMART_COLLECTION_QUERY_VERSION, smartCollectionSaveError } from "./lib/smart-collections";
 
 function HomeContent() {
   const router = useRouter();
@@ -66,8 +67,10 @@ function HomeContent() {
   const editId = editIdValue && /^\d+$/.test(editIdValue) && Number.isSafeInteger(Number(editIdValue)) && Number(editIdValue) > 0 ? Number(editIdValue) : null;
   const [editCollection, setEditCollection] = useState<SmartCollection | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editLoadAttempt, setEditLoadAttempt] = useState(0);
   const [savingCriteria, setSavingCriteria] = useState(false);
   const [saveSmartOpen, setSaveSmartOpen] = useState(false);
+  const saveCriteriaError = smartCollectionSaveError(query.catalogState);
   useEffect(() => {
     if (editId === null) return;
     const controller = new AbortController();
@@ -77,7 +80,25 @@ function HomeContent() {
         .catch((nextError) => { if (!controller.signal.aborted) setEditError(nextError instanceof Error ? nextError.message : "Could not load Smart Collection"); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [editId]);
+  }, [editId, editLoadAttempt]);
+
+  async function saveCriteria() {
+    if (editId === null || editCollection?.id !== editId || savingCriteria) return;
+    setSavingCriteria(true);
+    setEditError(null);
+    try {
+      await updateSmartCollection(editId, {
+        query_version: SMART_COLLECTION_QUERY_VERSION,
+        query: savedQueryFromState(query.catalogState, query.searchInput),
+      });
+      query.cancelPendingSearch();
+      router.push(`/collections/smart/${editId}`);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Could not save criteria");
+    } finally {
+      setSavingCriteria(false);
+    }
+  }
   const addToEvent = new URLSearchParams(query.paramsString).get("add_to_event");
   const [addEventIds, setAddEventIds] = useState<number[] | null>(null);
   const [eventBusy, setEventBusy] = useState(false);
@@ -360,15 +381,29 @@ function HomeContent() {
           />
         ) : (
           <>
-            {editId !== null ? <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection ? ` “${editCollection.name}”` : ""}</p><p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>{editError ? <p role="alert" className="mt-2 text-sm text-red-700">{editError} <button type="button" onClick={() => { setEditError(null); void getSmartCollection(editId).then(setEditCollection).catch((error) => setEditError(error instanceof Error ? error.message : "Could not load Smart Collection")); }} className="underline">Retry</button></p> : null}<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!editCollection || savingCriteria || hasArea(query.catalogState) || query.catalogState.event_id !== undefined || (Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState))} onClick={async () => { setSavingCriteria(true); setEditError(null); try { await updateSmartCollection(editId, { query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); } catch (nextError) { setEditError(nextError instanceof Error ? nextError.message : "Could not save criteria"); } finally { setSavingCriteria(false); } }} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button><button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button></div></div> : null}
+            {editId !== null ? (
+              <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <p className="font-semibold text-emerald-950">Editing Smart Collection{editCollection?.id === editId ? ` “${editCollection.name}”` : ""}</p>
+                <p className="mt-1 text-sm text-emerald-900">Change the List filters, then save these criteria to the same Smart Collection.</p>
+                <details className="mt-3 rounded-md border border-emerald-200 bg-white p-3">
+                  <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Edit geographic coordinates</summary>
+                  <p id="smart-area-instructions" className="text-sm text-stone-600">Apply all four coordinates to update the List filter. West greater than East crosses the antimeridian.</p>
+                  <AreaCoordinateForm value={query.catalogState} instructionsId="smart-area-instructions" onApply={(area) => { selection.reset(); query.setArea(area); }} />
+                </details>
+                {editError && <p role="alert" className="mt-2 text-sm text-red-700">
+                  {editError}{" "}
+                  {editCollection?.id !== editId && <button type="button" onClick={() => { setEditError(null); setEditLoadAttempt((attempt) => attempt + 1); }} className="underline">Retry</button>}
+                </p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={editCollection?.id !== editId || savingCriteria || Boolean(saveCriteriaError)} onClick={saveCriteria} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button>
+                  <button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button>
+                </div>
+              </div>
+            ) : null}
             {query.catalogState.event_id !== undefined ? <EventListContext key={`source-${query.catalogState.event_id}`} id={String(query.catalogState.event_id)} revision={catalog} /> : null}
             {addToEvent !== null ? <EventListContext key={`add-${addToEvent}`} id={addToEvent} adding selectedIds={selection.selectedIds} busy={bulkActions.isBusy || eventBusy} onBusyChange={setEventBusy} onSelect={selection.enter} onDates={(start, end) => { selection.reset(); query.setTakenRange(start, end); }} onAdded={(message) => { selection.reset(); setSuccessNotice(message); }} /> : null}
-            {query.catalogState.event_id !== undefined ? <p className="mb-3 text-sm text-stone-600">Trip/Event membership cannot be saved as Smart Collection criteria. Clear the Trip/Event filter to save a date or metadata query.</p> : null}
+            {query.catalogState.event_id !== undefined && <p className="mb-3 text-sm text-stone-600">{saveCriteriaError}</p>}
             {query.catalogState.import_session_id ? <ImportSessionSummary id={query.catalogState.import_session_id} revision={catalog} /> : null}
-            {hasTagFilters(query.catalogState) && <p role="status" className="mb-3 text-sm text-amber-900">Exact tag and untagged filters are live catalog filters. Version-1 Smart Collections cannot save them. Clear tag filters before saving or updating a Smart Collection.</p>}
-            {query.catalogState.metadata_issue && <p role="status" className="mb-3 text-sm text-amber-900">Metadata completeness is a live List filter. Clear it before saving or updating a version-1 Smart Collection. Map does not support it.</p>}
-            {hasEquipmentFilters(query.catalogState) && <p role="status" className="mb-3 text-sm text-amber-900">Equipment filters cannot be saved in version-1 Smart Collections. Clear equipment filters before saving or updating.</p>}
-            {hasArea(query.catalogState) && <p className="mb-3 text-sm text-amber-900">Geographic area filters are live catalog filters. Clear the area before saving or updating a version-1 Smart Collection.</p>}
             <CatalogToolbar
               area={query.catalogState}
               onClearArea={() => { selection.reset(); query.setArea(); }}
@@ -451,7 +486,7 @@ function HomeContent() {
                 query.clearFilters();
               }}
               onEnterSelectionMode={selection.enter}
-              onSaveSmartCollection={editId === null && !hasArea(query.catalogState) && query.catalogState.event_id === undefined && !(Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ? () => setSaveSmartOpen(true) : undefined}
+              onSaveSmartCollection={editId === null && !saveCriteriaError ? () => setSaveSmartOpen(true) : undefined}
             />
 
             {rejectedReview ? (
@@ -593,7 +628,22 @@ function HomeContent() {
                 );
               }}
             />
-            <CollectionNameDialog key={`save-smart-${saveSmartOpen ? "open" : "closed"}`} kind="Smart Collection" mode="create" isOpen={saveSmartOpen} onClose={() => setSaveSmartOpen(false)} onSave={async (name) => { const saved = await createSmartCollection({ name, query_version: 1, query: savedQueryFromState(query.catalogState, query.searchInput) }); query.cancelPendingSearch(); router.push(`/collections/smart/${saved.id}`); return saved; }} />
+            <CollectionNameDialog
+              key={`save-smart-${saveSmartOpen ? "open" : "closed"}`}
+              kind="Smart Collection"
+              mode="create"
+              isOpen={saveSmartOpen}
+              onClose={() => setSaveSmartOpen(false)}
+              onSave={async (name) => {
+                const saved = await createSmartCollection({
+                  name,
+                  query_version: SMART_COLLECTION_QUERY_VERSION,
+                  query: savedQueryFromState(query.catalogState, query.searchInput),
+                });
+                query.cancelPendingSearch();
+                router.push(`/collections/smart/${saved.id}`);
+              }}
+            />
           </>
         )}
       </section>

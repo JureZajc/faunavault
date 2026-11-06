@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import CollectionsBrowser from "../app/collections/collections-browser";
 import SmartCollectionDetail from "../app/collections/smart/[id]/smart-collection-detail";
+import { parseCatalogState } from "../app/lib/catalog-query";
 
 const api = vi.hoisted(() => ({
   getCollections: vi.fn(), getSmartCollections: vi.fn(), getSmartCollection: vi.fn(),
@@ -59,6 +60,36 @@ test("Smart detail displays curation criteria and preserves them in its edit lin
   expect(href).toContain("catalog_sort=rating");
   expect(href).toContain("catalog_culling_state=pick");
   expect(screen.getByText(/Culling: Picked/)).toBeTruthy();
+});
+
+test("Smart detail describes v2 filters and restores the same criteria in List", async () => {
+  const query = {
+    tags: ["Birds", "bird, sky"], camera_make: "Canon", camera_model: "", lens_model: null,
+    unknown_lens: true, metadata_issue: "complete", bbox_south: 0, bbox_north: 10,
+    bbox_west: 170, bbox_east: -170, sort: "captured_at", order: "desc",
+  };
+  api.getSmartCollection.mockResolvedValue({ ...smart, query_version: 2, query });
+  render(<SmartCollectionDetail collectionId={7} />);
+  await screen.findByRole("heading", { name: "Foxes" });
+  const summary = screen.getByText(/Tags \(all\): "Birds", "bird, sky"/);
+  for (const text of ["Camera make: Canon", "Camera model: Missing", "Unknown lens", "Metadata: Complete", "Area:", "crosses antimeridian", "Sort: captured at desc"]) {
+    expect(summary.textContent).toContain(text);
+  }
+  const href = screen.getByRole("link", { name: "Edit criteria" }).getAttribute("href")!;
+  const params = new URL(href, window.location.origin).searchParams;
+  expect(params.get("smart_edit")).toBe("7");
+  expect(params.has("catalog_lens_model")).toBe(false);
+  expect(parseCatalogState(params)).toMatchObject({ ...query, lens_model: undefined, page: 1, layout: "flat" });
+});
+
+test("Smart detail distinguishes untagged photos and unknown cameras from unset filters", async () => {
+  api.getSmartCollection.mockResolvedValue({ ...smart, query_version: 2, query: {
+    sort: "created_at", order: "desc", tags: [], untagged: true, unknown_camera: true,
+    camera_make: null, camera_model: null, bbox_south: null,
+  } });
+  render(<SmartCollectionDetail collectionId={7} />);
+  const summary = await screen.findByText(/Photos without tags.*Unknown camera/);
+  expect(summary.textContent).not.toMatch(/Camera make|Camera model|Area:/);
 });
 
 test("Smart detail renames and deletes without a membership action", async () => {

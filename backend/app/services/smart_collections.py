@@ -7,10 +7,11 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import Session, select
 
-from app.catalog_query import CatalogSavedQuery
+from app.catalog_query import SavedQuery, saved_query_model
 from app.models import SmartCollection, utc_now
 from app.schemas import (
     CatalogPhotoPage,
+    SmartCollectionCreateRequest,
     SmartCollectionDeleteResponse,
     SmartCollectionRead,
     SmartCollectionSummaryRead,
@@ -20,6 +21,7 @@ from app.services.catalog import list_catalog_photos
 from app.services.collections import normalize_collection_name
 
 logger = logging.getLogger(__name__)
+INVALID_CRITERIA_MESSAGE = "Saved criteria are invalid. Replace them from List to repair this Smart Collection."
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
@@ -33,16 +35,17 @@ def _get(collection_id: int, session: Session) -> SmartCollection:
     return collection
 
 
-def _query(collection: SmartCollection) -> tuple[CatalogSavedQuery | None, str | None]:
-    if collection.query_version != 1:
-        return None, f"Unsupported saved query version {collection.query_version}."
+def _query(collection: SmartCollection) -> tuple[SavedQuery | None, str | None]:
+    if type(collection.query_version) is not int:
+        return None, INVALID_CRITERIA_MESSAGE
     try:
-        return CatalogSavedQuery.model_validate_json(collection.query_json), None
+        model = saved_query_model(collection.query_version)
+    except ValueError as exc:
+        return None, str(exc)
+    try:
+        return model.model_validate_json(collection.query_json), None
     except (ValidationError, ValueError):
-        return (
-            None,
-            "Saved criteria are invalid. Replace them from List to repair this Smart Collection.",
-        )
+        return None, INVALID_CRITERIA_MESSAGE
 
 
 def _read(collection: SmartCollection) -> SmartCollectionRead:
@@ -50,7 +53,9 @@ def _read(collection: SmartCollection) -> SmartCollectionRead:
     return SmartCollectionRead(
         id=collection.id or 0,
         name=collection.name,
-        query_version=collection.query_version,
+        query_version=(
+            collection.query_version if type(collection.query_version) is int else None
+        ),
         query_valid=error is None,
         query_error=error,
         query=query,
@@ -106,16 +111,16 @@ def _commit(session: Session, operation: str) -> None:
 
 
 def create_smart_collection(
-    name_value: str, query: CatalogSavedQuery, session: Session
+    request: SmartCollectionCreateRequest, session: Session
 ) -> SmartCollectionRead:
-    name, name_key = normalize_collection_name(name_value)
+    name, name_key = normalize_collection_name(request.name)
     _check_name(name_key, None, session)
     now = utc_now()
     collection = SmartCollection(
         name=name,
         name_key=name_key,
-        query_version=1,
-        query_json=query.model_dump_json(exclude_none=True),
+        query_version=request.query_version,
+        query_json=request.query.model_dump_json(exclude_none=True),
         created_at=now,
         updated_at=now,
     )
@@ -147,10 +152,13 @@ def update_smart_collection(
             collection.name = name
             collection.name_key = name_key
             changed = True
-    if request.query is not None:
+    if request.query is not None and request.query_version is not None:
         serialized = request.query.model_dump_json(exclude_none=True)
-        if collection.query_version != 1 or collection.query_json != serialized:
-            collection.query_version = 1
+        if (
+            collection.query_version != request.query_version
+            or collection.query_json != serialized
+        ):
+            collection.query_version = request.query_version
             collection.query_json = serialized
             changed = True
     if changed:

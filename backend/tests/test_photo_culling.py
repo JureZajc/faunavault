@@ -381,7 +381,7 @@ def test_culling_export_backup_rehearsal_and_live_changes(lifecycle, tmp_path_fa
     exported = create_metadata_export(tmp_path / "export", settings, include_csv=True)
     payload = json.loads(exported.json_path.read_text())
     assert (
-        payload["format_version"] == 12
+        payload["format_version"] == 13
         and payload["source_database_schema_version"] == 21
     )
     assert [photo["culling_state"] for photo in payload["photos"]] == [

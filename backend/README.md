@@ -104,7 +104,7 @@ integrity failure, and `2` means usage, configuration, destination, permission,
 disk, or publication failure.
 
 See the operations guide for the user workflow and
-[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the stable v9
+[`METADATA_EXPORT_FORMAT.md`](../docs/METADATA_EXPORT_FORMAT.md) for the v13
 field, encoding, timestamp, null, CSV, and versioning contract. Metadata export
 does not replace a verified backup and is not an import or restore mechanism.
 
@@ -131,7 +131,7 @@ atomically. Bare overrides and importer overrides leave matches unresolved.
 Dismissals preserve both Photo metadata and AI-review timestamps. Trash hides
 pairs; restore reopens them unless dismissed; permanent deletion cascades cleanup.
 Backups/rehearsal support schemas through 18 and preserve this curation state; metadata
-export v9 still excludes duplicate curation state. See Operations for safety and coverage details.
+export v13 still excludes duplicate curation state. See Operations for safety and coverage details.
 
 Uploads retain the authoritative SHA-256 duplicate check. After it finds no
 exact match, the lifecycle service calculates the Pillow-only `phash64-v1`
@@ -325,7 +325,7 @@ use the existing `expected_updated_at` conflict guard. Curation-only edits chang
 `updated_at` while preserving classification status and `reviewed_at`; existing
 queued/running AI stale-result guards continue to apply.
 
-`GET /catalog/photos` and query-v1 Smart Collections accept `favorites_only`,
+`GET /catalog/photos` and both Smart Collection query versions accept `favorites_only`,
 `rating`, `rating_min`, and `unrated`. Rating criteria are mutually exclusive.
 `sort=rating` supports both directions with nulls last; ties use newest added,
 case-insensitive filename ascending, then ID descending. These fields do not
@@ -334,5 +334,30 @@ participate in text search. Map rejects active curation criteria.
 `POST /photos/bulk` adds `set_favorite` with required boolean `is_favorite`,
 `set_rating` with required integer `rating`, and `clear_rating`. Existing
 250-ID limits, atomicity, active-photo checks, and selection semantics apply.
-Export v9 includes JSON/CSV curation values; backup format v1 supports schemas
+Export v13 includes JSON/CSV curation values; backup format v1 supports schemas
 9–18 and validates schema-16 structure even for empty archives.
+
+## Smart Collection queries
+
+`POST /smart-collections` accepts `name`, `query_version` (integer 1 or 2),
+and `query`. `PATCH /smart-collections/{id}` accepts a name alone or the
+version and replacement query together. List saves v2; existing v1 queries still
+load and run, and a rename preserves the stored version and criteria.
+
+V2 accepts every v1 field plus `tags`, `untagged`, `camera_make`, `camera_model`,
+`lens_model`, `unknown_camera`, `unknown_lens`, `metadata_issue`, and
+`bbox_south`, `bbox_north`, `bbox_west`, `bbox_east`. Tags are exact,
+case-sensitive and combined with AND; untagged is exclusive with selected tags.
+Equipment values are trimmed and matched exactly; an empty value selects a
+missing component. Unknown camera cannot be combined with a make or model, and
+unknown lens cannot be combined with a lens model. Areas require all four
+coordinates, support zero and antimeridian crossings, and exclude missing,
+partial, and invalid GPS. Completeness uses the effective Photo capture date and GPS.
+Neither version accepts `event_id`, pagination, layout, or transient fields.
+
+`GET /smart-collections/{id}/photos` uses the same live catalog SQL and pagination
+as `GET /catalog/photos`, with Trash excluded. Invalid stored definitions remain
+visible with a repair message and return 422 for results. The existing
+`query_version` and `query_json` columns store both versions without migration.
+Portable export v13 includes v1 and v2 definitions; backup v1, verification,
+and recovery rehearsal continue to preserve the database definitions.

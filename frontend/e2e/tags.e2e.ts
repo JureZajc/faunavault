@@ -31,7 +31,7 @@ test("Tag Explorer exact filters, chips, history, bulk tags and mobile keyboard 
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/catalog_tag=e2e-tag-birds/);
     await expect(page.getByRole("article")).toHaveCount(2);
-    await expect(page.getByText(/Version-1 Smart Collections cannot save them/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save as Smart Collection" })).toBeEnabled();
     await page.getByRole("link", { name: "Open in Culling", exact: true }).click();
     await expect(page).toHaveURL(/cull\?.*catalog_tag=e2e-tag-birds/);
     await page.getByRole("link", { name: "Back to List", exact: true }).click();

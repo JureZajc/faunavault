@@ -6,6 +6,14 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Smart Collections v2 saves exact tags or untagged, camera and lens criteria,
+  metadata completeness, and geographic bounds alongside existing List filters.
+  Collection details show the criteria, and **Edit criteria** restores them in List.
+  Results follow changes to the archive through the existing catalog query.
+  V1 definitions remain readable and keep their version on rename; saving edits
+  upgrades them to v2. Trip/Event membership remains unsupported. Portable
+  metadata export v13 preserves both query versions. No database migration.
+
 - Nearby Photos below the Photo detail Location map, with 1/5/10/25 km circular
   searches (default 5 km), URL-preserved radius, cancellable requests, nearest
   thumbnail cards, distance/capture labels, local source return links and retry.
@@ -40,8 +48,8 @@ Release entries describe user-visible milestones rather than individual commits.
   single SQLite aggregate. Effective capture timestamps and complete in-range GPS
   pairs (including `(0,0)`) define completeness; Trash and import timestamps do not
   contribute. Linked metrics and a URL-backed List filter reuse individual/bulk
-  metadata editing and verified original restoration, with explicit Map and v1
-  Smart Collection limitations. Wildlife Insights adds undated and missing-GPS
+  metadata editing and verified original restoration, with an explicit Map
+  limitation. Wildlife Insights adds undated and missing-GPS
   drill-downs, retaining capture-year ranges for GPS. No migration or dependency.
 
 - Wildlife Insights v2 adds scoped Top 10 cameras/lenses, identifiable/missing
@@ -57,8 +65,8 @@ Release entries describe user-visible milestones rather than individual commits.
   groups, lens usage percentages, search, alphabetical/most-used sorting and bounded
   SQL aggregation. Exact trimmed, case-sensitive manufacturer/model/lens and unknown
   equipment filters combine with existing List/Culling criteria, preserve URL/history,
-  and support individual removal. Version-1 Smart Collection saves/updates and Map
-  navigation explain unsupported equipment filters. Stored EXIF and originals remain
+  and support individual removal. Map navigation explains unsupported equipment
+  filters. Stored EXIF and originals remain
   unchanged; no equipment inference, external lookup, new tables or migrations.
 
 - Archive-wide Tag Explorer Rename, Merge and Delete actions, including Trash,
@@ -73,8 +81,7 @@ Release entries describe user-visible milestones rather than individual commits.
   filters use AND semantics and support untagged photos, URL/history restoration,
   removable chips and existing bulk tag suggestions. Safe SQLite JSON aggregation
   handles malformed and duplicate legacy tags without new tables or migrations.
-  Version-1 Smart Collection saves are blocked for live tag criteria; unsupported
-  views explain their limitation and retain a link to the filtered List.
+  Unsupported views explain their limitation and retain a link to the filtered List.
 
 - Fullscreen galleries for manual Collections and Trips & Events, sharing the existing
   Species Album/Photo lightbox. Accessible navigation, captions/counts, image/page recovery,

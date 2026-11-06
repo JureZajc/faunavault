@@ -34,7 +34,7 @@ def create_smart_collections_router() -> APIRouter:
     def create(
         request: SmartCollectionCreateRequest, session: SessionDep
     ) -> SmartCollectionRead:
-        return create_smart_collection(request.name, request.query, session)
+        return create_smart_collection(request, session)
 
     @router.get("/{collection_id}", response_model=SmartCollectionRead)
     def get_one(collection_id: int, session: SessionDep) -> SmartCollectionRead:

@@ -69,8 +69,7 @@ Matching is case-sensitive equality after trimming whitespace, including Unicode
 whitespace. No brand inference, spelling normalization, equipment database, EXIF
 rewrite, network identification or classification occurs. A camera is unknown only
 when both make and model are missing; a lens is unknown when its model is missing.
-Equipment criteria work in List and Culling. Version-1 Smart Collection creation
-and updates are blocked with an explanation; Map and other archive navigation
+Equipment criteria work in List, Culling, and v2 Smart Collections. Map and other archive navigation
 explain unsupported equipment criteria and offer the filtered List.
 
 Coverage: `npm test -- __tests__/catalog-gear.test.tsx` and
@@ -168,7 +167,7 @@ or comparison endpoint is needed.
 The upload hook retains one UUID across sequential uploads, duplicate resolution,
 and retries, with separate session lifecycle errors. Session cards fetch bounded
 metadata and live counts; `catalog_import_session_id` restores membership through
-the ordinary List/Culling and version-1 Smart Collection query paths. No new
+the ordinary List/Culling and Smart Collection query paths. No new
 permanent archive navigation item is added. See the
 [Import Sessions guide](../docs/OPERATIONS.md#import-sessions-and-recent-imports-v03).
 
@@ -243,7 +242,8 @@ criteria. List's active geographic indicator removes only the area. List's
 additional filters continue to combine with bounds; unsupported Map filters
 keep their existing explicit explanation/removal flow. Navigation never silently
 removes these filters. Popup detail `returnTo` links preserve bounds and focused
-Photo IDs. Areas are live criteria and cannot be saved in v1 Smart Collections.
+Photo IDs. V2 Smart Collections can save valid areas; zero coordinates and
+antimeridian crossings survive the Edit criteria URL.
 Selection uses Leaflet rectangles and Pointer Events, with pointer capture,
 listener/layer cleanup, handler restoration, and no new drawing dependency.
 The existing abortable Map hook cancels stale requests and displays counts only
@@ -345,12 +345,17 @@ returns lightweight previews in summary/detail responses and accepts
 `PATCH /collections/{id}/cover` with `{ "photo_id": number | null }`.
 
 List offers **Save as Smart Collection** for its current search, filters, and
-sort, including search text still awaiting debounce. The page and grouped
-layout are not saved. `/collections` separates manual groups from live saved
-queries, and `/collections/smart/<id>?page=N` restores a Smart Collection page.
-Its **Edit criteria** action uses the existing List controls with an explicit
-Save changes banner. Smart detail does not expose membership removal or bulk
-selection; Add to Collection continues to list manual Collections only.
+sort, including search text still awaiting debounce. The UI saves v2 definitions,
+which can combine exact tags or untagged, camera/lens or unknown equipment,
+metadata completeness, and valid geographic bounds with the existing filters.
+Trip/Event membership must be cleared before saving. The page, page size, layout,
+and selection are not saved. `/collections` separates manual groups from live
+saved queries, and `/collections/smart/<id>?page=N` restores a result page.
+**Edit criteria** restores the saved filters in List; **Save changes** updates
+that definition and upgrades v1 criteria to v2. Renaming preserves the original
+query version. Results change when photos are added, edited, trashed, or restored.
+Use **Edit geographic coordinates** in the edit banner to apply new bounds.
+Run the focused browser flow with `npm run test:e2e -- smart-collections.e2e.ts`.
 
 ## Upload queue and duplicate review
 
@@ -550,9 +555,7 @@ API validation error. Culling preserves exact filters. Unsupported archive views
 explain the limitation before dropping filters, and a directly opened Map URL
 with tag filters offers the corresponding filtered List.
 
-Version-1 Smart Collections cannot persist dedicated tag/untagged criteria. Create
-and update are blocked while these criteria are active, with a clear-filter
-explanation, and `savedQueryFromState` guards the serialization boundary. Existing
+V2 Smart Collections preserve exact tag text and the untagged criterion. Existing
 bulk add/remove dialogs can suggest tags; selecting a suggestion only fills the
 input and never submits. Comma-containing legacy tags remain selectable as exact
 filters but are omitted from the comma-delimited bulk suggestions.
@@ -624,10 +627,9 @@ reconcile with `GET /catalog/photos?metadata_issue=...`, where accepted values a
 The criterion combines with other live filters using AND semantics; invalid values
 return 422. Culling also retains the criterion. No tables or migrations are added.
 
-Metadata completeness remains a live List/Culling criterion. Version-1 Smart
-Collection queries cannot save it, and Map does not support it. Navigation explains
-these limitations and offers the filtered List or an explicit unfiltered destination;
-clear the criterion before saving a Smart Collection. Direct Map API requests with
+Metadata completeness works in List, Culling, and v2 Smart Collections. Map
+navigation explains its limitation and offers the filtered List or an explicit
+unfiltered destination. Direct Map API requests with
 this criterion return 422. Wildlife Insights links undated Photos only for All Time;
 missing-GPS links retain a selected capture year's date range. Existing Insights
 percentages and comparisons keep their original meanings.

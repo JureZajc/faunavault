@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from app.metadata_types import CullingFilter, PhotoRating
 from app.services.import_sessions import canonical_session_id
@@ -81,8 +89,8 @@ class CatalogSavedQuery(BaseModel):
         return self
 
 
-class CatalogQuery(CatalogSavedQuery):
-    """Live criteria; Events, tags and equipment cannot be saved in v1 Smart queries."""
+class CatalogSavedQueryV2(CatalogSavedQuery):
+    """Persistable live catalog criteria, excluding Trip/Event membership."""
 
     metadata_issue: MetadataIssue | None = None
     bbox_south: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
@@ -91,7 +99,7 @@ class CatalogQuery(CatalogSavedQuery):
     bbox_east: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
 
     @model_validator(mode="after")
-    def validate_bounds(self) -> CatalogQuery:
+    def validate_bounds(self) -> CatalogSavedQueryV2:
         values = (self.bbox_south, self.bbox_north, self.bbox_west, self.bbox_east)
         if any(value is not None for value in values):
             if any(value is None for value in values):
@@ -104,7 +112,6 @@ class CatalogQuery(CatalogSavedQuery):
                 raise ValueError("bounding box must have non-zero longitude width")
         return self
 
-    event_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
     tags: list[str] = Field(default_factory=list, max_length=20)
     untagged: bool = False
     # Empty strings explicitly select a missing component of a partial identity.
@@ -120,7 +127,7 @@ class CatalogQuery(CatalogSavedQuery):
         return value.strip() if value is not None else None
 
     @model_validator(mode="after")
-    def validate_equipment(self) -> CatalogQuery:
+    def validate_equipment(self) -> CatalogSavedQueryV2:
         if self.unknown_camera and (
             self.camera_make is not None or self.camera_model is not None
         ):
@@ -137,7 +144,44 @@ class CatalogQuery(CatalogSavedQuery):
         return normalize_tags(value)
 
     @model_validator(mode="after")
-    def validate_tag_filters(self) -> CatalogQuery:
+    def validate_tag_filters(self) -> CatalogSavedQueryV2:
         if self.tags and self.untagged:
             raise ValueError("tags and untagged cannot be combined")
         return self
+
+
+class CatalogQuery(CatalogSavedQueryV2):
+    """Live criteria; Trip/Event membership is only available in the catalog."""
+
+    event_id: int | None = Field(default=None, ge=1, le=2**63 - 1)
+
+
+def saved_query_model(version: int) -> type[CatalogSavedQuery]:
+    if type(version) is int:
+        if version == 1:
+            return CatalogSavedQuery
+        if version == 2:
+            return CatalogSavedQueryV2
+    raise ValueError(f"Unsupported saved query version {version}.")
+
+
+def _strict_query_version(version: object) -> object:
+    if type(version) is not int:
+        raise ValueError("query_version must be an integer")
+    return version
+
+
+def _validate_versioned_query(value: object, info: ValidationInfo) -> object:
+    version = info.data.get("query_version")
+    if version is None:
+        # PATCH handles missing version/query pairs with its existing API error.
+        return value
+    if isinstance(value, BaseModel):
+        value = value.model_dump()
+    return saved_query_model(version).model_validate(value)
+
+
+SavedQueryVersion = Annotated[Literal[1, 2], BeforeValidator(_strict_query_version)]
+SavedQuery = CatalogSavedQueryV2 | CatalogSavedQuery
+# In request and export models, query_version must be declared before query.
+VersionedSavedQuery = Annotated[SavedQuery, BeforeValidator(_validate_versioned_query)]

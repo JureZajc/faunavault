@@ -25,7 +25,8 @@ Validated on Windows on 2026-10-29, starting from clean commit
   Initial bounds fitting is synchronous so drawing cannot start on a moving map.
   Antimeridian markers and focused Photos use the same displayed world copy as
   their rectangle.
-- Area filters remain live criteria; v1 Smart Collections cannot save them.
+- Area filters remain live criteria. V2 Smart Collections can save them and
+  restore them through **Edit criteria**.
 
 ## Changed files
 

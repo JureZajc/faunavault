@@ -92,8 +92,8 @@ test("URL helpers preserve tags, case, reserved characters and unsupported Smart
   expect(mapListHref(state)).toContain("catalog_tag=Bird+%26+sky");
   expect(tagListHref("Bird & sky")).toBe("/?catalog_tag=Bird+%26+sky");
   expect(parseCatalogState(new URLSearchParams("catalog_tag=%EF%BB%BFbirds&catalog_tag=%C2%85birds%C2%85")).tags).toEqual(["\uFEFFbirds", "birds"]);
-  expect(() => savedQueryFromState(state, "forest")).toThrow(/Clear the tag filters/);
-  expect(() => savedQueryFromState({ ...DEFAULT_CATALOG_STATE, untagged: true }, "")).toThrow(/live catalog filters/);
+  expect(savedQueryFromState(state, "forest")).toMatchObject({ tags: state.tags, search: "forest" });
+  expect(savedQueryFromState({ ...DEFAULT_CATALOG_STATE, untagged: true }, "").untagged).toBe(true);
 });
 
 test("navigation explains unsupported views and retains tag criteria in List and Culling links", async () => {

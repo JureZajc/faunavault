@@ -111,9 +111,9 @@ test("URL roundtrip preserves empty partial components, conflicts, and unsupport
   expect(equipmentQuery(restored)).toEqual(equipmentQuery(state));
   expect(mapListHref(restored)).toContain("catalog_camera_make=");
   expect(gearListHref({ camera_make: "", camera_model: "Z9" })).toContain("catalog_camera_make=&catalog_camera_model=Z9");
-  expect(() => savedQueryFromState(restored, "")).toThrow(/Equipment filters cannot be saved/);
+  expect(savedQueryFromState(restored, "").camera_make).toBe("");
   for (const criteria of [{ unknown_camera: true }, { unknown_lens: true }, { camera_make: "" }, { camera_model: "Z9" }, { lens_model: "RF" }]) {
-    expect(() => savedQueryFromState({ ...DEFAULT_CATALOG_STATE, ...criteria }, "")).toThrow(/version-1 Smart Collections/);
+    expect(savedQueryFromState({ ...DEFAULT_CATALOG_STATE, ...criteria }, "")).toMatchObject(criteria);
   }
   expect(cameraLabel({ camera_make: "Canon", camera_model: "CANON EOS R5" })).toBe("CANON EOS R5");
 });

@@ -98,12 +98,11 @@ test("URL persistence, reload, history and clearing preserve other criteria and 
   expect(window.location.search).toBe("");
 });
 
-test("List toolbar applies metadata criteria and visibly blocks Smart Collection saves and Map", async () => {
+test("List toolbar applies metadata criteria and permits Smart Collection updates while Map stays unavailable", async () => {
   window.history.replaceState(null, "", "/?catalog_metadata_issue=missing_gps&smart_edit=7");
   render(<Home />);
   await screen.findByText("No matching records");
-  expect(screen.getByText(/Metadata completeness is a live List filter/)).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled).toBe(true);
+  await waitFor(() => expect(screen.getByRole<HTMLButtonElement>("button", { name: "Save changes" }).disabled).toBe(false));
   expect((screen.getByRole("button", { name: "View on Map" }) as HTMLButtonElement).disabled).toBe(true);
   await userEvent.selectOptions(screen.getByLabelText("Metadata completeness"), "missing_capture");
   await waitFor(() => expect(api.getCatalogPhotos).toHaveBeenLastCalledWith(expect.objectContaining({ metadata_issue: "missing_capture", page: 1 }), expect.any(AbortSignal)));
@@ -126,12 +125,12 @@ test("unsupported navigation keeps metadata criteria available in List and Culli
   expect(api.getPhotoMapPoints).not.toHaveBeenCalled();
 });
 
-test("live filter roundtrips and rejects saved queries; API serializes it for List and Culling", async () => {
+test("metadata completeness roundtrips and is serialized for List, Culling and saved queries", async () => {
   for (const issue of Object.keys(metadataIssueLabels) as MetadataIssue[]) {
     const state = { ...DEFAULT_CATALOG_STATE, metadata_issue: issue };
     expect(parseCatalogState(writeCatalogState(new URLSearchParams(), state)).metadata_issue).toBe(issue);
     expect(mapListHref(state)).toContain(`catalog_metadata_issue=${issue}`);
-    expect(() => savedQueryFromState(state, "")).toThrow(/Metadata completeness filters cannot be saved/);
+    expect(savedQueryFromState(state, "").metadata_issue).toBe(issue);
   }
   expect(parseCatalogState(new URLSearchParams("catalog_metadata_issue=invalid")).metadata_issue).toBeUndefined();
   const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });

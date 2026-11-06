@@ -333,16 +333,26 @@ def test_current_schema_backup_rehearsal_preserves_collections(archive):
 
 def test_current_backup_verifies_and_rehearses_smart_definitions(archive):
     settings, destination, _ = archive
+    definitions = [
+        ("Birds 2026", 1, '{"category":"bird","sort":"captured_at","order":"desc"}'),
+        (
+            "Birds near the dateline",
+            2,
+            '{"tags":["Birds"],"camera_model":"","metadata_issue":"complete",'
+            '"bbox_south":0,"bbox_north":10,"bbox_west":170,"bbox_east":-170}',
+        ),
+    ]
     engine = create_database_engine(settings)
     with Session(engine) as session:
-        session.add(
-            SmartCollection(
-                name="Birds 2026",
-                name_key="birds 2026",
-                query_version=1,
-                query_json='{"category":"bird","sort":"captured_at","order":"desc"}',
+        for name, version, query_json in definitions:
+            session.add(
+                SmartCollection(
+                    name=name,
+                    name_key=name.lower(),
+                    query_version=version,
+                    query_json=query_json,
+                )
             )
-        )
         session.commit()
     engine.dispose()
     backup_path, result = create_backup(destination, settings)
@@ -360,11 +370,10 @@ def test_current_backup_verifies_and_rehearses_smart_definitions(archive):
         )
     )
     with Session(restored) as session:
-        item = session.exec(select(SmartCollection)).one()
-        assert item.name == "Birds 2026"
-        assert (
-            item.query_json == '{"category":"bird","sort":"captured_at","order":"desc"}'
-        )
+        items = session.exec(select(SmartCollection).order_by(SmartCollection.id))
+        assert [
+            (item.name, item.query_version, item.query_json) for item in items
+        ] == definitions
     restored.dispose()
 
 
