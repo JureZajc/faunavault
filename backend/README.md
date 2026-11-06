@@ -103,6 +103,33 @@ No request contacts GBIF or changes an Animal, Taxon, or Photo. Backup v1
 verifies and rehearses schemas 9–23. Portable export v15 includes sightings and
 all membership pairs in JSON, including links to Trash.
 
+### Wildlife Sightings Map API
+
+`GET /sightings/map` accepts inclusive field-local `date_from` and `date_to`
+(`YYYY-MM-DD`), `taxon_id`, and optional `bbox_south`, `bbox_north`, `bbox_west`,
+and `bbox_east`. Supply all four bounds together. West greater than East wraps
+across the antimeridian. Invalid dates, reversed date ranges, incomplete bounds,
+and out-of-range or nonfinite coordinates return HTTP 422.
+
+- `points` contains one entry per returned Sighting with valid coordinates, with
+  `id`, `latitude`, `longitude`, `observed_at`, `subject_label`, `location_label`,
+  `taxon_id`, `common_name`, `scientific_name`, and nullable `thumbnail_filename`.
+- `total_matching` includes located Sightings in the area and all unlocated
+  Sightings matching the date and species filters. `without_location_count`
+  reports the latter. Subtract it from `total_matching` for the mapped count.
+- `truncated` indicates more than 2,000 mapped encounters. Points are ordered
+  by descending observation time, then descending ID. An optional `focus` Sighting
+  ID can replace the last returned point if it matches the filters and would
+  otherwise fall beyond the cap. Counts still cover the full match set.
+
+The read uses one SQLite snapshot, projects only map fields, and retrieves one
+thumbnail filename per point in batches of 500 using the existing membership
+key. The lowest-ID active linked photo with a thumbnail supplies the preview.
+Trash and Restore affect preview eligibility. Encounters with valid Sighting
+coordinates stay mapped through unlinking and permanent photo deletion. Edits
+to Sighting GPS are visible on the next fetch. Schema 23, backup v1, and portable
+metadata export v15 already store the source data.
+
 ### Wildlife Life List API
 
 `GET /sightings/life-list` reads manually recorded Sightings joined to local

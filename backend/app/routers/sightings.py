@@ -6,10 +6,12 @@ from sqlmodel import Session
 
 from app.db import SessionDep
 from app.life_list_schemas import LifeListMode, LifeListOrder, LifeListPage
-from app.services import life_list, sightings
+from app.services import life_list, sighting_map, sightings
 from app.sighting_schemas import (
     SightingCreate,
     SightingJournalPage,
+    SightingMapQuery,
+    SightingMapRead,
     SightingMembership,
     SightingOrder,
     SightingPage,
@@ -62,6 +64,10 @@ def create_sightings_router() -> APIRouter:
         session: SessionDep, search: str = Query("", max_length=200), page: Page = 1
     ):
         return sightings.list_taxa(session, search=search, page=page)
+
+    @router.get("/sightings/map", response_model=SightingMapRead)
+    def map_index(session: ReadSession, query: Annotated[SightingMapQuery, Query()]):
+        return sighting_map.list_map_points(session, query)
 
     @router.get("/sightings/life-list", response_model=LifeListPage)
     def life_list_index(

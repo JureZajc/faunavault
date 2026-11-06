@@ -21,13 +21,13 @@ def valid_coordinates(latitude, longitude) -> bool:
     )
 
 
-def bounding_box_condition(south, north, west, east):
+def bounding_box_condition(south, north, west, east, *, model=Photo):
     return and_(
-        gps_present(),
-        Photo.latitude.between(south, north),
-        Photo.longitude.between(west, east)
+        gps_present(model),
+        model.latitude.between(south, north),
+        model.longitude.between(west, east)
         if west < east
-        else or_(Photo.longitude >= west, Photo.longitude <= east),
+        else or_(model.longitude >= west, model.longitude <= east),
     )
 
 
