@@ -41,6 +41,25 @@ select and submit the photos you want to link. **Remove from sighting** and
 and shows them in the Trash count; Restore brings those photos back into the
 gallery. Photo detail links back to its recorded sightings.
 
+## Wildlife Life List
+
+Open **Life List** in Archive navigation or from the **Sightings** Journal. The
+Journal shows individual encounters, the Life List summarizes those encounters
+by verified local taxon, and Species Albums group verified archive photos.
+Species and subspecies with different taxon IDs each get their own entry.
+
+Use **Observation year** for field-local years. **Seen** includes taxa observed
+at least once in the year, while **First recorded this year** includes taxa whose
+earliest-ever Sighting falls in that year. Search by name and sort by name,
+first observation, or all-time Sighting count. Filters and page are stored in
+the URL for reload and browser Back/Forward.
+
+Cards show all-time encounter counts and link to the first and latest
+Sightings. Each Sighting counts once regardless of how many photos it links.
+The scoped Sighting total follows the year, mode, and name search across all
+pages. Edits and deletions update the next fetch. Thumbnails use active local
+photos, and the card shows a placeholder if none are available.
+
 ## Nearby Photos
 
 Photo details with valid effective GPS show **Nearby Photos** below Location map.

@@ -56,6 +56,13 @@ source-based release is **v0.2.0**. [Release notes](CHANGELOG.md) ·
   notes, and an optional species from local verified taxonomy. Filter encounters
   by date or species, and follow sighting links from Photo detail.
   [Sightings guide](docs/OPERATIONS.md#wildlife-sightings-journal).
+- **Wildlife Life List** at `/life-list` groups recorded Sightings by verified
+  local taxon. Species and subspecies each count by their own taxon ID. Browse
+  all-time first and latest encounters, or choose a field-local year to see
+  which taxa were observed or first recorded that year. The list reflects
+  Sighting edits and deletions on the next fetch. Species Albums group archive
+  photos, while the Life List counts the encounters recorded in the Journal.
+  [Life List guide](docs/OPERATIONS.md#wildlife-life-list).
 - **Daily Photography Calendar** within Timeline: choose Calendar and a capture
   year for a Monday-first, twelve-month overview, daily photo activity, active-day
   totals, average Photos per active day, and a linked most active day. Click an

@@ -24,6 +24,7 @@ export default function SightingJournal() {
       <header>
         <h1 className="text-3xl font-semibold">Wildlife Sightings Journal</h1>
         <p className="mt-2 text-stone-600">Record encounters in the field and link the photos that document each one.</p>
+        <Link href="/life-list" className="inline-flex min-h-11 items-center font-semibold text-emerald-900 underline">Explore your Life List</Link>
       </header>
       <ArchiveNavigation active="sightings" />
       <section aria-label="Sighting filters" className="space-y-3 rounded-lg border border-stone-200 bg-white p-4">

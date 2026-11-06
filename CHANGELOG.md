@@ -6,6 +6,12 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Wildlife Life List groups manually recorded Sightings by verified local species
+  or subspecies. Browse first and latest encounters, all-time counts, and taxa
+  seen or first recorded in a field-local observation year. Encounter totals
+  follow Sighting edits and deletions, and active local thumbnails follow Trash
+  and Restore.
+
 - Wildlife Sightings Journal records individual encounters from explicitly
   selected photos. Browse by date or verified local species, edit observation
   metadata, and follow encounter links from Photo detail. Trash preserves

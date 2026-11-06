@@ -47,7 +47,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
     await page.goto("/events");
     await expect(page.getByRole("navigation", { name: "Archive views" }).getByRole("link")).toHaveText([
       "List", "Gear", "Tags", "Timeline", "Metadata Health", "Insights", "Map",
-      "Albums", "Collections", "Trips & Events", "Sightings", "Review", "Culling", "Duplicates", "Trash",
+      "Albums", "Collections", "Trips & Events", "Sightings", "Life List", "Review", "Culling", "Duplicates", "Trash",
     ]);
     await page.getByRole("button", { name: "Create Trip/Event" }).click();
     const form = page.getByRole("dialog");
@@ -61,6 +61,7 @@ test("Trips & Events explicit membership, Culling and responsive navigation", as
     await page.getByRole("link", { name: "Add Photos", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`add_to_event=${eventId}`));
     await page.getByRole("searchbox", { name: "Search", exact: true }).fill("faunavault-e2e-trip-");
+    await expect(page).toHaveURL(/catalog_search=faunavault-e2e-trip-/);
     await expect(catalogCard(page, filenames[0])).toHaveCount(1);
     await page.getByRole("button", { name: "Select Photos to add" }).click();
     for (const id of ids) await page.getByRole("checkbox", { name: new RegExp(`Select photo ${id}:`) }).check();

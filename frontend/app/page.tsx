@@ -351,20 +351,7 @@ function HomeContent() {
             active={query.homeView}
             catalogState={query.catalogState}
             onNavigate={(section, event) => {
-              if (
-                section === "gear" ||
-                section === "tags" ||
-                section === "events" ||
-                section === "sightings" ||
-                section === "collections" ||
-                section === "review" ||
-                section === "cull" ||
-                section === "duplicates" ||
-                section === "map" ||
-                section === "metadata-health" ||
-                section === "insights" ||
-                section === "timeline"
-              ) {
+              if (section !== "list" && section !== "album" && section !== "trash") {
                 selection.reset();
                 return;
               }
