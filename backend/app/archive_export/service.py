@@ -25,10 +25,13 @@ from app.archive_export.schema import (
     ExportCounts,
     ImportSessionExport,
     PhotoExport,
+    SightingExport,
+    SightingPhotoExport,
     SmartCollectionExport,
     TaxonExport,
 )
 from app.archive_integrity import (
+    SIGHTING_COLUMNS,
     ArchiveIntegrityError,
     FileIdentity,
     contains_link_or_junction,
@@ -42,6 +45,7 @@ from app.archive_integrity import (
     validate_event_covers,
     validate_event_tables,
     validate_flat_filename,
+    validate_sighting_tables,
 )
 from app.config import Settings
 from app.migrations import LATEST_SCHEMA_VERSION
@@ -197,6 +201,8 @@ class SnapshotData:
     import_sessions: list[ImportSessionExport]
     archive_events: list[ArchiveEventExport]
     archive_event_photos: list[ArchiveEventPhotoExport]
+    sightings: list[SightingExport]
+    sighting_photos: list[SightingPhotoExport]
 
 
 @dataclass(frozen=True)
@@ -704,6 +710,20 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
                 "SELECT event_id, photo_id FROM archive_event_photo ORDER BY event_id, photo_id"
             )
         ]
+        sighting_rows, sighting_memberships = validate_sighting_tables(connection)
+        sightings = []
+        for row in sighting_rows:
+            fields = dict(zip(SIGHTING_COLUMNS, row, strict=True))
+            fields["observed_at"] = _capture_timestamp(
+                fields["observed_at"], "sighting.observed_at"
+            )
+            for name in ("created_at", "updated_at"):
+                fields[name] = _timestamp(fields[name], f"sighting.{name}")
+            sightings.append(SightingExport(**fields))
+        sighting_photos = [
+            SightingPhotoExport(sighting_id=sighting_id, photo_id=photo_id)
+            for sighting_id, photo_id in sighting_memberships
+        ]
         return SnapshotData(
             migrations[-1],
             photos,
@@ -715,6 +735,8 @@ def _read_snapshot(database_path: Path) -> SnapshotData:
             import_sessions,
             archive_events,
             archive_event_photos,
+            sightings,
+            sighting_photos,
         )
     except ArchiveExportIntegrityError:
         raise
@@ -858,6 +880,8 @@ def _build_document(
             import_sessions=len(snapshot.import_sessions),
             archive_events=len(snapshot.archive_events),
             archive_event_memberships=len(snapshot.archive_event_photos),
+            sightings=len(snapshot.sightings),
+            sighting_memberships=len(snapshot.sighting_photos),
             original_bytes=sum(photo.original_size_bytes for photo in photos),
         ),
         photos=photos,
@@ -869,6 +893,8 @@ def _build_document(
         import_sessions=snapshot.import_sessions,
         archive_events=snapshot.archive_events,
         archive_event_photos=snapshot.archive_event_photos,
+        sightings=snapshot.sightings,
+        sighting_photos=snapshot.sighting_photos,
     )
 
 

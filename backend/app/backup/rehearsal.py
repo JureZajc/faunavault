@@ -22,6 +22,7 @@ from app.archive_integrity import (
     read_duplicate_signature,
     read_event_signature,
     read_import_session_signature,
+    read_sighting_signature,
     validate_flat_filename,
 )
 from app.backup.integrity import copy_and_hash_stable
@@ -168,6 +169,8 @@ class RecoverySnapshot:
     import_sessions: tuple[tuple[object, ...], ...] = ()
     archive_events: tuple[tuple, ...] = ()
     archive_event_memberships: tuple[tuple, ...] = ()
+    sightings: tuple[tuple, ...] = ()
+    sighting_memberships: tuple[tuple, ...] = ()
     duplicate_pairs: str = hashlib.sha256(b"").hexdigest()
     duplicate_scans: str = hashlib.sha256(b"").hexdigest()
 
@@ -193,6 +196,8 @@ class RehearsalResult:
     warnings: tuple[str, ...]
     archive_events: int = 0
     archive_event_memberships: int = 0
+    sightings: int = 0
+    sighting_memberships: int = 0
 
 
 def _is_within(path: Path, parent: Path) -> bool:
@@ -451,6 +456,10 @@ def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
 
 
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
+    if schema_version == 23:
+        base = _read_schema_21_snapshot(database_path, schema_version=schema_version)
+        sightings, memberships = read_sighting_signature(database_path)
+        return replace(base, sightings=sightings, sighting_memberships=memberships)
     if schema_version in {21, 22}:
         return _read_schema_21_snapshot(database_path, schema_version=schema_version)
     if schema_version == 20:
@@ -727,6 +736,13 @@ def _compare_recovery_snapshots(
         )
     if source.import_sessions != current.import_sessions:
         raise ArchiveIntegrityError("Import Session metadata changed during rehearsal")
+    if (source.sightings, source.sighting_memberships) != (
+        current.sightings,
+        current.sighting_memberships,
+    ):
+        raise ArchiveIntegrityError(
+            "Sighting metadata or memberships changed during rehearsal"
+        )
     if source.smart_collections != current.smart_collections:
         raise ArchiveIntegrityError(
             "Smart Collection metadata changed during rehearsal"
@@ -921,6 +937,8 @@ def rehearse_backup(backup_path: Path, target: Path) -> RehearsalResult:
             taxa=inventory.taxa,
             archive_events=inventory.archive_events,
             archive_event_memberships=inventory.archive_event_memberships,
+            sightings=inventory.sightings,
+            sighting_memberships=inventory.sighting_memberships,
             collections=inventory.collections,
             collection_memberships=inventory.collection_memberships,
             albums=album_count,

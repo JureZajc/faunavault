@@ -83,6 +83,8 @@ class ArchiveCounts(StrictModel):
     trashed_photos: int = Field(ge=0)
     animals: int = Field(ge=0)
     taxa: int = Field(ge=0)
+    sightings: int | None = Field(default=None, ge=0)
+    sighting_memberships: int | None = Field(default=None, ge=0)
     classification_jobs: ClassificationJobCounts
     images: ImageCounts
     payload_files: int = Field(ge=1)

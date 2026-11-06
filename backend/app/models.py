@@ -386,6 +386,61 @@ def validate_capture_metadata(_mapper, _connection, photo: Photo) -> None:
             raise ValueError("capture offset requires captured_at and must be in range")
 
 
+class Sighting(SQLModel, table=True):
+    __table_args__ = (
+        CheckConstraint("id > 0"),
+        CheckConstraint("taxon_id IS NULL OR taxon_id > 0"),
+        CheckConstraint(
+            "(latitude IS NULL AND longitude IS NULL) OR "
+            "(latitude IS NOT NULL AND longitude IS NOT NULL AND "
+            "latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180)"
+        ),
+        CheckConstraint(
+            "observed_at_offset_minutes IS NULL OR "
+            "(typeof(observed_at_offset_minutes) = 'integer' AND "
+            "observed_at_offset_minutes BETWEEN -1439 AND 1439)"
+        ),
+        *(
+            CheckConstraint(f"{name} IS NULL OR length({name}) BETWEEN 1 AND {limit}")
+            for name, limit in (
+                ("subject_label", 100),
+                ("location_label", 200),
+                ("notes", 2000),
+            )
+        ),
+        Index("ix_sighting_observed_at_id", "observed_at", "id"),
+        Index("ix_sighting_taxon_observed_at_id", "taxon_id", "observed_at", "id"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    subject_label: str | None = None
+    taxon_id: int | None = Field(
+        default=None, foreign_key="taxon.id", ondelete="SET NULL"
+    )
+    observed_at: datetime
+    observed_at_offset_minutes: int | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    location_label: str | None = None
+    notes: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class SightingPhoto(SQLModel, table=True):
+    __tablename__ = "sighting_photo"
+    __table_args__ = (
+        CheckConstraint("sighting_id > 0 AND photo_id > 0"),
+        Index("ix_sighting_photo_photo_sighting", "photo_id", "sighting_id"),
+    )
+
+    sighting_id: int = Field(
+        primary_key=True, foreign_key="sighting.id", ondelete="CASCADE"
+    )
+    photo_id: int = Field(primary_key=True, foreign_key="photo.id", ondelete="CASCADE")
+
+
 class ArchiveEvent(SQLModel, table=True):
     __tablename__ = "archive_event"
     __table_args__ = (

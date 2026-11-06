@@ -46,6 +46,9 @@ def _print_result(result: ExportResult) -> None:
     print(
         f"Trips/Events: {counts.archive_events} with {counts.archive_event_memberships} membership(s)"
     )
+    print(
+        f"Sightings: {counts.sightings} with {counts.sighting_memberships} membership(s)"
+    )
     print(f"Original bytes inventoried: {_format_size(counts.original_bytes)}")
     if result.missing_stored_identity_photos:
         print(

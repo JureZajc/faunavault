@@ -11,6 +11,7 @@ from app.archive_integrity import (
     read_duplicate_signature,
     read_event_signature,
     read_import_session_signature,
+    read_sighting_signature,
 )
 from app.backup.integrity import (
     BackupError,
@@ -176,6 +177,14 @@ def create_backup(
         expected_imports = read_import_session_signature(snapshot)
         expected_events = read_event_signature(snapshot)
         expected_collections = read_collection_signature(snapshot)
+        expected_sightings = read_sighting_signature(snapshot)
+
+        def check_live_sightings() -> None:
+            if read_sighting_signature(database) != expected_sightings:
+                raise BackupError(
+                    "Live Sighting metadata or memberships changed during backup creation"
+                )
+
         source_paths = _source_paths(inventory, variants)
 
         warnings: list[SourceWarning] = []
@@ -188,6 +197,7 @@ def create_backup(
             warnings.extend(scan_orphans(directory, expected, role))
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed after the SQLite snapshot")
+        check_live_sightings()
         if read_collection_signature(database) != expected_collections:
             raise BackupError(
                 "Live Collection metadata or memberships changed during backup creation"
@@ -272,6 +282,7 @@ def create_backup(
             )
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed while files were copied")
+        check_live_sightings()
         if read_collection_signature(database) != expected_collections:
             raise BackupError(
                 "Live Collection metadata or memberships changed during backup creation"
@@ -309,6 +320,8 @@ def create_backup(
                 trashed_photos=inventory.trashed_photos,
                 animals=inventory.animals,
                 taxa=inventory.taxa,
+                sightings=inventory.sightings,
+                sighting_memberships=inventory.sighting_memberships,
                 classification_jobs=ClassificationJobCounts(
                     total=sum(jobs.values()), **jobs
                 ),
@@ -335,6 +348,7 @@ def create_backup(
         _ensure_lifecycle_quiet(settings)
         if read_photo_signature(database) != expected_signature:
             raise BackupError("Live photo inventory changed before publication")
+        check_live_sightings()
         if read_collection_signature(database) != expected_collections:
             raise BackupError(
                 "Live Collection metadata or memberships changed during backup creation"

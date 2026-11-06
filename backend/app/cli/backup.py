@@ -70,6 +70,9 @@ def _print_rehearsal(result: RehearsalResult) -> None:
     print(
         f"Trips/Events: {result.archive_events} with {result.archive_event_memberships} membership(s)"
     )
+    print(
+        f"Sightings: {result.sightings} with {result.sighting_memberships} membership(s)"
+    )
     print(f"Albums: {result.albums}")
     print(
         "Classification recovery: "

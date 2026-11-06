@@ -115,6 +115,8 @@ class DatabaseInventory:
     smart_collections: int = 0
     archive_events: int = 0
     archive_event_memberships: int = 0
+    sightings: int = 0
+    sighting_memberships: int = 0
 
     @property
     def active_photos(self) -> int:
@@ -1065,6 +1067,138 @@ def read_collection_signature(path: Path) -> tuple[tuple, tuple]:
         connection.close()
 
 
+SIGHTING_COLUMNS = (
+    "id",
+    "subject_label",
+    "taxon_id",
+    "observed_at",
+    "observed_at_offset_minutes",
+    "latitude",
+    "longitude",
+    "location_label",
+    "notes",
+    "created_at",
+    "updated_at",
+)
+
+
+def validate_sighting_tables(connection: sqlite3.Connection) -> tuple[tuple, tuple]:
+    from app.sighting_schemas import SPECIES_RANKS, SightingFields
+
+    for table, required, primary_key in (
+        ("sighting", SIGHTING_COLUMNS, ["id"]),
+        ("sighting_photo", ("sighting_id", "photo_id"), ["sighting_id", "photo_id"]),
+    ):
+        columns = {
+            row[1]: row for row in connection.execute(f"PRAGMA table_info({table})")
+        }
+        keys = sorted((row[5], name) for name, row in columns.items() if row[5])
+        if not set(required) <= columns.keys() or keys != list(
+            enumerate(primary_key, 1)
+        ):
+            raise ArchiveIntegrityError(f"Invalid {table} table structure")
+        if any(
+            not columns[name][3]
+            for name in (
+                (*primary_key, "observed_at", "created_at", "updated_at")
+                if table == "sighting"
+                else primary_key
+            )
+        ):
+            raise ArchiveIntegrityError(f"Missing {table} required column constraint")
+        expected_fks = (
+            {("taxon", "taxon_id", "id", "SET NULL")}
+            if table == "sighting"
+            else {
+                ("sighting", "sighting_id", "id", "CASCADE"),
+                ("photo", "photo_id", "id", "CASCADE"),
+            }
+        )
+        foreign_keys = {
+            (*row[2:5], row[6])
+            for row in connection.execute(f"PRAGMA foreign_key_list({table})")
+        }
+        if foreign_keys != expected_fks:
+            raise ArchiveIntegrityError(f"Invalid {table} foreign keys")
+        required_indexes = (
+            {("observed_at", "id"), ("taxon_id", "observed_at", "id")}
+            if table == "sighting"
+            else {("photo_id", "sighting_id")}
+        )
+        indexes = {
+            tuple(
+                row[2]
+                for row in connection.execute(
+                    "SELECT * FROM pragma_index_info(?)", (index[1],)
+                )
+            )
+            for index in connection.execute(f"PRAGMA index_list({table})")
+            if not index[4]
+        }
+        if not required_indexes <= indexes:
+            raise ArchiveIntegrityError(f"Missing {table} indexes")
+
+    records = tuple(
+        tuple(row)
+        for row in connection.execute(
+            f"SELECT {', '.join(SIGHTING_COLUMNS)} FROM sighting ORDER BY id"
+        )
+    )
+    memberships = tuple(
+        tuple(row)
+        for row in connection.execute(
+            "SELECT sighting_id, photo_id FROM sighting_photo ORDER BY sighting_id, photo_id"
+        )
+    )
+    for row in records:
+        try:
+            values = dict(zip(SIGHTING_COLUMNS, row, strict=True))
+            if type(values["id"]) is not int or values["id"] < 1:
+                raise ValueError("invalid sighting ID")
+            fields = {name: values[name] for name in SightingFields.model_fields}
+            fields["observed_at"] = fields["observed_at"].replace(" ", "T", 1)
+            validated = SightingFields.model_validate(fields)
+            if validated.model_dump(exclude={"observed_at"}) != {
+                name: value for name, value in fields.items() if name != "observed_at"
+            }:
+                raise ValueError("noncanonical sighting metadata")
+            for name in ("created_at", "updated_at"):
+                datetime.fromisoformat(values[name])
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ArchiveIntegrityError(f"Invalid Sighting metadata: {exc}") from exc
+    if any(
+        type(value) is not int or value < 1 for pair in memberships for value in pair
+    ) or any(
+        connection.execute(f"PRAGMA foreign_key_check({table})").fetchone()
+        for table in ("sighting", "sighting_photo")
+    ):
+        raise ArchiveIntegrityError("Invalid Sighting references")
+    if connection.execute(
+        "SELECT 1 FROM sighting JOIN taxon ON taxon.id = sighting.taxon_id "
+        "WHERE upper(taxon.taxonomic_rank) NOT IN (?, ?) LIMIT 1",
+        SPECIES_RANKS,
+    ).fetchone():
+        raise ArchiveIntegrityError("Sighting taxon must be a species or subspecies")
+    return records, memberships
+
+
+def read_sighting_signature(path: Path) -> tuple[tuple, tuple]:
+    connection = open_read_only_database(path)
+    try:
+        connection.execute("BEGIN")
+        return validate_sighting_tables(connection)
+    finally:
+        connection.close()
+
+
+def _inspect_schema_23(connection, migrations: list[int]) -> DatabaseInventory:
+    base = _inspect_schema_22(connection, migrations)
+    sightings, memberships = validate_sighting_tables(connection)
+    return replace(
+        base, sightings=len(sightings), sighting_memberships=len(memberships)
+    )
+
+
 SCHEMA_INVENTORY_READERS = {
     9: _inspect_schema_9,
     10: _inspect_schema_10,
@@ -1080,6 +1214,7 @@ SCHEMA_INVENTORY_READERS = {
     20: _inspect_schema_20,
     21: _inspect_schema_21,
     22: _inspect_schema_22,
+    23: _inspect_schema_23,
 }
 
 
