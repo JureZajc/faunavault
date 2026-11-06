@@ -8,6 +8,7 @@ import {
   EquipmentQuery,
   GearCamera,
 } from "./api";
+import { hasShootingRanges, parseShootingRangeValue, SHOOTING_RANGE_KEYS } from "./shooting-settings";
 import { BOUND_KEYS, hasArea, parseCoordinate } from "./geographic-bounds";
 
 export type CatalogLayout = "flat" | "grouped";
@@ -77,7 +78,7 @@ export const REJECTED_PHOTOS_HREF = "/?catalog_culling_state=reject";
 
 export function hasAdditionalRejectedFilters(state: CatalogQuery) {
   return Boolean(
-    hasArea(state) || state.metadata_issue || hasEquipmentFilters(state) || hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
+    hasArea(state) || hasShootingRanges(state) || state.metadata_issue || hasEquipmentFilters(state) || hasTagFilters(state) || state.event_id || state.import_session_id || state.search || state.status || state.category || state.uncategorized ||
     state.taxon_id || state.taken_from || state.taken_to || state.favorites_only ||
     state.rating || state.rating_min || state.unrated,
   );
@@ -170,6 +171,11 @@ export function parseCatalogState(params: URLSearchParams): CatalogState {
   return {
     ...Object.fromEntries(BOUND_KEYS.filter((key) => params.has(`catalog_${key}`)).map((key) => [key,
       params.getAll(`catalog_${key}`).length === 1 ? parseCoordinate(params.get(`catalog_${key}`)!) : NaN])),
+    ...Object.fromEntries(SHOOTING_RANGE_KEYS.flatMap((key) => {
+      const values = params.getAll(`catalog_${key}`);
+      if (!values.length) return [];
+      return [[key, values.length === 1 ? parseShootingRangeValue(key, values[0]) : NaN]];
+    })),
     metadata_issue: parseMetadataIssue(params.get("catalog_metadata_issue")),
     camera_make: params.has("catalog_camera_make") ? trimTag(params.get("catalog_camera_make")!) : undefined,
     camera_model: params.has("catalog_camera_model") ? trimTag(params.get("catalog_camera_model")!) : undefined,
@@ -205,7 +211,7 @@ export function writeCatalogState(
   state: CatalogState,
 ) {
   const params = new URLSearchParams(current.toString());
-  for (const key of BOUND_KEYS) {
+  for (const key of [...BOUND_KEYS, ...SHOOTING_RANGE_KEYS]) {
     if (state[key] !== undefined) params.set(`catalog_${key}`, String(state[key]));
     else params.delete(`catalog_${key}`);
   }

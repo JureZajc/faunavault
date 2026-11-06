@@ -6,6 +6,14 @@ Release entries describe user-visible milestones rather than individual commits.
 
 ### Added
 
+- Read-only EXIF Shooting Settings on Photo details and inclusive, URL-backed
+  List ranges for aperture, shutter speed, ISO, and focal length. Browser uploads
+  and folder imports extract these settings where available. An opt-in maintenance
+  backfill fills missing values on active and trashed Photos. Smart Collection
+  saves require clearing shooting ranges. Schema 22 adds nullable fields, metadata
+  export v14 includes them in JSON and CSV, and backup v1 verifies and rehearses
+  recovery for schemas 9–22.
+
 - Smart Collections v2 saves exact tags or untagged, camera and lens criteria,
   metadata completeness, and geographic bounds alongside existing List filters.
   Collection details show the criteria, and **Edit criteria** restores them in List.

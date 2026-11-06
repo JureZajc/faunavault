@@ -189,7 +189,7 @@ recoverability failure and exit `2` means usage, target, permission, disk, or
 other setup failure.
 
 Backup format v1 and database recovery versions are independent. This version
-explicitly supports schema 9 through schema 18 backups. Schema-9
+supports schema 9 through schema 22 backups. Schema-9
 rehearsals migrate to empty Collection tables; schema-10 rehearsals compare
 Collection metadata and membership exactly; schema-11 rehearsals additionally
 compare all persisted Photo capture metadata. Schema-12 adds review timestamps;
@@ -235,6 +235,18 @@ Schema 15 retains extracted capture/GPS separately from effective values and
 marks manual overrides, including intentional null clears. Backfill can fill
 missing retained extraction but cannot overwrite overridden effective groups.
 Conditional writes skip stale rows and advance `updated_at` when applied.
+Individual `PATCH /photos/{id}` capture/GPS updates require complete groups and
+`expected_updated_at`; source fields/flags are read-only. The same PATCH accepts
+`restore_original_metadata: true` to re-read both groups from a trusted original,
+without writing original bytes. Capture-only edits preserve AI review state.
+Portable format v14 exports effective values, source values, and override markers. See
+[capture editing semantics](../docs/OPERATIONS.md#editable-capture-metadata-v02).
+
+Exit `0` means healthy with optional warnings, `1` means integrity errors or
+repairable defects remain, and `2` means usage/configuration/startup failure.
+Missing or damaged originals require recovery from a verified backup; the
+maintenance CLI cannot recreate them. See the operations guide for the complete cold
+operation, interruption, and Windows atomic-replacement guidance.
 
 ### EXIF shooting settings
 
@@ -255,19 +267,6 @@ A minimum above its maximum returns HTTP 422. Ranges combine with other filters
 in SQL and exclude nulls for active fields. Smart Collection queries remain at
 v1/v2. Metadata export v14 includes the four fields in JSON and CSV. Backup
 format v1 supports verification and recovery rehearsal for schemas 9–22.
-Individual `PATCH /photos/{id}` capture/GPS updates require complete groups and
-`expected_updated_at`; source fields/flags are read-only. The same PATCH accepts
-`restore_original_metadata: true` to re-read both groups from a trusted original,
-without writing original bytes. Capture-only edits preserve AI review state.
-Backup-v1 verification/rehearsal supports schemas 9–18; portable format v9 exports
-effective values, source values, and override markers. See
-[capture editing semantics](../docs/OPERATIONS.md#editable-capture-metadata-v02).
-
-Exit `0` means healthy with optional warnings, `1` means integrity errors or
-repairable defects remain, and `2` means usage/configuration/startup failure.
-Missing or damaged originals require recovery from a verified backup; the
-maintenance CLI cannot recreate them. See the operations guide for the complete cold
-operation, interruption, and Windows atomic-replacement guidance.
 
 Classification is asynchronous and local-first. One lifespan-owned in-process worker claims SQLite jobs in `queued_at` order and processes them serially. Status and safe failures survive browser refresh and backend restart; interrupted running jobs are marked failed for explicit retry. The worker records requested/actual model, fallback use, durable attempt count, duration, and prompt version. FaunaVault supports one backend process, not multiple Uvicorn workers.
 
@@ -355,7 +354,7 @@ participate in text search. Map rejects active curation criteria.
 `set_rating` with required integer `rating`, and `clear_rating`. Existing
 250-ID limits, atomicity, active-photo checks, and selection semantics apply.
 Export v14 includes JSON/CSV curation values; backup format v1 supports schemas
-9–18 and validates schema-16 structure even for empty archives.
+9–22 and validates schema-16 structure even for empty archives.
 
 ## Smart Collection queries
 

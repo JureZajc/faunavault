@@ -549,3 +549,28 @@ test.each(["missing_gps", "missing_capture"] as const)("repairs %s through the e
   await screen.findByText("No matching records");
   expect((screen.getByLabelText("Metadata completeness") as HTMLSelectElement).value).toBe(issue);
 });
+
+
+test("renders only available shooting settings outside the metadata editor", async () => {
+  api.getPhoto.mockResolvedValue(photo({
+    aperture_f_number: 5.6, exposure_time_seconds: 1 / 2000,
+    iso_speed: null, focal_length_mm: 400.5,
+  }));
+  render(<PhotoDetail id="44" />);
+  const settings = within(await screen.findByRole("region", { name: "Shooting Settings" }));
+  expect(settings.getByText(/^f\/5[.,]6$/)).toBeTruthy();
+  expect(settings.getByText("1/2000 s")).toBeTruthy();
+  expect(settings.getByText(/^400[.,]5 mm$/)).toBeTruthy();
+  expect(settings.queryByText("ISO")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+  expect(screen.queryByRole("textbox", { name: /aperture|focal length|shutter speed|ISO/i })).toBeNull();
+});
+
+test("omits Shooting Settings when EXIF settings are null", async () => {
+  api.getPhoto.mockResolvedValue(photo({
+    aperture_f_number: null, exposure_time_seconds: null, iso_speed: null, focal_length_mm: null,
+  }));
+  render(<PhotoDetail id="44" />);
+  await screen.findByText("Original file");
+  expect(screen.queryByRole("region", { name: "Shooting Settings" })).toBeNull();
+});

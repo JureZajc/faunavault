@@ -1,4 +1,4 @@
-# FaunaVault metadata export format v13
+# FaunaVault metadata export format v14
 
 FaunaVault metadata export is a deterministic, portable description of the
 archive's Photos, Animals, locally stored Taxa, manual Collections and their
@@ -12,7 +12,7 @@ import format.
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Metadata export representation version; v13 is `13`. |
+| `format_version` | Metadata export representation version; v14 is `14`. |
 | `source_database_schema_version` | Schema of the SQLite snapshot used to produce this export. |
 | `counts` | Photo, active, Trash, Animal, Taxon, manual Collection, membership, Smart Collection, Import Session, Trip/Event, Event membership, and original-byte totals. |
 | `photos` | All active and Trash Photos, ordered by local ID. |
@@ -30,7 +30,7 @@ lifecycles. Consumers should reject unsupported `format_version` values but
 ignore unknown fields added compatibly to a supported version. Historical v1
 exports contain only Photos, Animals, and Taxa; v2 added Collections. Version 3
 adds the durable Photo capture-metadata contract. Version 4 adds human review
-timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. Version 9 adds Import Sessions and Photo provenance. Version 10 adds Trips & Events and their explicit memberships. Version 11 adds persistent custom Event cover references. Version 12 adds persistent custom manual Collection cover references. Version 13 adds support for Smart Collection query version 2. FaunaVault emits v13.
+timestamps. Version 5 adds Smart Collection definitions. Version 6 adds retained capture/GPS source values and manual override markers. Version 7 adds personal Photo Favorites and Ratings. Version 8 adds independent Photo culling decisions. Version 9 adds Import Sessions and Photo provenance. Version 10 adds Trips & Events and their explicit memberships. Version 11 adds persistent custom Event cover references. Version 12 adds persistent custom manual Collection cover references. Version 13 adds support for Smart Collection query version 2. Version 14 adds Photo shooting settings in JSON and CSV. FaunaVault emits v14.
 
 There is deliberately no export timestamp. For an unchanged archive, repeated
 exports have byte-identical authoritative content. A user may put a date in the
@@ -46,7 +46,7 @@ not exported. Permanent Photo deletion or membership removal clears the stored
 reference. Collection ordering remains ascending ID, and an unchanged archive
 produces identical output. The Photo CSV representation is unchanged from v11.
 Historical v1–v12 artifacts keep their original contracts; consumers must
-explicitly support v13. The database schema is 21; backup format remains v1.
+explicitly support v14. The database schema is 22 and backup format remains v1.
 
 Each Photo contains these fields:
 
@@ -66,6 +66,10 @@ captured_at_offset_minutes
 camera_make
 camera_model
 lens_model
+aperture_f_number
+exposure_time_seconds
+iso_speed
+focal_length_mm
 image_width
 image_height
 latitude
@@ -156,6 +160,13 @@ that group; extraction must not repopulate it. False means there is no manual
 override. Schema-15 migration initializes the retained source from the prior
 persisted baseline. Restore re-reads the original and clears both markers.
 
+In v14, `aperture_f_number`, `exposure_time_seconds`, `iso_speed`, and
+`focal_length_mm` are required nullable fields. Aperture, exposure seconds,
+and focal length in millimeters are positive finite JSON numbers. ISO is a
+positive integer. Null means no valid value was stored. CSV uses the same
+numeric units and the existing `\N` null sentinel. Shooting settings are
+read-only EXIF, including in exports of trashed Photos.
+
 Each Animal contains:
 
 ```text
@@ -231,7 +242,7 @@ original query shape. Query version 2 accepts the same fields plus:
 The version controls which fields are accepted. Both versions exclude Trip/Event
 membership, pagination and layout. Smart Collections have no Photo membership
 pairs; they are evaluated against the live catalog. The Photo CSV layout is
-unchanged in v13.
+unchanged in v14. Shooting ranges are live List criteria.
 
 Photo `animal_id` and Animal `taxon_id` are either JSON `null` or references to
 records present in the same export. Every Collection membership references both
@@ -281,6 +292,10 @@ captured_at_offset_minutes
 camera_make
 camera_model
 lens_model
+aperture_f_number
+exposure_time_seconds
+iso_speed
+focal_length_mm
 image_width
 image_height
 latitude
@@ -351,6 +366,7 @@ JSON. Override flags use lowercase `true`/`false` in CSV.
 - v12: required nullable `collections[].cover_photo_id`, validated against explicit
   membership, including trashed members. photos.csv is unchanged.
 - v13: `smart_collections` supports both v1 and v2 saved queries. photos.csv is unchanged.
+- v14: Four nullable shooting settings in Photo JSON records and photos.csv.
 
 ## Deliberate exclusions
 

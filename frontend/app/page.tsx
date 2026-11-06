@@ -55,6 +55,7 @@ import {
   hasAdditionalRejectedFilters,
   mapCatalogHref,
 } from "./lib/catalog-query";
+import { hasShootingRanges, SHOOTING_RANGE_KEYS } from "./lib/shooting-settings";
 import { compareHref } from "./lib/photo-compare";
 import { savedQueryFromState, SMART_COLLECTION_QUERY_VERSION, smartCollectionSaveError } from "./lib/smart-collections";
 
@@ -70,6 +71,7 @@ function HomeContent() {
   const [editLoadAttempt, setEditLoadAttempt] = useState(0);
   const [savingCriteria, setSavingCriteria] = useState(false);
   const [saveSmartOpen, setSaveSmartOpen] = useState(false);
+  const shootingFiltersActive = hasShootingRanges(query.catalogState);
   const saveCriteriaError = smartCollectionSaveError(query.catalogState);
   useEffect(() => {
     if (editId === null) return;
@@ -83,7 +85,7 @@ function HomeContent() {
   }, [editId, editLoadAttempt]);
 
   async function saveCriteria() {
-    if (editId === null || editCollection?.id !== editId || savingCriteria) return;
+    if (editId === null || editCollection?.id !== editId || savingCriteria || saveCriteriaError) return;
     setSavingCriteria(true);
     setEditError(null);
     try {
@@ -108,6 +110,7 @@ function HomeContent() {
         view: query.homeView,
         tags: query.catalogState.tags ?? [], untagged: query.catalogState.untagged ?? false,
         ...equipmentQuery(query.catalogState),
+        shootingRanges: SHOOTING_RANGE_KEYS.map((key) => query.catalogState[key]),
         eventId: query.catalogState.event_id ?? null,
         addToEvent,
         favoritesOnly: query.catalogState.favorites_only ?? false,
@@ -203,6 +206,7 @@ function HomeContent() {
     : query.catalogState.category ?? "all";
   const sortOption = catalogSortOption(query.catalogState);
   const hasActiveViewFilters =
+    shootingFiltersActive ||
     hasArea(query.catalogState) ||
     (Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ||
     query.catalogState.import_session_id !== undefined ||
@@ -371,7 +375,8 @@ function HomeContent() {
           </p>
         </div>
 
-        {query.homeView !== "list" && (Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-4 text-sm">Metadata completeness, exact tag and equipment filters are available in List and Culling. This view shows its own records. <a className="underline" href={catalogListHref(query.catalogState)}>Return to the filtered List</a>.</p>}
+        {query.homeView !== "list" && shootingFiltersActive && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-4 text-sm">Shooting Settings filters apply in List. <a className="underline" href={catalogListHref(query.catalogState)}>Return to the filtered List</a>.</p>}
+        {query.homeView !== "list" && !shootingFiltersActive && (Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-4 text-sm">Metadata completeness, exact tag and equipment filters are available in List and Culling. This view shows its own records. <a className="underline" href={catalogListHref(query.catalogState)}>Return to the filtered List</a>.</p>}
         {query.homeView === "album" ? (
           <AlbumBrowser />
         ) : query.homeView === "trash" ? (
@@ -395,36 +400,40 @@ function HomeContent() {
                   {editCollection?.id !== editId && <button type="button" onClick={() => { setEditError(null); setEditLoadAttempt((attempt) => attempt + 1); }} className="underline">Retry</button>}
                 </p>}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" disabled={editCollection?.id !== editId || savingCriteria || Boolean(saveCriteriaError)} onClick={saveCriteria} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button>
+                  <button type="button" disabled={editCollection?.id !== editId || savingCriteria || Boolean(saveCriteriaError)} aria-describedby={shootingFiltersActive ? "smart-edit-shooting-explanation" : undefined} onClick={saveCriteria} className="min-h-11 rounded-md bg-emerald-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{savingCriteria ? "Saving…" : "Save changes"}</button>
                   <button type="button" onClick={() => { query.cancelPendingSearch(); router.push(`/collections/smart/${editId}`); }} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold">Cancel</button>
                 </div>
+                {shootingFiltersActive && <p id="smart-edit-shooting-explanation" className="mt-2 text-sm text-stone-600">{saveCriteriaError}</p>}
               </div>
             ) : null}
             {query.catalogState.event_id !== undefined ? <EventListContext key={`source-${query.catalogState.event_id}`} id={String(query.catalogState.event_id)} revision={catalog} /> : null}
             {addToEvent !== null ? <EventListContext key={`add-${addToEvent}`} id={addToEvent} adding selectedIds={selection.selectedIds} busy={bulkActions.isBusy || eventBusy} onBusyChange={setEventBusy} onSelect={selection.enter} onDates={(start, end) => { selection.reset(); query.setTakenRange(start, end); }} onAdded={(message) => { selection.reset(); setSuccessNotice(message); }} /> : null}
-            {query.catalogState.event_id !== undefined && <p className="mb-3 text-sm text-stone-600">{saveCriteriaError}</p>}
+            {query.catalogState.event_id !== undefined && !shootingFiltersActive && <p className="mb-3 text-sm text-stone-600">{saveCriteriaError}</p>}
             {query.catalogState.import_session_id ? <ImportSessionSummary id={query.catalogState.import_session_id} revision={catalog} /> : null}
             <CatalogToolbar
               area={query.catalogState}
               onClearArea={() => { selection.reset(); query.setArea(); }}
               equipment={query.catalogState}
+              shootingRanges={query.catalogState}
+              shootingFiltersActive={shootingFiltersActive}
+              onShootingRangesChange={(ranges) => { selection.reset(); query.setShootingRanges(ranges); }}
               metadataIssue={query.catalogState.metadata_issue}
               onMetadataIssueChange={(value) => { selection.reset(); query.setMetadataIssue(value); }}
               onEquipmentChange={(equipment) => { selection.reset(); query.setEquipmentFilters(equipment); }}
               tags={query.catalogState.tags}
               untagged={query.catalogState.untagged}
               onTagFiltersChange={query.setTagFilters}
-              rejectedHref={(hasArea(query.catalogState) || Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ? catalogListHref({ ...query.catalogState, page: 1, culling_state: "reject" }) : query.catalogState.import_session_id ? importRejectedHref(query.catalogState.import_session_id) : undefined}
+              rejectedHref={(shootingFiltersActive || hasArea(query.catalogState) || Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) ? catalogListHref({ ...query.catalogState, page: 1, culling_state: "reject" }) : query.catalogState.import_session_id ? importRejectedHref(query.catalogState.import_session_id) : undefined}
               onReviewRejected={() => { query.cancelPendingSearch(); selection.reset(); }}
               cullingState={query.catalogState.culling_state}
               onCullingStateChange={(value) => { selection.reset(); query.setCullingState(value); }}
-              cullingHref={cullingListHref(query.catalogState, query.searchInput, query.returnTo)}
+              cullingHref={shootingFiltersActive ? undefined : cullingListHref(query.catalogState, query.searchInput, query.returnTo)}
               favoritesOnly={query.catalogState.favorites_only}
               ratingFilter={query.catalogState.unrated ? "unrated" : query.catalogState.rating ? `exact:${query.catalogState.rating}` : query.catalogState.rating_min ? `min:${query.catalogState.rating_min}` : ""}
               onFavoritesOnlyChange={query.setFavoritesOnly}
               onRatingFilterChange={query.setRatingFilter}
               mapHref={mapCatalogHref(query.catalogState)}
-              mapDisabled={Boolean((Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) || query.catalogState.import_session_id || query.catalogState.search || query.searchInput.trim() || hasCurationFilters(query.catalogState))}
+              mapDisabled={shootingFiltersActive || Boolean((Boolean(query.catalogState.metadata_issue) || hasTagFilters(query.catalogState) || hasEquipmentFilters(query.catalogState)) || query.catalogState.import_session_id || query.catalogState.search || query.searchInput.trim() || hasCurationFilters(query.catalogState))}
               searchQuery={query.searchInput}
               statusFilter={statusFilter}
               categoryFilter={categoryFilter}
@@ -486,7 +495,8 @@ function HomeContent() {
                 query.clearFilters();
               }}
               onEnterSelectionMode={selection.enter}
-              onSaveSmartCollection={editId === null && !saveCriteriaError ? () => setSaveSmartOpen(true) : undefined}
+              onSaveSmartCollection={editId === null && (!saveCriteriaError || shootingFiltersActive) ? () => setSaveSmartOpen(true) : undefined}
+              smartCollectionDisabledReason={shootingFiltersActive ? saveCriteriaError ?? undefined : undefined}
             />
 
             {rejectedReview ? (

@@ -1,4 +1,5 @@
 import type { MapCatalogQuery } from "./catalog-query";
+import { SHOOTING_RANGE_KEYS, type ShootingRangeQuery } from "./shooting-settings";
 
 export type PhotoRating = 1 | 2 | 3 | 4 | 5;
 export type PhotoCullingState = "pick" | "reject";
@@ -67,6 +68,10 @@ export type Photo = {
   camera_make: string | null;
   camera_model: string | null;
   lens_model: string | null;
+  aperture_f_number?: number | null;
+  exposure_time_seconds?: number | null;
+  iso_speed?: number | null;
+  focal_length_mm?: number | null;
   image_width: number | null;
   image_height: number | null;
   latitude: number | null;
@@ -223,7 +228,7 @@ export function getMetadataHealth(signal?: AbortSignal) {
   return request<MetadataHealth>("/catalog/metadata-health", { signal });
 }
 
-export type CatalogQuery = EquipmentQuery & import("./geographic-bounds").BoundsQuery & {
+export type CatalogQuery = ShootingRangeQuery & EquipmentQuery & import("./geographic-bounds").BoundsQuery & {
   metadata_issue?: MetadataIssue;
   tags?: string[];
   untagged?: boolean;
@@ -355,7 +360,7 @@ export type CollectionDetail = CollectionSummary & {
   photos: CollectionPhotoPage;
 };
 
-export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id">;
+export type SmartCollectionQuery = Omit<CatalogQuery, "page" | "page_size" | "event_id" | keyof ShootingRangeQuery>;
 type SmartCollectionQueryV1 = Omit<SmartCollectionQuery, keyof import("./geographic-bounds").BoundsQuery | "metadata_issue" | "tags" | "untagged" | keyof EquipmentQuery>;
 type VersionedSmartCollectionQuery =
   | { query_version: 1; query: SmartCollectionQueryV1 }
@@ -1011,7 +1016,11 @@ export function getImportSessions(page = 1, signal?: AbortSignal) {
 }
 
 export function getCatalogPhotos(query: CatalogQuery, signal?: AbortSignal) {
-  return request<CatalogPhotoPage>(`/catalog/photos?${catalogQueryParams(query)}`, { signal });
+  const params = catalogQueryParams(query);
+  for (const key of SHOOTING_RANGE_KEYS) {
+    if (query[key] !== undefined) params.set(key, String(query[key]));
+  }
+  return request<CatalogPhotoPage>(`/catalog/photos?${params}`, { signal });
 }
 
 function catalogQueryParams(query: CatalogQuery) {

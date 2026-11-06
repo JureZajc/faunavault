@@ -257,7 +257,7 @@ Creation requires an existing destination; rehearsal requires a nonexistent
 target with an existing parent. Backups include active photos, Trash, previews,
 and SQLite metadata. Rehearsal migrates an isolated copy and requires a healthy
 archive doctor; it never replaces your live archive. Backup format v1 supports
-schemas 9–21. Production restore remains manual.
+schemas 9–22. Production restore remains manual.
 
 Read the [complete backup/recovery guide](docs/OPERATIONS.md#backup-and-recovery)
 before relying on a backup. [Metadata export](docs/OPERATIONS.md#portable-metadata-export)
@@ -393,6 +393,29 @@ this criterion return 422. Wildlife Insights links undated Photos only for All T
 missing-GPS links retain a selected capture year's date range. Existing Insights
 percentages and comparisons keep their original meanings.
 
+## EXIF Shooting Settings
+
+Photo details show the aperture, shutter speed, ISO, and focal length recorded in
+supported originals, including JPEG and HEIC/HEIF. The read-only section shows
+the settings that are available. In **List → Shooting Settings filters**, enter
+minimum and/or maximum values. Limits are inclusive, filters combine, and a
+photo must have a value for each setting being filtered. Exposure limits use
+seconds, so enter `0.0005` for 1/2000 s. Reload and Back/Forward retain the
+filters. Clear the ranges before saving or updating a Smart Collection.
+
+For an existing archive, start the updated backend once to migrate the database,
+then stop it. From `backend/`, preview the backfill and apply it when ready.
+
+```sh
+uv run --no-sync faunavault-maintenance backfill-photo-metadata
+uv run --no-sync faunavault-maintenance backfill-photo-metadata --apply
+```
+
+The backfill preserves populated settings, manual capture and GPS corrections,
+and the original images. Metadata export v14 includes the four settings.
+Backup format v1 verifies and rehearses recovery of database schemas 9–22.
+[Archive maintenance instructions](docs/OPERATIONS.md#exif-shooting-settings)
+
 ## Smart Collections
 
 Apply filters in **List**, choose **Save as Smart Collection**, and give it a name.
@@ -408,5 +431,5 @@ A tag rename or merge changes photo tags; the saved exact tag text stays the sam
 Areas support antimeridian crossings and zero coordinates and match only photos
 with valid GPS. Completeness uses effective capture dates and GPS, including
 manual corrections. Existing v1 definitions still work and keep their version
-when renamed; saving edited criteria upgrades them to v2. Metadata export v13
+when renamed; saving edited criteria upgrades them to v2. Metadata export v14
 includes both query versions. [Smart Collection workflow](docs/OPERATIONS.md#smart-collections)
