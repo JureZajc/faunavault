@@ -39,6 +39,12 @@ def heic_bytes(
         exif[int(ExifTags.Base.Model)] = "iPhone Test"
         exif[int(ExifTags.Base.LensModel)] = "Synthetic 26mm"
         exif[int(ExifTags.Base.GPSInfo)] = gps_ifd()
+        exif[ExifTags.IFD.Exif] = {
+            ExifTags.Base.FNumber: TiffImagePlugin.IFDRational(9, 5),
+            ExifTags.Base.ExposureTime: TiffImagePlugin.IFDRational(1, 125),
+            ExifTags.Base.ISOSpeedRatings: 400,
+            ExifTags.Base.FocalLength: TiffImagePlugin.IFDRational(22, 5),
+        }
     if orientation is not None:
         exif[int(ExifTags.Base.Orientation)] = orientation
     output = BytesIO()

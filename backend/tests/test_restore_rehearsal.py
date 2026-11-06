@@ -148,6 +148,13 @@ def test_supported_intermediate_schemas_verify_migrate_and_preserve_state(
         assert connection.execute(
             "SELECT status, failure_code FROM classification_job"
         ).fetchone() == ("failed", "worker_interrupted")
+        assert (
+            connection.execute(
+                "SELECT aperture_f_number, exposure_time_seconds, iso_speed, focal_length_mm "
+                "FROM photo ORDER BY id"
+            ).fetchall()
+            == [(None, None, None, None)] * 2
+        )
         if schema >= 11:
             assert connection.execute(
                 "SELECT camera_make, captured_at_offset_minutes, latitude FROM photo WHERE id=1"
@@ -257,6 +264,7 @@ def test_schema13_upgrade_failure_preserves_originals_and_retries(
             19,
             20,
             21,
+            22,
         )
         assert initialize_archive_storage(engine, settings).applied_migrations == ()
         with sqlite3.connect(database) as connection:
@@ -265,7 +273,7 @@ def test_schema13_upgrade_failure_preserves_originals_and_retries(
                 for row in connection.execute(
                     "SELECT version FROM schema_migration ORDER BY version"
                 )
-            ] == list(range(1, 22))
+            ] == list(range(1, 23))
             assert connection.execute(
                 "SELECT is_favorite, rating FROM photo ORDER BY id"
             ).fetchall() == [(0, None), (0, None)]
@@ -297,6 +305,7 @@ def test_schema13_upgrade_failure_preserves_originals_and_retries(
         (16, "photo", "is_favorite"),
         (16, "photo", "rating"),
         (17, "photo", "culling_state"),
+        (22, "photo", "exposure_time_seconds"),
     ],
 )
 def test_schema_claim_requires_actual_review_and_smart_columns(
@@ -372,7 +381,7 @@ def test_frozen_schema9_fixture_verifies_rehearses_and_remains_immutable(tmp_pat
     assert verification.manifest is not None
     assert verification.manifest.database.schema_version == 9
     assert SUPPORTED_BACKUP_SCHEMA_VERSIONS == frozenset(
-        {9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}
+        {9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22}
     )
     assert result.source_schema_version == 9
     assert result.current_schema_version == LATEST_SCHEMA_VERSION

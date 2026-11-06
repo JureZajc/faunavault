@@ -364,6 +364,8 @@ def test_v2_round_trip_and_explicit_upgrade_preserve_versions_on_rename(smart_ap
         (2, {"tags": "Birds"}),
         (2, {"tags": ["Birds"], "untagged": True}),
         (2, {"tags": ["x"] * 21}),
+        (1, {"iso_speed_min": 800}),
+        (2, {"focal_length_mm_max": 400}),
         (2, {"tags": ["x" * 1001]}),
         (2, {"unknown_camera": True, "camera_make": ""}),
         (2, {"unknown_camera": True, "camera_model": "R7"}),

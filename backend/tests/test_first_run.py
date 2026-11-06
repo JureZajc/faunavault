@@ -13,6 +13,8 @@ import app.config as config
 import app.version as version_module
 from app.benchmark.safety import IsolatedSettings
 from app.database import create_database_engine
+from app.metadata_types import SHOOTING_SETTING_FIELDS
+from app.migrations import run_migrations
 from app.storage_startup import initialize_archive_storage, validate_storage_selection
 from app.version import APP_VERSION
 
@@ -117,6 +119,9 @@ with TestClient(main.app) as client:
     with main.engine.connect() as connection:
         versions = list(connection.exec_driver_sql("SELECT version FROM schema_migration ORDER BY version").scalars())
         assert versions == list(range(1, LATEST_SCHEMA_VERSION + 1))
+        columns = {row[1]: row[2] for row in connection.exec_driver_sql("PRAGMA table_info(photo)")}
+        assert columns["iso_speed"] == "INTEGER"
+        assert all(columns[field] == "REAL" for field in ("aperture_f_number", "exposure_time_seconds", "focal_length_mm"))
         indexes = set(connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='index'").scalars())
         assert {
             "ix_photo_catalog_active_created", "ix_photo_catalog_active_status_created",
@@ -175,3 +180,55 @@ print("Fresh initialization, schema, offline startup, and preservation: PASS")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "preservation: PASS" in result.stdout
     assert not (tmp_path / "must-not-touch").exists()
+
+
+def test_schema_21_to_22_preserves_rows_and_creates_pre_migration_backup(tmp_path):
+    database = tmp_path / "archive.db"
+    settings = IsolatedSettings(
+        data_dir=tmp_path,
+        image_dir=tmp_path / "images",
+        database_url=f"sqlite:///{database}",
+    )
+    engine = create_database_engine(settings)
+    try:
+        initialize_archive_storage(engine, settings)
+        with sqlite3.connect(database) as connection:
+            for column in SHOOTING_SETTING_FIELDS:
+                connection.execute(f"ALTER TABLE photo DROP COLUMN {column}")
+            connection.execute("DELETE FROM schema_migration WHERE version = 22")
+            connection.execute(
+                "INSERT INTO photo (id, original_filename, stored_filename, resized_filename, "
+                "thumbnail_filename, status, created_at, updated_at, camera_make) "
+                "VALUES (1, 'fox.jpg', 'original.jpg', 'resized.jpg', 'thumb.jpg', "
+                "'classified', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'Canon')"
+            )
+            previous_backups = set(tmp_path.glob("*.pre-migrate-*.db"))
+        assert run_migrations(engine, settings) == [22]
+        assert run_migrations(engine, settings) == []
+        with sqlite3.connect(database) as connection:
+            assert connection.execute(
+                "SELECT camera_make, status, aperture_f_number, exposure_time_seconds, "
+                "iso_speed, focal_length_mm FROM photo WHERE id = 1"
+            ).fetchone() == ("Canon", "classified", None, None, None, None)
+            for column, invalid in (
+                ("iso_speed", 2.5),
+                ("iso_speed", 0),
+                ("aperture_f_number", -1),
+                ("focal_length_mm", "unknown"),
+                ("exposure_time_seconds", float("inf")),
+            ):
+                with pytest.raises(sqlite3.IntegrityError):
+                    connection.execute(f"UPDATE photo SET {column} = ?", (invalid,))
+        (backup,) = set(tmp_path.glob("*.pre-migrate-*.db")) - previous_backups
+        with sqlite3.connect(backup) as connection:
+            assert connection.execute(
+                "SELECT max(version) FROM schema_migration"
+            ).fetchone() == (21,)
+            assert connection.execute(
+                "SELECT original_filename FROM photo"
+            ).fetchone() == ("fox.jpg",)
+            assert not set(SHOOTING_SETTING_FIELDS).intersection(
+                row[1] for row in connection.execute("PRAGMA table_info(photo)")
+            )
+    finally:
+        engine.dispose()

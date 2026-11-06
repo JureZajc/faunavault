@@ -2,9 +2,12 @@ import type { SmartCollectionQuery, SmartCollectionQueryRead } from "./api";
 import { areaSummary, boundsError } from "./geographic-bounds";
 import { CatalogState, DEFAULT_CATALOG_STATE, equipmentQuery, metadataIssueLabels, writeCatalogState } from "./catalog-query";
 
+import { hasShootingRanges } from "./shooting-settings";
+
 export const SMART_COLLECTION_QUERY_VERSION = 2;
 
 export function smartCollectionSaveError(state: CatalogState) {
+  if (hasShootingRanges(state)) return "Clear Shooting Settings filters before saving Smart Collection criteria.";
   if (state.event_id !== undefined) return "Trip/Event membership cannot be saved as Smart Collection criteria. Clear the Trip/Event filter first.";
   return boundsError(state);
 }

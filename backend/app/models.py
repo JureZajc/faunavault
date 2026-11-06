@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     JSON,
+    REAL,
     Boolean,
     CheckConstraint,
     Column,
@@ -21,7 +22,7 @@ from sqlalchemy.types import TypeDecorator
 from sqlmodel import Field, SQLModel
 
 from app.album_identity import normalize_legacy_species_group
-from app.metadata_types import PhotoCullingState
+from app.metadata_types import PhotoCullingState, PositiveISO, PositiveMeasurement
 from app.tag_values import normalize_tags
 
 
@@ -267,6 +268,53 @@ class Photo(SQLModel, table=True):
     )
     camera_model: str | None = Field(
         default=None, sa_column=Column(String(200), nullable=True)
+    )
+    aperture_f_number: PositiveMeasurement | None = Field(
+        default=None,
+        sa_column=Column(
+            REAL,
+            CheckConstraint(
+                "aperture_f_number IS NULL OR (typeof(aperture_f_number) = 'real' "
+                "AND aperture_f_number > 0 AND aperture_f_number <= 1.7976931348623157e308)",
+                name="ck_photo_aperture_f_number",
+            ),
+            nullable=True,
+        ),
+    )
+    exposure_time_seconds: PositiveMeasurement | None = Field(
+        default=None,
+        sa_column=Column(
+            REAL,
+            CheckConstraint(
+                "exposure_time_seconds IS NULL OR (typeof(exposure_time_seconds) = 'real' "
+                "AND exposure_time_seconds > 0 AND exposure_time_seconds <= 1.7976931348623157e308)",
+                name="ck_photo_exposure_time_seconds",
+            ),
+            nullable=True,
+        ),
+    )
+    iso_speed: PositiveISO | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            CheckConstraint(
+                "iso_speed IS NULL OR (typeof(iso_speed) = 'integer' AND iso_speed > 0)",
+                name="ck_photo_iso_speed",
+            ),
+            nullable=True,
+        ),
+    )
+    focal_length_mm: PositiveMeasurement | None = Field(
+        default=None,
+        sa_column=Column(
+            REAL,
+            CheckConstraint(
+                "focal_length_mm IS NULL OR (typeof(focal_length_mm) = 'real' "
+                "AND focal_length_mm > 0 AND focal_length_mm <= 1.7976931348623157e308)",
+                name="ck_photo_focal_length_mm",
+            ),
+            nullable=True,
+        ),
     )
     lens_model: str | None = Field(
         default=None, sa_column=Column(String(200), nullable=True)

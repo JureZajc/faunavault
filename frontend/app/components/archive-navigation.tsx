@@ -5,6 +5,7 @@ import type { MouseEvent } from "react";
 import { useState } from "react";
 import { CatalogState, catalogListHref, cullingListHref, hasEquipmentFilters, hasTagFilters } from "../lib/catalog-query";
 import { mapCatalogHref, mapListHref } from "../lib/catalog-query";
+import { hasShootingRanges } from "../lib/shooting-settings";
 import { hasArea } from "../lib/geographic-bounds";
 
 export type ArchiveSection =
@@ -47,15 +48,16 @@ export default function ArchiveNavigation({ active, onNavigate, catalogState }: 
 }) {
   const [blocked, setBlocked] = useState<typeof destinations[number] | null>(null);
   const filtered = catalogState && (Boolean(catalogState.metadata_issue) || hasTagFilters(catalogState) || hasEquipmentFilters(catalogState));
+  const shootingFiltered = catalogState && hasShootingRanges(catalogState);
   const areaFiltered = catalogState && hasArea(catalogState);
   const listHref = catalogState ? catalogListHref(catalogState) : "/";
   return <div className="w-full min-w-0"><nav aria-label="Archive views" className="grid w-full min-w-0 grid-cols-3 rounded-lg border border-stone-200 bg-stone-100 p-1 sm:grid-cols-4 xl:grid-cols-6">
     {destinations.map((destination) => <Link
       key={destination.section}
-      href={catalogState && destination.section === "list" && (areaFiltered || active === "map") ? mapListHref(catalogState) : areaFiltered && destination.section === "map" ? mapCatalogHref(catalogState) : filtered && destination.section === "list" ? listHref : (filtered || areaFiltered) && destination.section === "cull" ? cullingListHref(catalogState, catalogState.search ?? "", listHref) : destination.href}
+      href={shootingFiltered ? (destination.section === "list" ? listHref : destination.href) : catalogState && destination.section === "list" && (areaFiltered || active === "map") ? mapListHref(catalogState) : areaFiltered && destination.section === "map" ? mapCatalogHref(catalogState) : filtered && destination.section === "list" ? listHref : (filtered || areaFiltered) && destination.section === "cull" ? cullingListHref(catalogState, catalogState.search ?? "", listHref) : destination.href}
       aria-current={active === destination.section ? "page" : undefined}
       onClick={(event) => {
-        if ((filtered || areaFiltered) && destination.section !== "list" && destination.section !== "cull" && !(areaFiltered && destination.section === "map")) {
+        if ((shootingFiltered && destination.section !== "list") || ((filtered || areaFiltered) && destination.section !== "list" && destination.section !== "cull" && !(areaFiltered && destination.section === "map"))) {
           event.preventDefault();
           setBlocked(destination);
           return;
@@ -64,5 +66,5 @@ export default function ArchiveNavigation({ active, onNavigate, catalogState }: 
       }}
       className={`flex min-h-11 min-w-0 items-center justify-center rounded-md px-2 text-sm font-semibold transition lg:px-3 ${active === destination.section ? "bg-white text-emerald-900 shadow-sm" : "text-stone-600 hover:text-stone-900"}`}
     >{destination.label}</Link>)}
-  </nav>{blocked && (filtered || areaFiltered) && <p role="alert" className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">{blocked.label} does not apply the current {areaFiltered ? "geographic area filters" : catalogState?.metadata_issue ? "metadata completeness filters" : catalogState && hasEquipmentFilters(catalogState) ? "equipment filters" : "exact tag filters"}. <Link href={listHref} className="underline">Open the filtered List</Link> or <Link href={blocked.href} className="underline">open {blocked.label} without these filters</Link>.</p>}</div>;
+  </nav>{blocked && (shootingFiltered || filtered || areaFiltered) && <p role="alert" className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">{blocked.label} does not apply the current {shootingFiltered ? "Shooting Settings filters" : areaFiltered ? "geographic area filters" : catalogState?.metadata_issue ? "metadata completeness filters" : catalogState && hasEquipmentFilters(catalogState) ? "equipment filters" : "exact tag filters"}. <Link href={listHref} className="underline">Open the filtered List</Link> or <Link href={blocked.href} className="underline">open {blocked.label} without these filters</Link>.</p>}</div>;
 }

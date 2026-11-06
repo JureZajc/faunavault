@@ -559,7 +559,7 @@ structured 409 errors. Cover and membership writes acquire `BEGIN IMMEDIATE`
 before validation; repeated assignments do not write or change `updated_at`.
 Backup-v1 verification accepts covers on active or trashed members, rejects
 nonmembers/dangling references, and recovery rehearsal compares cover choices
-exactly. Metadata export v13 includes every Collection's nullable cover ID.
+exactly. Metadata export v14 includes every Collection's nullable cover ID.
 Historical backups remain supported.
 
 ### Smart Collections
@@ -591,7 +591,7 @@ support antimeridian crossings and zero coordinates, and match only valid GPS
 pairs. Completeness uses the effective capture date and GPS, so manual
 corrections and clears affect results. Deleting a Smart Collection only deletes
 its definition. Bulk **Add to Collection** still targets manual Collections.
-Metadata export v13 carries both query versions without a database migration.
+Metadata export v14 carries both query versions. Smart Collection query v2 required no database migration.
 
 `POST /photos/bulk` accepts a discriminated operation body with explicit
 `photo_ids`. The backend validates the complete active set before mutation and
@@ -810,8 +810,8 @@ Canonical pair records contain evidence snapshots and `phash64-v1:d4`. New
 evidence/version cannot inherit an old dismissal silently. Candidates are derived
 and reproducible, while explicit dismissals are user-curation data. Schema-14
 verified backups include both pair records and scan state, and rehearsal checks
-their preservation. Backup v1 and historical schemas 9–21 remain supported.
-Portable metadata export v13 intentionally excludes duplicate curation state; use
+their preservation. Backup v1 and historical schemas 9–22 remain supported.
+Portable metadata export v14 intentionally excludes duplicate curation state; use
 verified backups to preserve decisions during recovery.
 
 ### Ingestion detection
@@ -944,8 +944,8 @@ capture/location override markers. Migration copies the previously persisted
 capture/GPS baseline; it does not scan image files. Capture-only correction and
 Restore do not accept pending AI classification review. Original files and EXIF
 bytes are never rewritten, nor are derivatives regenerated. Trash restoration
-preserves both corrections and provenance. Backup-v1 schemas 9–21 are supported;
-verification/rehearsal preserve all new fields. Portable JSON/CSV export v13
+preserves both corrections and provenance. Backup-v1 schemas 9–22 are supported;
+verification/rehearsal preserve all new fields. Portable JSON/CSV export v14
 includes effective values, retained extraction, and both markers.
 
 `backfill-photo-metadata` remains a stopped-archive, dry-run-by-default command.
@@ -999,7 +999,7 @@ jq '.counts, .photos[0]' E:\FaunaVaultExports\metadata-2026-08-20\archive-metada
 ```
 
 The CSV uses a documented `\N` null marker and compact JSON arrays for tags. See
-[metadata export format v13](METADATA_EXPORT_FORMAT.md) for the complete
+[metadata export format v14](METADATA_EXPORT_FORMAT.md) for the complete
 field, encoding, relationship, and compatibility contract.
 
 This export is an inspectable metadata and audit artifact only. It contains no
@@ -1115,6 +1115,7 @@ Backup container compatibility and database recovery compatibility are separate:
 | v1 | 19 | Supported | Verify and rehearse Trips & Events and their memberships |
 | v1 | 20 | Supported | Verify and rehearse custom Event covers, including Trash members |
 | v1 | 21 | Supported | Verify and rehearse custom Collection covers, including Trash members |
+| v1 | 22 | Supported | Verify shooting settings column types and values and compare them during recovery |
 | Other | Any | Unsupported | Reject before target writes |
 | v1 | Other | Not supported until explicitly tested | Reject before target writes |
 
@@ -1146,8 +1147,8 @@ and dimensions; perceptual-hash format; and unowned files. It uses a temporary
 SQLite snapshot and verifies that the live inventory did not change during the
 scan. Ordinary orphan files and directories are warnings and are never deleted.
 It also validates capture dimensions, effective/extracted GPS and date/offset
-groups, override markers, duplicate-pair/scan state, and Favorite/Rating structure
-and values. It does not compare stored values to EXIF or discover duplicate pairs.
+groups, override markers, duplicate-pair/scan state, Favorite/Rating, and shooting
+settings structure and values. It does not compare stored values to EXIF or discover duplicate pairs.
 
 `backfill-photo-metadata` is also a stopped-archive operation and defaults to a
 dry run. It scans active and Trash Photos by ID, opens authoritative originals
@@ -1179,6 +1180,34 @@ healthy (warnings are allowed), `1` means errors or repairable defects remain,
 and `2` means usage, configuration, or startup I/O prevented a reliable check.
 An applied repair finishes with a complete doctor pass and reports success only
 when no integrity or repairable findings remain.
+
+### EXIF shooting settings
+
+Schema 22 appends four nullable shooting settings columns without opening
+originals during startup. The migration follows the existing pre-migration
+SQLite backup workflow. New browser uploads and folder imports populate
+aperture (f-number), exposure time (seconds), ISO, and focal length (mm) from
+valid EXIF in JPEG, HEIC/HEIF, and other supported formats.
+
+To populate an existing archive, let startup apply the migration, stop the
+backend, and run the two `backfill-photo-metadata` commands above from
+`backend/`. Review the dry-run counts before using `--apply`. Backfill checks
+the original path and format, and verifies the stored checksum and size when
+available. It fills only missing settings for both active and trashed Photos.
+It preserves manual capture/GPS values and clears, classification, ratings,
+tags, culling, taxonomy, originals, and derivatives. Missing or changed
+originals are reported as failures, and concurrent row changes are skipped.
+
+Photo details show only available settings. List ranges use positive finite
+limits and inclusive AND matching, with nulls excluded for the filtered
+settings. Reload and Back/Forward retain applied ranges. Clear shooting ranges
+before saving or updating a Smart Collection. These filters apply in List.
+
+Backup format v1 retains the same manifest and supports schemas 9–22.
+Verification checks the new fields, and a recovery rehearsal checks that they
+survive migration and recovery. Earlier databases recover with null shooting
+settings until backfilled. Portable metadata export v14 adds the four fields
+to JSON and CSV and preserves v1/v2 Smart Collection definitions.
 
 ### Safe manual production restore
 
@@ -1288,8 +1317,8 @@ preserves its original timestamp. A different summary requires reopening first.
 History performs one grouped Photo query restricted to the requested page of
 session IDs; detail groups one ID. Metadata browsing reads no Photo IDs, images,
 or files. The membership index also narrows List and Culling queries. Backup v1
-keeps its manifest shape and supports schemas 9–21, including session signatures
-for change detection and exact recovery comparisons. Portable export v13 includes
+keeps its manifest shape and supports schemas 9–22, including session signatures
+for change detection and exact recovery comparisons. Portable export v14 includes
 ordered sessions, historical aggregates, nullable membership, and CSV provenance;
 derived culling counts are omitted. See [the export contract](METADATA_EXPORT_FORMAT.md).
 
@@ -1343,9 +1372,9 @@ Map rejects unsupported culling filters and provides an explanation and List lin
 Schema 17 stores `culling_state` as null, `pick`, or `reject` with a database
 constraint. Existing Photos start null. Trash and restore preserve the field;
 permanent deletion removes it with the Photo. No automatic Trash/expiry is added.
-Portable export v13 includes decisions on active and trashed Photos: JSON uses
+Portable export v14 includes decisions on active and trashed Photos: JSON uses
 null/`pick`/`reject`; CSV uses `\N`/`pick`/`reject`. Backup format v1 supports schemas
-9–21, verifies column structure and values, checks live metadata changes before
+9–22, verifies column structure and values, checks live metadata changes before
 publication, and compares decisions during isolated recovery rehearsal. Historical
 backups upgrade to undecided. Production restore remains manual.
 
@@ -1405,8 +1434,7 @@ with the mismatching IDs. Other metadata changes alone do not block cleanup.
 No individual Trash buttons are offered on rejected-review cards; inspection
 continues through existing Photo detail. Permanent deletion stays inside Trash
 with its existing confirmation. There is no automatic selection, Trash,
-permanent deletion, retention, scan, background job, or scheduling. Schema 17,
-export v13, and backup v1 remain unchanged.
+permanent deletion, retention, scan, background job, or scheduling.
 
 ## Photo Favorites and Ratings
 
@@ -1428,11 +1456,11 @@ restore, capture correction/backfill, and duplicate decisions preserve curation.
 Permanent deletion removes it with the Photo. Curation advances `updated_at`,
 so an already queued/running AI job can become stale under the existing guard.
 
-Backup format v1 supports schemas 9–21. Schema-16 verification checks curation
+Backup format v1 supports schemas 9–22. Schema-16 verification checks curation
 column structure and values, including empty databases. Recovery rehearsal
 compares Favorite and Rating on active and Trash Photos; older backups migrate
 to false/null without rewriting frozen fixtures. Production restore remains
-manual and uses the same complete SQLite backup. Portable export v13 includes
+manual and uses the same complete SQLite backup. Portable export v14 includes
 JSON boolean/null/integer values and CSV `true`/`false`, 1–5, or `\N`.
 
 ## Trips & Events (v0.3)
@@ -1513,13 +1541,13 @@ range. `/catalog/photos`, `/catalog/map` and `/catalog/culling` accept runtime
 `event_id`; malformed IDs fail validation and absent Events return 404.
 
 Migration 19 appends two empty tables to older archives without rewriting
-historical migrations. Backup v1 supports schemas 9–21 with its unchanged
+historical migrations. Backup v1 supports schemas 9–22 with its unchanged
 manifest. Schema-19 verification checks columns, composite keys, cascading
 foreign keys, metadata constraints, reverse index, canonical data and references,
 even with empty Event tables, before rehearsal writes. Deterministic Event and
 membership signatures detect concurrent backup changes and verify exact recovery.
 Older backups migrate to empty Event tables. Rehearsal output includes Event and
-membership totals. Portable export v13 includes all Event fields and Trash joins,
+membership totals. Portable export v14 includes all Event fields and Trash joins,
 ordered with validated references; photos.csv is unchanged.
 
 Recurrence, automatic membership, Event coordinates and geocoding remain deferred.

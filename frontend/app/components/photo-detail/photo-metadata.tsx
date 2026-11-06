@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { Photo, PhotoStatus, PhotoUpdate, updatePhoto } from "../../lib/api";
+import { formatShootingNumber, formatShutterSpeed } from "../../lib/shooting-settings";
 import GpsLocationPicker from "../maps/gps-location-picker";
 import {
   formatCameraLocalDate,
@@ -121,6 +122,30 @@ function capturedAtLabel(photo: Photo) {
   return `${formatCameraLocalDate(photo.captured_at, true)} · ${timezone}`;
 }
 
+function ShootingSettings({ photo }: { photo: Photo }) {
+  const { aperture_f_number, exposure_time_seconds, iso_speed, focal_length_mm } = photo;
+  const rows = [
+    { label: "Aperture", value: aperture_f_number != null ? `f/${formatShootingNumber(aperture_f_number)}` : null },
+    { label: "Shutter speed", value: exposure_time_seconds != null ? formatShutterSpeed(exposure_time_seconds) : null },
+    { label: "ISO", value: iso_speed != null ? formatShootingNumber(iso_speed) : null },
+    { label: "Focal length", value: focal_length_mm != null ? `${formatShootingNumber(focal_length_mm)} mm` : null },
+  ].filter(({ value }) => value !== null);
+  if (!rows.length) return null;
+  return (
+    <section aria-label="Shooting Settings" className="mt-5 border-t border-stone-200 pt-5">
+      <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">Shooting Settings</h2>
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 rounded-lg border border-stone-200 px-4 sm:grid-cols-4">
+        {rows.map(({ label, value }) => (
+          <div key={label} className="min-w-0 py-3">
+            <dt className="text-xs font-medium text-stone-500">{label}</dt>
+            <dd className="mt-1 break-words text-sm text-stone-950">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
   return (
     <>
@@ -157,6 +182,7 @@ export function PhotoMetadataDetails({ photo }: { photo: Photo }) {
           <MetadataRow label="Reviewed" value={formatDateTime(photo.reviewed_at)} />
         ) : null}
       </dl>
+      <ShootingSettings photo={photo} />
       <div className="mt-5 border-t border-stone-200 pt-5">
         <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
           Description

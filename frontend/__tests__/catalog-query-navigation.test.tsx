@@ -434,3 +434,65 @@ test("import-scoped target preserves cross-page selection and confirms only sele
   expect(window.location.search).toContain(`catalog_import_session_id=${id}`);
   expect(window.location.search).toContain("add_to_event=7");
 });
+
+
+test("shooting ranges validate, reset pagination, and follow Back and Forward", async () => {
+  window.history.replaceState(null, "", "/?catalog_page=2&catalog_category=mammal");
+  render(<Home />);
+  await screen.findByRole("heading", { name: "Fox" });
+  await userEvent.click(screen.getByText("Shooting Settings filters", { exact: true }));
+  const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Minimum ISO" });
+  await userEvent.type(input, "1600");
+  const maximum = screen.getByRole("textbox", { name: "Maximum ISO" });
+  await userEvent.type(maximum, "800");
+  await userEvent.click(screen.getByRole("button", { name: "Apply shooting filters" }));
+  expect(screen.getByRole("alert").textContent).toContain("Minimum ISO");
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(window.location.search).toContain("catalog_page=2");
+
+  await userEvent.clear(maximum);
+  await userEvent.type(screen.getByRole("textbox", { name: "Maximum Exposure time (seconds)" }), "0,0005");
+  await userEvent.click(screen.getByRole("button", { name: "Apply shooting filters" }));
+  await waitFor(() => expect(api.getCatalogPhotos.mock.lastCall?.[0]).toMatchObject({
+    page: 1, category: "mammal", iso_speed_min: 1600, exposure_time_seconds_max: 0.0005,
+  }));
+  expect(window.location.search).toContain("catalog_iso_speed_min=1600");
+  expect(window.location.search).toContain("catalog_exposure_time_seconds_max=0.0005");
+  expect(window.location.search).not.toContain("catalog_page");
+  const save = screen.getByRole<HTMLButtonElement>("button", { name: "Save as Smart Collection" });
+  expect(save.disabled).toBe(true);
+  expect(document.getElementById(save.getAttribute("aria-describedby")!)?.textContent).toContain("Clear Shooting Settings");
+  expect(api.createSmartCollection).not.toHaveBeenCalled();
+
+  window.history.back();
+  await waitFor(() => expect(window.location.search).toContain("catalog_page=2"));
+  await waitFor(() => expect(save.disabled).toBe(false));
+  window.history.forward();
+  await waitFor(() => expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Minimum ISO" }).value).toBe("1600"));
+  await userEvent.click(screen.getByRole("button", { name: "Clear shooting filters" }));
+  await waitFor(() => expect(window.location.search).toBe("?catalog_category=mammal"));
+  await userEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+  expect(window.location.search).toBe("");
+});
+
+test("shooting ranges disable Smart Collection updates until cleared", async () => {
+  window.history.replaceState(null, "", "/?smart_edit=7&catalog_focal_length_mm_min=300");
+  render(<Home />);
+  await screen.findByText(/Editing Smart Collection “Birds”/);
+  const save = screen.getByRole<HTMLButtonElement>("button", { name: "Save changes" });
+  expect(save.disabled).toBe(true);
+  expect(screen.getByText(/Clear Shooting Settings filters before saving/)).toBeTruthy();
+  expect(api.updateSmartCollection).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+  await waitFor(() => expect(save.disabled).toBe(false));
+});
+
+test("shooting filter server errors keep the controls available for correction", async () => {
+  window.history.replaceState(null, "", "/?catalog_focal_length_mm_min=400");
+  api.getCatalogPhotos.mockRejectedValueOnce(new Error("Focal-length range could not be loaded"));
+  render(<Home />);
+  await screen.findByText("Focal-length range could not be loaded");
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Minimum Focal length (mm)" }).value).toBe("400");
+  await userEvent.click(screen.getByRole("button", { name: "Clear shooting filters" }));
+  await screen.findByRole("heading", { name: "Fox" });
+});

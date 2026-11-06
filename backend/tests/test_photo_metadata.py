@@ -164,6 +164,10 @@ def test_no_exif_returns_dimensions_and_nullable_metadata():
     assert metadata.captured_at is None
     assert metadata.camera_make is None
     assert metadata.latitude is None
+    assert metadata.aperture_f_number is None
+    assert metadata.exposure_time_seconds is None
+    assert metadata.iso_speed is None
+    assert metadata.focal_length_mm is None
 
 
 def test_heic_plugin_feeds_existing_extractor_without_double_orientation():
@@ -178,6 +182,80 @@ def test_heic_plugin_feeds_existing_extractor_without_double_orientation():
     assert metadata.camera_make == "Apple"
     assert metadata.camera_model == "iPhone Test"
     assert metadata.lens_model == "Synthetic 26mm"
+    assert metadata.aperture_f_number == 1.8
+    assert metadata.exposure_time_seconds == 1 / 125
+    assert metadata.iso_speed == 400
+    assert metadata.focal_length_mm == 4.4
     assert (metadata.image_width, metadata.image_height) == (20, 40)
     assert metadata.latitude == pytest.approx(46.12345)
     assert metadata.longitude == pytest.approx(14.5432111111)
+
+
+@pytest.mark.parametrize(
+    ("exposure", "seconds"), [((1, 2000), 0.0005), ((5, 2), 2.5), ((2, 125), 0.016)]
+)
+def test_shooting_settings_rationals_in_exif_ifd(exposure, seconds):
+    exif = Image.Exif()
+    rational = TiffImagePlugin.IFDRational
+    exif[ExifTags.IFD.Exif] = {
+        ExifTags.Base.FNumber: rational(56, 10),
+        ExifTags.Base.ExposureTime: rational(*exposure),
+        ExifTags.Base.ISOSpeedRatings: 1600,
+        ExifTags.Base.FocalLength: rational(801, 2),
+    }
+    with image_with_exif(exif) as image:
+        metadata = extract_photo_metadata(image)
+
+    assert metadata.aperture_f_number == 5.6
+    assert metadata.exposure_time_seconds == seconds
+    assert metadata.iso_speed == 1600
+    assert metadata.focal_length_mm == 400.5
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        0,
+        -1,
+        float("inf"),
+        float("nan"),
+        TiffImagePlugin.IFDRational(1, 0),
+        "1/250",
+        (1, 250),
+        True,
+    ],
+)
+def test_invalid_shooting_values_leave_other_metadata_readable(value):
+    with Image.new("RGB", (40, 20)) as image:
+        exif = image.getexif()
+        exif[ExifTags.Base.Make] = "SONY"
+        for tag in (
+            ExifTags.Base.FNumber,
+            ExifTags.Base.ExposureTime,
+            ExifTags.Base.ISOSpeedRatings,
+            ExifTags.Base.FocalLength,
+        ):
+            exif[tag] = value
+        metadata = extract_photo_metadata(image)
+
+    assert metadata.camera_make == "SONY"
+    assert metadata.aperture_f_number is None
+    assert metadata.exposure_time_seconds is None
+    assert metadata.iso_speed is None
+    assert metadata.focal_length_mm is None
+
+
+def test_numeric_representations_and_non_integral_iso():
+    with Image.new("RGB", (40, 20)) as image:
+        exif = image.getexif()
+        exif[ExifTags.Base.FNumber] = 8
+        exif[ExifTags.Base.ExposureTime] = 0.123
+        exif[ExifTags.Base.ISOSpeedRatings] = 800.5
+        exif[ExifTags.Base.FocalLength] = 35.25
+        metadata = extract_photo_metadata(image)
+        exif[ExifTags.Base.ISOSpeedRatings] = 800.0
+        assert extract_photo_metadata(image).iso_speed == 800
+    assert metadata.aperture_f_number == 8
+    assert metadata.exposure_time_seconds == 0.123
+    assert metadata.iso_speed is None
+    assert metadata.focal_length_mm == 35.25

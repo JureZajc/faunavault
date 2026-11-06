@@ -98,6 +98,10 @@ class PhotoRecoveryRecord:
     rating: int | None = None
     culling_state: str | None = None
     import_session_id: str | None = None
+    aperture_f_number: float | None = None
+    exposure_time_seconds: float | None = None
+    iso_speed: int | None = None
+    focal_length_mm: float | None = None
 
 
 @dataclass(frozen=True)
@@ -447,8 +451,8 @@ def _read_schema_14_snapshot(database_path: Path) -> RecoverySnapshot:
 
 
 def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoverySnapshot:
-    if schema_version == 21:
-        return _read_schema_21_snapshot(database_path)
+    if schema_version in {21, 22}:
+        return _read_schema_21_snapshot(database_path, schema_version=schema_version)
     if schema_version == 20:
         return _read_schema_19_snapshot(database_path, schema_version=20)
     if schema_version == 19:
@@ -479,11 +483,13 @@ def _read_source_snapshot(database_path: Path, schema_version: int) -> RecoveryS
 
 
 def _read_current_snapshot(database_path: Path) -> RecoverySnapshot:
-    return _read_schema_21_snapshot(database_path)
+    return _read_source_snapshot(database_path, LATEST_SCHEMA_VERSION)
 
 
-def _read_schema_21_snapshot(database_path: Path) -> RecoverySnapshot:
-    base = _read_schema_19_snapshot(database_path, schema_version=21)
+def _read_schema_21_snapshot(
+    database_path: Path, *, schema_version: int
+) -> RecoverySnapshot:
+    base = _read_schema_19_snapshot(database_path, schema_version=schema_version)
     connection = open_read_only_database(database_path)
     try:
         covers = dict(connection.execute("SELECT id, cover_photo_id FROM collection"))
@@ -555,7 +561,14 @@ def _read_schema_18_snapshot(
     return replace(
         base,
         photos=tuple(
-            replace(photo, import_session_id=by_id[photo.id].import_session_id)
+            replace(
+                photo,
+                import_session_id=by_id[photo.id].import_session_id,
+                aperture_f_number=by_id[photo.id].aperture_f_number,
+                exposure_time_seconds=by_id[photo.id].exposure_time_seconds,
+                iso_speed=by_id[photo.id].iso_speed,
+                focal_length_mm=by_id[photo.id].focal_length_mm,
+            )
             for photo in base.photos
         ),
         import_sessions=read_import_session_signature(database_path),

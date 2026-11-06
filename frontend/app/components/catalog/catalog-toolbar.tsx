@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { areaSummary, BoundsQuery, boundsError, hasArea } from "../../lib/geographic-bounds";
+import CatalogShootingFilter from "./catalog-shooting-filter";
+import { type ShootingRangeQuery } from "../../lib/shooting-settings";
 import CatalogGearFilter from "./catalog-gear-filter";
 import { EquipmentQuery, MetadataIssue } from "../../lib/api";
 import CatalogTagFilter from "./catalog-tag-filter";
@@ -38,6 +40,9 @@ type CatalogToolbarProps = {
   metadataIssue?: MetadataIssue;
   onMetadataIssueChange?: (value?: MetadataIssue) => void;
   equipment?: EquipmentQuery;
+  shootingRanges?: ShootingRangeQuery;
+  onShootingRangesChange?: (value: ShootingRangeQuery) => void;
+  shootingFiltersActive?: boolean;
   onEquipmentChange?: (value: EquipmentQuery) => void;
   tags?: string[];
   untagged?: boolean;
@@ -82,6 +87,7 @@ type CatalogToolbarProps = {
   onResetFilters: () => void;
   onEnterSelectionMode: () => void;
   onSaveSmartCollection?: () => void;
+  smartCollectionDisabledReason?: string;
   mapHref?: string;
   mapDisabled?: boolean;
 };
@@ -90,6 +96,7 @@ export default function CatalogToolbar({
   area, onClearArea,
   metadataIssue, onMetadataIssueChange,
   equipment, onEquipmentChange,
+  shootingRanges, onShootingRangesChange, shootingFiltersActive,
   tags, untagged, onTagFiltersChange,
   rejectedHref,
   cullingState, onCullingStateChange, cullingHref, onReviewRejected,
@@ -125,6 +132,7 @@ export default function CatalogToolbar({
   onResetFilters,
   onEnterSelectionMode,
   onSaveSmartCollection,
+  smartCollectionDisabledReason,
   mapHref,
   mapDisabled,
 }: CatalogToolbarProps) {
@@ -196,6 +204,7 @@ export default function CatalogToolbar({
         </select>
       </label>}
       <CatalogDateFilters {...filterProps} />
+      {shootingRanges && onShootingRangesChange && <CatalogShootingFilter value={shootingRanges} onChange={onShootingRangesChange} />}
 
       <div className="mt-4 flex flex-col gap-3 border-t border-stone-100 pt-4 text-sm text-stone-500 lg:flex-row lg:items-center lg:justify-between">
         <p>
@@ -210,9 +219,14 @@ export default function CatalogToolbar({
           {mapHref ? <div>
             {mapDisabled ? <button type="button" disabled aria-describedby="map-search-explanation" className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold opacity-50">View on Map</button>
               : <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">View on Map</Link>}
-            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">Clear metadata completeness, equipment, exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map.</p> : null}
+            {mapDisabled ? <p id="map-search-explanation" className="mt-1 text-xs">{shootingFiltersActive ? "Shooting Settings filters are available in List. Clear them to view the catalog on Map." : "Clear metadata completeness, equipment, exact tag, Import Session, text search, Favorite/Rating, and Culling filters to view these filters on Map."}</p> : null}
           </div> : null}
-          {onSaveSmartCollection ? <button type="button" onClick={onSaveSmartCollection} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900">Save as Smart Collection</button> : null}
+          {onSaveSmartCollection ? (
+            <div>
+              <button type="button" onClick={onSaveSmartCollection} disabled={Boolean(smartCollectionDisabledReason)} aria-describedby={smartCollectionDisabledReason ? "smart-save-explanation" : undefined} className="min-h-11 rounded-md border border-emerald-700 bg-white px-4 text-sm font-semibold text-emerald-900 disabled:opacity-50">Save as Smart Collection</button>
+              {smartCollectionDisabledReason && <p id="smart-save-explanation" className="mt-1 text-xs">{smartCollectionDisabledReason}</p>}
+            </div>
+          ) : null}
           {hasActiveFilters ? (
             <button
               type="button"

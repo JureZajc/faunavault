@@ -180,6 +180,24 @@ def generate(test_root: Path) -> None:
         fixtures / "faunavault-e2e-culling-pick.jpg", format="JPEG", quality=84
     )
 
+    for name, iso, focal_length, exposure in (
+        ("telephoto", 1600, 400, (1, 2000)),
+        ("wide", 1600, 35, (1, 125)),
+        ("long", 200, 400, (5, 2)),
+    ):
+        shooting_exif = Image.Exif()
+        shooting_exif[ExifTags.IFD.Exif] = {
+            ExifTags.Base.FNumber: TiffImagePlugin.IFDRational(56, 10),
+            ExifTags.Base.ExposureTime: TiffImagePlugin.IFDRational(*exposure),
+            ExifTags.Base.ISOSpeedRatings: iso,
+            ExifTags.Base.FocalLength: TiffImagePlugin.IFDRational(focal_length),
+        }
+        scene().save(
+            fixtures / f"faunavault-e2e-shooting-{name}.jpg",
+            format="JPEG",
+            exif=shooting_exif,
+        )
+
     # Disposable equipment EXIF exercises extraction, not a metadata-edit API.
     gear = [
         ("E2E Canon", "E2E Canon EOS R5", "E2E RF100-500mm"),

@@ -8,9 +8,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.catalog_query import SavedQueryVersion, VersionedSavedQuery
-from app.metadata_types import PhotoCullingState, PhotoRating
+from app.metadata_types import (
+    PhotoCullingState,
+    PhotoRating,
+    PositiveISO,
+    PositiveMeasurement,
+)
 
-EXPORT_FORMAT_VERSION = 13
+EXPORT_FORMAT_VERSION = 14
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
 CAPTURE_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$")
@@ -93,6 +98,10 @@ class PhotoExport(StrictExportModel):
     camera_make: str | None = Field(default=None, max_length=200)
     camera_model: str | None = Field(default=None, max_length=200)
     lens_model: str | None = Field(default=None, max_length=200)
+    aperture_f_number: PositiveMeasurement | None
+    exposure_time_seconds: PositiveMeasurement | None
+    iso_speed: PositiveISO | None
+    focal_length_mm: PositiveMeasurement | None
     image_width: int | None = Field(default=None, ge=1)
     image_height: int | None = Field(default=None, ge=1)
     latitude: float | None = Field(default=None, ge=-90, le=90)

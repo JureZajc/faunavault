@@ -49,6 +49,26 @@ __tests__/nearby-photos-api.test.ts __tests__/photo-detail.test.tsx` and
 archives, synthetic GPS, locally fulfilled map tiles, radius/return navigation,
 Trash/Restore, GPS clearing, keyboard focus and overflow checks).
 
+## EXIF Shooting Settings
+
+Photo details render the available aperture, shutter speed, ISO and focal length
+in a read-only section. Missing values are omitted, and the section is hidden
+when all four are missing. Shutter speed uses reciprocal notation when it exactly
+represents the stored value, or decimal seconds otherwise.
+
+Expand **Shooting Settings filters** in List, enter a minimum, a maximum, or
+both for any setting, and choose **Apply shooting filters**. ISO takes positive
+whole numbers. Other fields take positive finite decimals, with exposure time
+in seconds and focal length in millimeters. SQL applies the inclusive ranges
+together and excludes missing values for the filtered fields. Applying or
+clearing the ranges returns to page one. The `catalog_<field>_min` and
+`catalog_<field>_max` URL parameters survive reload and Back/Forward.
+**Clear shooting filters** removes just these ranges. **Reset filters** clears
+all List filters. Map and Culling use their own criteria. Smart Collection
+save and update require clearing the shooting ranges first.
+
+Run `npm run test:e2e -- shooting-settings.e2e.ts` for the disposable browser flow.
+
 ## Camera & Lens Explorer
 
 Open **Gear** (`/gear`) to explore active Photos by camera or lens. The overview

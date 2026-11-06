@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import math
 import re
+import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from numbers import Rational, Real
 
 from PIL import ExifTags, Image
+
+from app.metadata_types import MAX_SQLITE_INTEGER
 
 MAX_CAMERA_TEXT_LENGTH = 200
 _CAPTURE_FORMAT = "%Y:%m:%d %H:%M:%S"
@@ -26,6 +30,10 @@ class ExtractedPhotoMetadata:
     image_height: int
     latitude: float | None
     longitude: float | None
+    aperture_f_number: float | None = None
+    exposure_time_seconds: float | None = None
+    iso_speed: int | None = None
+    focal_length_mm: float | None = None
 
 
 def _text(value: object, *, maximum: int = MAX_CAMERA_TEXT_LENGTH) -> str | None:
@@ -39,6 +47,26 @@ def _text(value: object, *, maximum: int = MAX_CAMERA_TEXT_LENGTH) -> str | None
 
 def _tag(ifd: Mapping[int, object], root: Mapping[int, object], tag: int) -> object:
     return ifd.get(tag, root.get(tag))
+
+
+def _positive_measurement(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None
+    if isinstance(value, Rational) and value.denominator == 0:
+        return None
+    try:
+        number = float(value)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return number if math.isfinite(number) and number > 0 else None
+
+
+def _iso_speed(value: object) -> int | None:
+    number = _positive_measurement(value)
+    if number is None or not number.is_integer():
+        return None
+    integer = int(value)
+    return integer if integer == value and 0 < integer <= MAX_SQLITE_INTEGER else None
 
 
 def _capture_time(
@@ -116,7 +144,7 @@ def _gps_coordinates(gps: Mapping[int, object]) -> tuple[float | None, float | N
 def _safe_ifd(exif: Image.Exif, ifd: ExifTags.IFD) -> Mapping[int, object]:
     try:
         value = exif.get_ifd(ifd)
-    except (KeyError, OSError, TypeError, ValueError, SyntaxError):
+    except (KeyError, OSError, TypeError, ValueError, SyntaxError, struct.error):
         return {}
     return value if isinstance(value, Mapping) else {}
 
@@ -163,4 +191,14 @@ def extract_photo_metadata(image: Image.Image) -> ExtractedPhotoMetadata:
         image_height=height,
         latitude=latitude,
         longitude=longitude,
+        aperture_f_number=_positive_measurement(
+            _tag(exif_ifd, root, ExifTags.Base.FNumber)
+        ),
+        exposure_time_seconds=_positive_measurement(
+            _tag(exif_ifd, root, ExifTags.Base.ExposureTime)
+        ),
+        iso_speed=_iso_speed(_tag(exif_ifd, root, ExifTags.Base.ISOSpeedRatings)),
+        focal_length_mm=_positive_measurement(
+            _tag(exif_ifd, root, ExifTags.Base.FocalLength)
+        ),
     )

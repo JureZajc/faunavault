@@ -70,7 +70,7 @@ def archive(tmp_path):
             "CREATE TABLE schema_migration "
             "(version INTEGER PRIMARY KEY, applied_at DATETIME NOT NULL)"
         )
-        for migration in range(1, 22):
+        for migration in range(1, 23):
             connection.exec_driver_sql(
                 "INSERT INTO schema_migration VALUES (?, CURRENT_TIMESTAMP)",
                 (migration,),
@@ -115,6 +115,10 @@ def archive(tmp_path):
                 captured_at=datetime(2024, 5, 24, 18, 42) if index == 1 else None,
                 captured_at_offset_minutes=120 if index == 1 else None,
                 camera_make="SONY" if index == 1 else None,
+                aperture_f_number=5.6 if index == 1 else None,
+                exposure_time_seconds=0.0005 if index == 1 else 2.5,
+                iso_speed=1600 if index == 1 else None,
+                focal_length_mm=400 if index == 1 else None,
                 image_width=24,
                 image_height=18,
                 deleted_at=utc_now() if deleted else None,
@@ -157,8 +161,8 @@ def test_create_backup_is_complete_portable_and_verifiable(archive):
     assert backup_path.name.startswith("faunavault-backup-")
     manifest = read_manifest(backup_path / "manifest.json")
     assert manifest.backup_format_version == 1
-    assert manifest.database.schema_version == 21
-    assert manifest.database.applied_migrations == list(range(1, 22))
+    assert manifest.database.schema_version == 22
+    assert manifest.database.applied_migrations == list(range(1, 23))
     assert manifest.counts.photos == 2
     assert manifest.counts.active_photos == 1
     assert manifest.counts.trashed_photos == 1
@@ -280,7 +284,7 @@ def test_current_backup_rehearsal_preserves_duplicate_curation(archive):
     backup, verified = create_backup(destination, settings)
     assert verified.valid
     result = rehearse_backup(backup, destination.parent / "duplicate-rehearsal")
-    assert result.source_schema_version == 21 and result.doctor_status == "HEALTHY"
+    assert result.source_schema_version == 22 and result.doctor_status == "HEALTHY"
     assert (
         read_duplicate_signature(result.target / "data" / "faunavault.db") == expected
     )
@@ -307,7 +311,7 @@ def test_current_schema_backup_rehearsal_preserves_collections(archive):
 
     result = rehearse_backup(backup_path, target)
 
-    assert result.source_schema_version == 21
+    assert result.source_schema_version == 22
     assert result.collections == 1
     assert result.collection_memberships == 2
     recovered_settings = Settings(
@@ -360,7 +364,7 @@ def test_current_backup_verifies_and_rehearses_smart_definitions(archive):
     assert verify_backup(backup_path).valid
     target = destination.parent / "smart-rehearsal"
     rehearsal = rehearse_backup(backup_path, target)
-    assert rehearsal.source_schema_version == 21
+    assert rehearsal.source_schema_version == 22
     restored = create_database_engine(
         Settings(
             _env_file=None,
@@ -474,16 +478,16 @@ def test_changed_live_photo_inventory_refuses_publication(archive):
     assert list(destination.iterdir()) == []
 
 
-@pytest.mark.parametrize("change", ["is_favorite=1", "rating=5"])
-def test_backup_rejects_live_curation_changes_before_publication(archive, change):
+@pytest.mark.parametrize("change", ["is_favorite=1", "rating=5", "iso_speed=3200"])
+def test_backup_rejects_live_photo_metadata_changes_before_publication(archive, change):
     settings, destination, _ = archive
 
-    def mutate_curation():
+    def mutate_metadata():
         with sqlite3.connect(settings.database_path) as connection:
             connection.execute(f"UPDATE photo SET {change} WHERE id=1")
 
     with pytest.raises(BackupError, match="changed before publication"):
-        create_backup(destination, settings, before_publish=mutate_curation)
+        create_backup(destination, settings, before_publish=mutate_metadata)
     assert list(destination.iterdir()) == []
 
 
@@ -598,3 +602,21 @@ def test_source_symlink_is_rejected_when_supported(archive, tmp_path):
 
     with pytest.raises(BackupError, match="Symlink|regular file"):
         create_backup(destination, settings)
+
+
+def test_backup_and_recovery_preserve_active_and_trashed_shooting_settings(
+    archive, tmp_path
+):
+    settings, destination, payloads = archive
+    backup, _ = create_backup(destination, settings)
+    assert verify_backup(backup).valid
+    target = tmp_path / "exif-rehearsal"
+    result = rehearse_backup(backup, target)
+    assert result.source_schema_version == result.current_schema_version == 22
+    assert result.applied_migrations == ()
+    with sqlite3.connect(target / "data" / "faunavault.db") as connection:
+        assert connection.execute(
+            "SELECT aperture_f_number, exposure_time_seconds, iso_speed, focal_length_mm "
+            "FROM photo ORDER BY id"
+        ).fetchall() == [(5.6, 0.0005, 1600, 400), (None, 2.5, None, None)]
+    assert all(path.read_bytes() == contents for path, contents in payloads.items())

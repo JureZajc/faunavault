@@ -14,6 +14,7 @@ import {
   writeMapCatalogState,
 } from "../lib/catalog-query";
 import { PhotoStatus, PhotoRating, CullingFilter } from "../lib/api";
+import { EMPTY_SHOOTING_RANGES, type ShootingRangeQuery } from "../lib/shooting-settings";
 import { AreaBounds, EMPTY_BOUNDS } from "../lib/geographic-bounds";
 
 export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
@@ -100,6 +101,11 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     updateCatalog({ ...catalogState, search: searchInput.trim() || undefined,
       camera_make: undefined, camera_model: undefined, lens_model: undefined,
       unknown_camera: undefined, unknown_lens: undefined, ...equipment, page: 1 });
+  }
+
+  function setShootingRanges(ranges: ShootingRangeQuery) {
+    cancelPendingSearch();
+    updateCatalog({ ...catalogState, ...EMPTY_SHOOTING_RANGES, ...ranges, search: searchInput.trim() || undefined, page: 1 });
   }
 
   function setMetadataIssue(metadata_issue?: import("../lib/api").MetadataIssue) {
@@ -191,6 +197,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
       {
         ...catalogState,
         ...EMPTY_BOUNDS,
+        ...EMPTY_SHOOTING_RANGES,
         page: 1,
         favorites_only: undefined, rating: undefined, rating_min: undefined, unrated: undefined,
         metadata_issue: undefined,
@@ -230,6 +237,7 @@ export function useCatalogQueryState(mode: "catalog" | "map" = "catalog") {
     setMetadataIssue,
     setTagFilters,
     setEquipmentFilters,
+    setShootingRanges,
     setFavoritesOnly,
     setCullingState,
     setRatingFilter,

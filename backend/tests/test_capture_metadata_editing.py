@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session
 
 import app.main as main
-import app.services.photo_metadata_backfill as backfill_module
+import app.services.capture_metadata as capture_module
 from app.archive_export.service import create_metadata_export
 from app.archive_integrity import ArchiveIntegrityError, inspect_database
 from app.backup.rehearsal import rehearse_backup
@@ -301,13 +301,30 @@ def test_backfill_preserves_manual_values_and_clears(lifecycle):
         longitude=14.987654321,
     ).json()
     # Simulate a legacy row whose retained extraction has yet to be populated.
+    assets = {
+        settings.image_dirs[variant] / photo[field]
+        for variant, field in (
+            ("original", "stored_filename"),
+            ("resized", "resized_filename"),
+            ("thumbs", "thumbnail_filename"),
+        )
+    }
+    before = {path: path.read_bytes() for path in assets}
     with Session(engine) as session:
         stored = session.get(Photo, photo["id"])
         stored.extracted_captured_at = None
         stored.extracted_captured_at_offset_minutes = None
+        stored.aperture_f_number = None
+        stored.exposure_time_seconds = None
+        stored.focal_length_mm = None
+        stored.iso_speed = 2000
+        stored.rating = 5
+        stored.tags = ["verified"]
+        stored.culling_state = "pick"
         session.add(stored)
         session.commit()
     assert backfill_photo_metadata(settings).updated == 1
+    assert client.get(f"/photos/{photo['id']}").json()["aperture_f_number"] is None
     assert backfill_photo_metadata(settings, apply=True).updated == 1
     stored = client.get(f"/photos/{photo['id']}").json()
     assert (
@@ -316,6 +333,18 @@ def test_backfill_preserves_manual_values_and_clears(lifecycle):
     )
     assert stored["extracted_captured_at"] == "2024-05-24T18:42:00"
     assert stored["extracted_latitude"] == 46 and stored["extracted_longitude"] == 14
+    assert (
+        stored["aperture_f_number"],
+        stored["exposure_time_seconds"],
+        stored["focal_length_mm"],
+    ) == (5.6, 0.0005, 400)
+    assert (
+        stored["iso_speed"],
+        stored["rating"],
+        stored["tags"],
+        stored["culling_state"],
+    ) == (2000, 5, ["verified"], "pick")
+    assert {path: path.read_bytes() for path in assets} == before
     cleared = patch(
         client,
         stored,
@@ -337,7 +366,7 @@ def test_backfill_rejects_a_manual_edit_after_extraction(lifecycle, monkeypatch)
         stored.captured_at_offset_minutes = None
         session.add(stored)
         session.commit()
-    extract = backfill_module.extract_photo_metadata
+    extract = capture_module.extract_photo_metadata
 
     def concurrent_extract(image):
         result = extract(image)
@@ -350,7 +379,7 @@ def test_backfill_rejects_a_manual_edit_after_extraction(lifecycle, monkeypatch)
         )
         return result
 
-    monkeypatch.setattr(backfill_module, "extract_photo_metadata", concurrent_extract)
+    monkeypatch.setattr(capture_module, "extract_photo_metadata", concurrent_extract)
     result = backfill_photo_metadata(settings, apply=True)
     assert result.updated == 0 and result.skipped == 1
     current = client.get(f"/photos/{photo['id']}").json()
@@ -527,7 +556,7 @@ def test_schema15_backups_rehearsal_and_portable_export(lifecycle, tmp_path_fact
     backup, verification = create_backup(artifact_root / "backups", settings)
     assert verification.valid and verify_backup(backup).valid
     result = rehearse_backup(backup, artifact_root / "recovered")
-    assert result.source_schema_version == 21 and result.doctor_status == "HEALTHY"
+    assert result.source_schema_version == 22 and result.doctor_status == "HEALTHY"
     with sqlite3.connect(artifact_root / "recovered/data/faunavault.db") as connection:
         assert connection.execute(
             "SELECT captured_at, extracted_captured_at, latitude, capture_metadata_overridden, location_metadata_overridden FROM photo WHERE id=?",
@@ -541,7 +570,7 @@ def test_schema15_backups_rehearsal_and_portable_export(lifecycle, tmp_path_fact
         artifact_root / "export", settings, include_csv=True
     )
     payload = json.loads(export.json_path.read_text())
-    assert payload["format_version"] == 13
+    assert payload["format_version"] == 14
     exported = payload["photos"][0]
     assert exported["captured_at"] is None and exported["capture_metadata_overridden"]
     assert exported["extracted_captured_at"] == "2024-05-24T18:42:00.000000"
@@ -576,7 +605,7 @@ def test_migration15_copies_prior_metadata_once(lifecycle):
             "SELECT extracted_captured_at, extracted_captured_at_offset_minutes, extracted_latitude, extracted_longitude, capture_metadata_overridden, location_metadata_overridden FROM photo"
         ).one() == ("2024-05-24T18:42:00", 120, 46, 14, 0, 0)
     assert run_migrations(engine, settings) == []
-    assert inspect_database(settings.database_path, 21).migrations[-1] == 21
+    assert inspect_database(settings.database_path, 22).migrations[-1] == 22
 
 
 @pytest.mark.parametrize(
@@ -633,3 +662,31 @@ def test_filtered_map_uses_effective_capture_and_gps_and_restore(lifecycle):
     assert points(edited_filters) == []
     assert points(original_filters)[0]["latitude"] == photo["latitude"] == 46
     assert points(original_filters)[0]["captured_at"] == photo["captured_at"]
+
+
+def test_backfill_trashed_photo_and_skip_replaced_original(lifecycle):
+    client, engine, settings = lifecycle
+    archived = upload(client, metadata_jpeg_bytes(), filename="trashed.jpg").json()
+    active = client.post(
+        "/photos/upload",
+        data={"allow_visual_duplicate": "true"},
+        files={"file": ("active.jpg", gps_metadata_jpeg_bytes(), "image/jpeg")},
+    ).json()
+    assert client.delete(f"/photos/{archived['id']}").status_code == 200
+    with Session(engine) as session:
+        for item in (archived, active):
+            row = session.get(Photo, item["id"])
+            row.iso_speed = None
+            session.add(row)
+        session.commit()
+    (settings.image_dirs["original"] / active["stored_filename"]).write_bytes(
+        metadata_jpeg_bytes()
+    )
+    result = backfill_photo_metadata(settings, apply=True)
+    assert (result.processed, result.updated, result.skipped) == (2, 1, 0)
+    assert [(error.photo_id, error.message) for error in result.errors] == [
+        (active["id"], "Original checksum does not match the archive")
+    ]
+    with Session(engine) as session:
+        assert session.get(Photo, archived["id"]).iso_speed == 1600
+        assert session.get(Photo, active["id"]).iso_speed is None
