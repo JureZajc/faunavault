@@ -448,6 +448,7 @@ def test_startup_migrations_are_versioned_and_back_up_the_actual_database(lifecy
         20,
         21,
         22,
+        23,
     ]
     with engine.connect() as connection:
         indexes = {
@@ -519,6 +520,7 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         20,
         21,
         22,
+        23,
     ]
     assert migration_versions(engine) == [
         1,
@@ -543,6 +545,7 @@ def test_domestic_normalization_is_recorded_and_not_repeated(tmp_path, monkeypat
         20,
         21,
         22,
+        23,
     ]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
@@ -604,6 +607,7 @@ def test_normalization_failure_stays_pending_and_retries_after_prior_migrations(
         20,
         21,
         22,
+        23,
     ]
     with Session(engine) as session:
         photo = session.get(Photo, photo_id)
@@ -657,6 +661,7 @@ def test_migration_8_backfills_normalized_album_group_and_is_idempotent(tmp_path
         20,
         21,
         22,
+        23,
     ]
     with engine.connect() as connection:
         rows = connection.exec_driver_sql(
@@ -709,6 +714,7 @@ def test_migration_9_adds_nullable_perceptual_hash_without_backfill(tmp_path):
         20,
         21,
         22,
+        23,
     ]
     with engine.connect() as connection:
         columns = {
@@ -760,6 +766,7 @@ def test_migration_12_adds_nullable_review_timestamp_without_backfill(tmp_path):
         20,
         21,
         22,
+        23,
     ]
     with engine.connect() as connection:
         columns = {
@@ -811,6 +818,7 @@ def test_migration_10_creates_collection_relations_with_cascades(tmp_path):
         20,
         21,
         22,
+        23,
     ]
     with engine.begin() as connection:
         connection.exec_driver_sql(
